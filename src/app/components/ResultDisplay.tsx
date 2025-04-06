@@ -30,48 +30,103 @@ export default function ResultDisplay({ data }: ResultDisplayProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [generatedText, setGeneratedText] = useState<string | null>(null);
 
-  const formatData = () => {
-    let result = `${data.userName}님의 일간 보고서 (${data.date})\n`;
-    result += '――――――――――――――\n\n';
-
-    // 프로젝트별 업무
-    if (data.projects.length > 0) {
-      data.projects.forEach((project, index) => {
-        if (project.name && project.tasks.length > 0) {
-          result += `${index + 1}. ${project.name}\n`;
-          
-          project.tasks.forEach(task => {
-            if (task.description) {
-              result += `- ${task.description}`;
-              
-              if (task.collaborator) {
-                result += ` ${task.collaborator}`;
-              }
-              
-              if (task.followUp) {
-                result += `\n  => ${task.followUp}`;
-              }
-              
-              result += '\n';
-            }
-          });
-          
-          result += '\n';
-        }
-      });
-    }
-
-    // 기타 업무
-    if (data.miscTasks.length > 0 && data.miscTasks.some(task => task.description)) {
-      result += '기타 업무\n';
+  // 날짜 포맷 변환 함수 (예: 2025.4.4(금) -> 2025.04.04.금요일)
+  const formatDateForOutput = (dateStr: string): string => {
+    try {
+      // 날짜 문자열에서 년, 월, 일, 요일 추출
+      const match = dateStr.match(/(\d+)\.(\d+)\.(\d+)\((.)\)/);
       
-      data.miscTasks.forEach(task => {
-        if (task.description) {
-          result += `- ${task.description}\n`;
-        }
-      });
+      if (!match) return dateStr;
+      
+      const [_, year, month, day, weekdayShort] = match;
+      
+      // 요일 매핑
+      const weekdayMap: {[key: string]: string} = {
+        '월': '월요일',
+        '화': '화요일',
+        '수': '수요일',
+        '목': '목요일',
+        '금': '금요일',
+        '토': '토요일',
+        '일': '일요일'
+      };
+      
+      // 월, 일을 2자리로 포맷팅
+      const formattedMonth = month.padStart(2, '0');
+      const formattedDay = day.padStart(2, '0');
+      const fullWeekday = weekdayMap[weekdayShort] || weekdayShort;
+      
+      return `${year}.${formattedMonth}.${formattedDay}.${fullWeekday}`;
+    } catch (e) {
+      // 에러 발생 시 원본 문자열 반환
+      return dateStr;
     }
+  };
 
+  // 템플릿에 맞춘 프롬프트 포맷팅
+  const formatPromptDataForTemplate = (data: ResultDisplayProps['data']): string => {
+    let prompt = '';
+    
+    // 모든 프로젝트와 기타 업무를 하나의 리스트로 처리
+    const allItems: { title: string; tasks: TaskItem[] }[] = [
+      ...data.projects.map(project => ({ title: project.name, tasks: project.tasks })),
+    ];
+    
+    // 기타 업무가 있으면 추가
+    if (data.miscTasks.length > 0 && data.miscTasks.some(task => task.description)) {
+      allItems.push({ title: '기타 업무', tasks: data.miscTasks });
+    }
+    
+    // 각 항목을 포맷팅
+    allItems.forEach((item, idx) => {
+      if (item.title && item.tasks.length > 0 && item.tasks.some(t => t.description)) {
+        // 각 프로젝트/기타 업무를 ◼ 형식으로 표시
+        item.tasks.forEach((task, taskIdx) => {
+          if (task.description) {
+            // 첫 번째 태스크만 ◼ 사용, 나머지는 하위 항목으로
+            if (taskIdx === 0) {
+              prompt += `◼ ${task.description}\n`;
+            } else {
+              prompt += `- ${task.description}\n`;
+            }
+            
+            // 협업자 정보는 생략 (협업자 정보 포함이 필요하면 아래 주석 해제)
+            // if (task.collaborator) {
+            //   prompt += `  ${task.collaborator}\n`;
+            // }
+            
+            // 후속 조치는 > 형식으로 표시
+            if (task.followUp) {
+              prompt += `  > ${task.followUp}\n`;
+            }
+            
+            // 태스크 간 적절한 줄바꿈 추가
+            if (taskIdx < item.tasks.length - 1) {
+              prompt += '\n';
+            }
+          }
+        });
+        
+        // 항목 간 줄바꿈 추가
+        if (idx < allItems.length - 1) {
+          prompt += '\n';
+        }
+      }
+    });
+    
+    return prompt;
+  };
+
+  const formatData = () => {
+    // 지정된 형식에 맞는 출력 형식
+    let result = `업무보고_ ${data.userName}\n`;
+    result += `${formatDateForOutput(data.date)}\n`;
+    result += '――――――――――――――\n';
+    result += '[금일 진행 업무]\n\n';
+    
+    // 모든 프로젝트와 태스크를 지정된 형식으로 포맷팅
+    result += formatPromptDataForTemplate(data);
+    
     return result;
   };
 
