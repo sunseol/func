@@ -40,11 +40,11 @@ export async function generateReport(data: ReportData): Promise<string> {
           'Authorization': `Bearer ${GROQ_API_KEY}`,
         },
         body: JSON.stringify({
-          model: "llama3-8b-8192",
+          model: "qwen-2.5-32b",
           messages: [
             {
               role: "system",
-              content: "당신은 프로젝트별 업무 내용을 특정 형식의 일간 보고서로 변환하는 비서입니다. 입력된 정보를 바탕으로 정확히 지정된 형식에 맞게 일간 보고서를 작성해주세요."
+              content: "당신은 프로젝트별 업무 내용을 특정 형식의 일간 보고서로 변환하는 비서입니다. 입력된 정보를 바탕으로 정확히 지정된 형식에 맞게 일간 보고서를 작성해주세요. 주어진 정보를 바탕으로 부족한 부분이 있다면 합리적으로 추가 내용을 포함할 수 있습니다. 단, 기본 형식은 반드시 유지하세요. 결과물을 그대로 복사하여 사용할 수 있도록 추가 설명 없이 보고서만 출력해주세요."
             },
             {
               role: "user",
@@ -62,11 +62,20 @@ ${formatDateForOutput(data.date)}
 [금일 진행 업무]
 
 ${formatPromptDataForTemplate(data)}
-`
+
+위 정보를 기반으로 보고서를 작성해주세요. 필요하다면 합리적인 범위 내에서 다음과 같은 내용을 추가할 수 있습니다:
+1. 태스크의 세부 사항 확장
+2. 업무 관련된 추가 세부 정보
+3. 업무가 완료된 경우 결과나 성과에 대한 간단한 설명
+4. 회의에 참석한 경우 주요 논의 내용
+5. 추후 진행 예정인 관련 업무에 대한 언급
+
+단, 모든 추가 정보는 실제 있을법한 자연스러운 내용이어야 하며, 주어진 형식을 철저히 지켜야 합니다.
+프롬프트 또는 지시사항에 대한 언급은 결과에 포함하지 마세요. 오직 보고서 내용만 출력하세요.`
             }
           ],
-          temperature: 0.3,
-          max_tokens: 1024,
+          temperature: 0.5,
+          max_tokens: 1500,
         }),
       });
 
