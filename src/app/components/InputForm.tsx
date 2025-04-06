@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 interface TaskItem {
   id: string;
@@ -132,19 +132,19 @@ export default function InputForm({ onDataChange }: InputFormProps) {
   };
 
   // 데이터 변경 시 부모 컴포넌트에 알림
-  const handleDataChange = () => {
+  const handleDataChange = useCallback(() => {
     onDataChange({
       userName,
       date,
       projects,
       miscTasks,
     });
-  };
+  }, [userName, date, projects, miscTasks, onDataChange]);
 
   // 입력 값이 변경될 때마다 데이터 업데이트
   useEffect(() => {
     handleDataChange();
-  }, [userName, date, projects, miscTasks]);
+  }, [handleDataChange]);
 
   return (
     <div className="space-y-6">

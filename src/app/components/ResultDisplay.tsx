@@ -38,7 +38,7 @@ export default function ResultDisplay({ data }: ResultDisplayProps) {
       
       if (!match) return dateStr;
       
-      const [_, year, month, day, weekdayShort] = match;
+      const [, year, month, day, weekdayShort] = match;
       
       // 요일 매핑
       const weekdayMap: {[key: string]: string} = {
@@ -57,8 +57,9 @@ export default function ResultDisplay({ data }: ResultDisplayProps) {
       const fullWeekday = weekdayMap[weekdayShort] || weekdayShort;
       
       return `${year}.${formattedMonth}.${formattedDay}.${fullWeekday}`;
-    } catch (e) {
+    } catch (error) {
       // 에러 발생 시 원본 문자열 반환
+      console.error('날짜 포맷 변환 중 오류 발생:', error);
       return dateStr;
     }
   };

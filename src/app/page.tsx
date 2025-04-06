@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import Image from 'next/image';
 import InputForm from './components/InputForm';
 import ResultDisplay from './components/ResultDisplay';
 
