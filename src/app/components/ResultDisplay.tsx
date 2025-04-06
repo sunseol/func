@@ -22,6 +22,7 @@ interface ResultDisplayProps {
     date: string;
     projects: Project[];
     miscTasks: TaskItem[];
+    reportType: 'morning' | 'evening';
   };
 }
 
@@ -64,6 +65,11 @@ export default function ResultDisplay({ data }: ResultDisplayProps) {
     }
   };
 
+  // 보고서 유형에 따른 제목 반환
+  const getReportTitle = (): string => {
+    return data.reportType === 'morning' ? '[금일 예정 업무]' : '[금일 진행 업무]';
+  };
+
   // 템플릿에 맞춘 프롬프트 포맷팅
   const formatPromptDataForTemplate = (data: ResultDisplayProps['data']): string => {
     let prompt = '';
@@ -86,18 +92,20 @@ export default function ResultDisplay({ data }: ResultDisplayProps) {
           if (task.description) {
             // 첫 번째 태스크만 ◼ 사용, 나머지는 하위 항목으로
             if (taskIdx === 0) {
-              prompt += `◼ ${task.description}\n`;
+              prompt += `◼ ${task.description}`;
             } else {
-              prompt += `- ${task.description}\n`;
+              prompt += `- ${task.description}`;
             }
             
-            // 협업자 정보는 생략 (협업자 정보 포함이 필요하면 아래 주석 해제)
-            // if (task.collaborator) {
-            //   prompt += `  ${task.collaborator}\n`;
-            // }
+            // 협업자 정보 추가
+            if (task.collaborator && task.collaborator.trim()) {
+              prompt += ` ${task.collaborator}`;
+            }
+            
+            prompt += '\n';
             
             // 후속 조치는 > 형식으로 표시
-            if (task.followUp) {
+            if (task.followUp && task.followUp.trim()) {
               prompt += `  > ${task.followUp}\n`;
             }
             
@@ -123,7 +131,7 @@ export default function ResultDisplay({ data }: ResultDisplayProps) {
     let result = `업무보고_ ${data.userName}\n`;
     result += `${formatDateForOutput(data.date)}\n`;
     result += '――――――――――――――\n';
-    result += '[금일 진행 업무]\n\n';
+    result += `${getReportTitle()}\n\n`;
     
     // 모든 프로젝트와 태스크를 지정된 형식으로 포맷팅
     result += formatPromptDataForTemplate(data);

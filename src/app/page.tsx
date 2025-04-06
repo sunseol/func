@@ -22,6 +22,7 @@ interface ReportData {
   date: string;
   projects: Project[];
   miscTasks: TaskItem[];
+  reportType: 'morning' | 'evening';
 }
 
 export default function Home() {
@@ -31,10 +32,21 @@ export default function Home() {
     date: '',
     projects: [],
     miscTasks: [],
+    reportType: 'evening',
   });
 
-  const handleDataChange = (data: ReportData) => {
-    setFormData(data);
+  const handleDataChange = (data: Omit<ReportData, 'reportType'>) => {
+    setFormData(prevData => ({
+      ...data,
+      reportType: prevData.reportType,
+    }));
+  };
+
+  const handleReportTypeChange = (type: 'morning' | 'evening') => {
+    setFormData(prevData => ({
+      ...prevData,
+      reportType: type,
+    }));
   };
 
   return (
@@ -68,6 +80,31 @@ export default function Home() {
           >
             월간 보고서
           </button>
+        </div>
+
+        <div className="flex justify-center mb-4">
+          <div className="bg-gray-100 p-1 rounded-lg flex">
+            <button
+              className={`py-2 px-4 rounded-lg font-medium transition-colors ${
+                formData.reportType === 'morning'
+                  ? 'bg-white shadow-sm'
+                  : 'text-gray-600 hover:bg-gray-200'
+              }`}
+              onClick={() => handleReportTypeChange('morning')}
+            >
+              출근 보고서 (예정 업무)
+            </button>
+            <button
+              className={`py-2 px-4 rounded-lg font-medium transition-colors ${
+                formData.reportType === 'evening'
+                  ? 'bg-white shadow-sm'
+                  : 'text-gray-600 hover:bg-gray-200'
+              }`}
+              onClick={() => handleReportTypeChange('evening')}
+            >
+              퇴근 보고서 (진행 업무)
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-col lg:flex-row gap-8">

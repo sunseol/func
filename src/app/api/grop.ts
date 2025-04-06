@@ -18,6 +18,7 @@ interface ReportData {
   date: string;
   projects: Project[];
   miscTasks: TaskItem[];
+  reportType: 'morning' | 'evening';
 }
 
 // GROQ API 호출을 위한 함수
@@ -30,6 +31,11 @@ export async function generateReport(data: ReportData): Promise<string> {
       console.warn('GROQ API 키가 설정되지 않았습니다. 환경변수를 확인하세요.');
       return formatDefaultReport(data);
     }
+
+    // 보고서 유형에 따른 제목 생성
+    const reportTitle = data.reportType === 'morning' 
+      ? '[금일 예정 업무]' 
+      : '[금일 진행 업무]';
 
     // GROQ API 호출
     try {
@@ -44,7 +50,12 @@ export async function generateReport(data: ReportData): Promise<string> {
           messages: [
             {
               role: "system",
-              content: "당신은 프로젝트별 업무 내용을 특정 형식의 일간 보고서로 변환하는 비서입니다. 입력된 정보를 바탕으로 정확히 지정된 형식에 맞게 일간 보고서를 작성해주세요. 주어진 정보를 바탕으로 부족한 부분이 있다면 합리적으로 추가 내용을 포함할 수 있습니다. 단, 기본 형식은 반드시 유지하세요. 결과물을 그대로 복사하여 사용할 수 있도록 추가 설명 없이 보고서만 출력해주세요."
+              content: `당신은 프로젝트별 업무 내용을 특정 형식의 일간 보고서로 변환하는 비서입니다. 
+입력된 정보를 바탕으로 정확히 지정된 형식에 맞게 일간 보고서를 작성해주세요. 
+주어진 정보를 바탕으로 부족한 부분이 있다면 합리적으로 추가 내용을 포함할 수 있습니다. 
+단, 기본 형식은 반드시 유지하세요. 
+결과물을 그대로 복사하여 사용할 수 있도록 추가 설명 없이 보고서만 출력해주세요.
+보고서 유형은 '${data.reportType === 'morning' ? '출근 보고서(금일 예정 업무)' : '퇴근 보고서(금일 진행 업무)'}' 입니다.`
             },
             {
               role: "user",
@@ -53,13 +64,14 @@ export async function generateReport(data: ReportData): Promise<string> {
 입력 정보:
 이름: ${data.userName}
 날짜: ${data.date}
+보고서 유형: ${data.reportType === 'morning' ? '출근 보고서(금일 예정 업무)' : '퇴근 보고서(금일 진행 업무)'}
 ${formatPromptData(data)}
 
 출력 형식:
 업무보고_ ${data.userName}
 ${formatDateForOutput(data.date)}
 ――――――――――――――   
-[금일 진행 업무]
+${reportTitle}
 
 ${formatPromptDataForTemplate(data)}
 
@@ -144,11 +156,11 @@ function formatPromptData(data: ReportData): string {
           if (task.description) {
             prompt += `- ${task.description}`;
             
-            if (task.collaborator) {
+            if (task.collaborator && task.collaborator.trim()) {
               prompt += ` ${task.collaborator}`;
             }
             
-            if (task.followUp) {
+            if (task.followUp && task.followUp.trim()) {
               prompt += `\n  => ${task.followUp}`;
             }
             
@@ -167,7 +179,17 @@ function formatPromptData(data: ReportData): string {
     
     data.miscTasks.forEach(task => {
       if (task.description) {
-        prompt += `- ${task.description}\n`;
+        prompt += `- ${task.description}`;
+        
+        if (task.collaborator && task.collaborator.trim()) {
+          prompt += ` ${task.collaborator}`;
+        }
+        
+        if (task.followUp && task.followUp.trim()) {
+          prompt += `\n  => ${task.followUp}`;
+        }
+        
+        prompt += '\n';
       }
     });
   }
@@ -197,18 +219,20 @@ function formatPromptDataForTemplate(data: ReportData): string {
         if (task.description) {
           // 첫 번째 태스크만 ◼ 사용, 나머지는 하위 항목으로
           if (taskIdx === 0) {
-            prompt += `◼ ${task.description}\n`;
+            prompt += `◼ ${task.description}`;
           } else {
-            prompt += `- ${task.description}\n`;
+            prompt += `- ${task.description}`;
           }
           
-          // 협업자 정보는 생략 (협업자 정보 포함이 필요하면 아래 주석 해제)
-          // if (task.collaborator) {
-          //   prompt += `  ${task.collaborator}\n`;
-          // }
+          // 협업자 정보 추가
+          if (task.collaborator && task.collaborator.trim()) {
+            prompt += ` ${task.collaborator}`;
+          }
+          
+          prompt += '\n';
           
           // 후속 조치는 > 형식으로 표시
-          if (task.followUp) {
+          if (task.followUp && task.followUp.trim()) {
             prompt += `  > ${task.followUp}\n`;
           }
           
@@ -231,11 +255,16 @@ function formatPromptDataForTemplate(data: ReportData): string {
 
 // API 연결 없을 때 기본 포맷팅 적용
 function formatDefaultReport(data: ReportData): string {
+  // 보고서 유형에 따른 제목 생성
+  const reportTitle = data.reportType === 'morning' 
+    ? '[금일 예정 업무]' 
+    : '[금일 진행 업무]';
+    
   // 지정된 형식에 맞는 출력 형식
   let result = `업무보고_ ${data.userName}\n`;
   result += `${formatDateForOutput(data.date)}\n`;
   result += '――――――――――――――\n';
-  result += '[금일 진행 업무]\n\n';
+  result += `${reportTitle}\n\n`;
   
   // 모든 프로젝트와 태스크를 지정된 형식으로 포맷팅
   result += formatPromptDataForTemplate(data);
