@@ -88,6 +88,17 @@ export default function InputForm({ onDataChange }: InputFormProps) {
     );
   };
 
+  // 협업자 정보 포맷팅 ('/w' 자동 추가)
+  const formatCollaborator = (value: string): string => {
+    if (!value.trim()) return value;
+    
+    // 이미 '/w'로 시작하면 그대로 반환
+    if (value.trim().startsWith('/w')) return value;
+    
+    // 앞뒤 공백 제거 후 '/w '를 추가
+    return `/w ${value.trim()}`;
+  };
+
   // 업무 상세 정보 업데이트
   const updateTask = (projectId: string, taskId: string, field: keyof TaskItem, value: string) => {
     setProjects(
@@ -97,7 +108,10 @@ export default function InputForm({ onDataChange }: InputFormProps) {
               ...project, 
               tasks: project.tasks.map(task => 
                 task.id === taskId 
-                  ? { ...task, [field]: value } 
+                  ? { 
+                      ...task, 
+                      [field]: field === 'collaborator' ? formatCollaborator(value) : value 
+                    } 
                   : task
               ) 
             } 
@@ -125,7 +139,10 @@ export default function InputForm({ onDataChange }: InputFormProps) {
     setMiscTasks(
       miscTasks.map(task => 
         task.id === taskId 
-          ? { ...task, [field]: value } 
+          ? { 
+              ...task, 
+              [field]: field === 'collaborator' ? formatCollaborator(value) : value 
+            } 
           : task
       )
     );
@@ -234,7 +251,7 @@ export default function InputForm({ onDataChange }: InputFormProps) {
                     <div className="flex space-x-2">
                       <input
                         type="text"
-                        placeholder="협업자 정보 (선택사항, 예: /w 김길동동)"
+                        placeholder="협업자 정보 (선택사항, 예: 김길동동)"
                         value={task.collaborator || ''}
                         onChange={(e) => {
                           updateTask(project.id, task.id, 'collaborator', e.target.value);
@@ -280,25 +297,49 @@ export default function InputForm({ onDataChange }: InputFormProps) {
           </button>
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-4">
           {miscTasks.map((task) => (
-            <div key={task.id} className="flex items-start space-x-2">
-              <input
-                type="text"
-                placeholder="기타 업무"
-                value={task.description}
-                onChange={(e) => {
-                  updateMiscTask(task.id, 'description', e.target.value);
-                  handleDataChange();
-                }}
-                className="border p-2 rounded flex-grow"
-              />
-              <button
-                onClick={() => removeMiscTask(task.id)}
-                className="text-red-500 hover:text-red-700"
-              >
-                삭제
-              </button>
+            <div key={task.id} className="space-y-2">
+              <div className="flex items-start space-x-2">
+                <input
+                  type="text"
+                  placeholder="기타 업무"
+                  value={task.description}
+                  onChange={(e) => {
+                    updateMiscTask(task.id, 'description', e.target.value);
+                    handleDataChange();
+                  }}
+                  className="border p-2 rounded flex-grow"
+                />
+                <button
+                  onClick={() => removeMiscTask(task.id)}
+                  className="text-red-500 hover:text-red-700"
+                >
+                  삭제
+                </button>
+              </div>
+              <div className="pl-4 space-y-1">
+                <input
+                  type="text"
+                  placeholder="협업자 정보 (선택사항, 예: 김길동동)"
+                  value={task.collaborator || ''}
+                  onChange={(e) => {
+                    updateMiscTask(task.id, 'collaborator', e.target.value);
+                    handleDataChange();
+                  }}
+                  className="border p-2 rounded w-full text-sm"
+                />
+                <input
+                  type="text"
+                  placeholder="후속 조치 (선택사항)"
+                  value={task.followUp || ''}
+                  onChange={(e) => {
+                    updateMiscTask(task.id, 'followUp', e.target.value);
+                    handleDataChange();
+                  }}
+                  className="border p-2 rounded w-full mt-1 text-sm"
+                />
+              </div>
             </div>
           ))}
         </div>

@@ -87,15 +87,13 @@ export default function ResultDisplay({ data }: ResultDisplayProps) {
     // 각 항목을 포맷팅
     allItems.forEach((item, idx) => {
       if (item.title && item.tasks.length > 0 && item.tasks.some(t => t.description)) {
-        // 각 프로젝트/기타 업무를 ◼ 형식으로 표시
-        item.tasks.forEach((task, taskIdx) => {
+        // 프로젝트/업무 섹션 이름 표시
+        prompt += `◼ ${item.title}\n`;
+        
+        // 각 업무 항목을 하위 항목으로 표시
+        item.tasks.forEach((task) => {
           if (task.description) {
-            // 첫 번째 태스크만 ◼ 사용, 나머지는 하위 항목으로
-            if (taskIdx === 0) {
-              prompt += `◼ ${task.description}`;
-            } else {
-              prompt += `- ${task.description}`;
-            }
+            prompt += `- ${task.description}`;
             
             // 협업자 정보 추가
             if (task.collaborator && task.collaborator.trim()) {
@@ -107,11 +105,6 @@ export default function ResultDisplay({ data }: ResultDisplayProps) {
             // 후속 조치는 > 형식으로 표시
             if (task.followUp && task.followUp.trim()) {
               prompt += `  > ${task.followUp}\n`;
-            }
-            
-            // 태스크 간 적절한 줄바꿈 추가
-            if (taskIdx < item.tasks.length - 1) {
-              prompt += '\n';
             }
           }
         });
