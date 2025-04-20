@@ -1,26 +1,41 @@
 @import "tailwindcss";
 
+/* :root 변수는 유지해도 괜찮지만, 클래스 기반 다크모드에서는
+   Tailwind의 색상 팔레트를 직접 사용하는 것이 일반적입니다. */
+/*
 :root {
   --background: #ffffff;
   --foreground: #171717;
 }
+*/
 
+/* @theme inline 블록 주석 처리 */
+/*
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
+*/
 
+/* prefers-color-scheme 기반 다크모드 주석 처리 */
+/*
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
   }
 }
+*/
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /* background: var(--background); 주석 처리 */
+  /* color: var(--foreground); 주석 처리 */
+  font-family: Arial, Helvetica, sans-serif; /* 폰트 설정은 일단 유지 */
 }
+
+/* Tailwind 기본 레이어 추가 (필요할 수 있음) */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

@@ -1,19 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-
-interface TaskItem {
-  id: string;
-  description: string;
-  collaborator?: string;
-  followUp?: string;
-}
-
-interface Project {
-  id: string;
-  name: string;
-  tasks: TaskItem[];
-}
+import { Project, TaskItem } from '../api/grop';
 
 interface InputFormProps {
   onDataChange: (data: {
@@ -37,6 +25,22 @@ export default function InputForm({ onDataChange }: InputFormProps) {
   // ID 생성 함수
   const generateId = () => `id-${Math.random().toString(36).substring(2, 9)}`;
 
+  // 상태가 변경될 때마다 부모 컴포넌트에 알림
+  const updateParent = useCallback(() => {
+    onDataChange({
+      userName,
+      date,
+      projects,
+      miscTasks,
+    });
+  }, [userName, date, projects, miscTasks, onDataChange]);
+
+  // 초기 로드 시에만 부모에게 데이터 전달
+  useEffect(() => {
+    updateParent();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // 의존성 배열을 비워 처음 한 번만 실행
+
   // 새 프로젝트 추가
   const addProject = () => {
     const newProject: Project = {
@@ -44,21 +48,40 @@ export default function InputForm({ onDataChange }: InputFormProps) {
       name: '',
       tasks: [],
     };
-    setProjects([...projects, newProject]);
+    const updatedProjects = [...projects, newProject];
+    setProjects(updatedProjects);
+    onDataChange({
+      userName,
+      date,
+      projects: updatedProjects,
+      miscTasks,
+    });
   };
 
   // 프로젝트 삭제
   const removeProject = (projectId: string) => {
-    setProjects(projects.filter(project => project.id !== projectId));
+    const updatedProjects = projects.filter(project => project.id !== projectId);
+    setProjects(updatedProjects);
+    onDataChange({
+      userName,
+      date,
+      projects: updatedProjects,
+      miscTasks,
+    });
   };
 
   // 프로젝트 이름 업데이트
   const updateProjectName = (projectId: string, name: string) => {
-    setProjects(
-      projects.map(project => 
-        project.id === projectId ? { ...project, name } : project
-      )
+    const updatedProjects = projects.map(project => 
+      project.id === projectId ? { ...project, name } : project
     );
+    setProjects(updatedProjects);
+    onDataChange({
+      userName,
+      date,
+      projects: updatedProjects,
+      miscTasks,
+    });
   };
 
   // 업무 추가
@@ -68,24 +91,34 @@ export default function InputForm({ onDataChange }: InputFormProps) {
       description: '',
     };
     
-    setProjects(
-      projects.map(project => 
-        project.id === projectId 
-          ? { ...project, tasks: [...project.tasks, newTask] } 
-          : project
-      )
+    const updatedProjects = projects.map(project => 
+      project.id === projectId 
+        ? { ...project, tasks: [...project.tasks, newTask] } 
+        : project
     );
+    setProjects(updatedProjects);
+    onDataChange({
+      userName,
+      date,
+      projects: updatedProjects,
+      miscTasks,
+    });
   };
 
   // 업무 삭제
   const removeTask = (projectId: string, taskId: string) => {
-    setProjects(
-      projects.map(project => 
-        project.id === projectId 
-          ? { ...project, tasks: project.tasks.filter(task => task.id !== taskId) } 
-          : project
-      )
+    const updatedProjects = projects.map(project => 
+      project.id === projectId 
+        ? { ...project, tasks: project.tasks.filter(task => task.id !== taskId) } 
+        : project
     );
+    setProjects(updatedProjects);
+    onDataChange({
+      userName,
+      date,
+      projects: updatedProjects,
+      miscTasks,
+    });
   };
 
   // 협업자 정보 포맷팅 ('/w' 자동 추가)
@@ -101,23 +134,28 @@ export default function InputForm({ onDataChange }: InputFormProps) {
 
   // 업무 상세 정보 업데이트
   const updateTask = (projectId: string, taskId: string, field: keyof TaskItem, value: string) => {
-    setProjects(
-      projects.map(project => 
-        project.id === projectId 
-          ? { 
-              ...project, 
-              tasks: project.tasks.map(task => 
-                task.id === taskId 
-                  ? { 
-                      ...task, 
-                      [field]: field === 'collaborator' ? formatCollaborator(value) : value 
-                    } 
-                  : task
-              ) 
-            } 
-          : project
-      )
+    const updatedProjects = projects.map(project => 
+      project.id === projectId 
+        ? { 
+            ...project, 
+            tasks: project.tasks.map(task => 
+              task.id === taskId 
+                ? { 
+                    ...task, 
+                    [field]: field === 'collaborator' ? formatCollaborator(value) : value 
+                  } 
+                : task
+            ) 
+          } 
+        : project
     );
+    setProjects(updatedProjects);
+    onDataChange({
+      userName,
+      date,
+      projects: updatedProjects,
+      miscTasks,
+    });
   };
 
   // 기타 업무 추가
@@ -126,42 +164,68 @@ export default function InputForm({ onDataChange }: InputFormProps) {
       id: generateId(),
       description: '',
     };
-    setMiscTasks([...miscTasks, newTask]);
-  };
-
-  // 기타 업무 삭제
-  const removeMiscTask = (taskId: string) => {
-    setMiscTasks(miscTasks.filter(task => task.id !== taskId));
-  };
-
-  // 기타 업무 업데이트
-  const updateMiscTask = (taskId: string, field: keyof TaskItem, value: string) => {
-    setMiscTasks(
-      miscTasks.map(task => 
-        task.id === taskId 
-          ? { 
-              ...task, 
-              [field]: field === 'collaborator' ? formatCollaborator(value) : value 
-            } 
-          : task
-      )
-    );
-  };
-
-  // 데이터 변경 시 부모 컴포넌트에 알림
-  const handleDataChange = useCallback(() => {
+    const updatedMiscTasks = [...miscTasks, newTask];
+    setMiscTasks(updatedMiscTasks);
     onDataChange({
       userName,
       date,
       projects,
+      miscTasks: updatedMiscTasks,
+    });
+  };
+
+  // 기타 업무 삭제
+  const removeMiscTask = (taskId: string) => {
+    const updatedMiscTasks = miscTasks.filter(task => task.id !== taskId);
+    setMiscTasks(updatedMiscTasks);
+    onDataChange({
+      userName,
+      date,
+      projects,
+      miscTasks: updatedMiscTasks,
+    });
+  };
+
+  // 기타 업무 업데이트
+  const updateMiscTask = (taskId: string, field: keyof TaskItem, value: string) => {
+    const updatedMiscTasks = miscTasks.map(task => 
+      task.id === taskId 
+        ? { 
+            ...task, 
+            [field]: field === 'collaborator' ? formatCollaborator(value) : value 
+          } 
+        : task
+    );
+    setMiscTasks(updatedMiscTasks);
+    onDataChange({
+      userName,
+      date,
+      projects,
+      miscTasks: updatedMiscTasks,
+    });
+  };
+
+  // 이름 변경 핸들러
+  const handleUserNameChange = (value: string) => {
+    setUserName(value);
+    onDataChange({
+      userName: value,
+      date,
+      projects,
       miscTasks,
     });
-  }, [userName, date, projects, miscTasks, onDataChange]);
+  };
 
-  // 입력 값이 변경될 때마다 데이터 업데이트
-  useEffect(() => {
-    handleDataChange();
-  }, [handleDataChange]);
+  // 날짜 변경 핸들러
+  const handleDateChange = (value: string) => {
+    setDate(value);
+    onDataChange({
+      userName,
+      date: value,
+      projects,
+      miscTasks,
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -172,20 +236,14 @@ export default function InputForm({ onDataChange }: InputFormProps) {
             type="text"
             placeholder="이름을 입력하세요"
             value={userName}
-            onChange={(e) => {
-              setUserName(e.target.value);
-              handleDataChange();
-            }}
+            onChange={(e) => handleUserNameChange(e.target.value)}
             className="border p-2 rounded"
           />
           <input
             type="text"
             placeholder="날짜"
             value={date}
-            onChange={(e) => {
-              setDate(e.target.value);
-              handleDataChange();
-            }}
+            onChange={(e) => handleDateChange(e.target.value)}
             className="border p-2 rounded"
           />
         </div>
@@ -212,15 +270,12 @@ export default function InputForm({ onDataChange }: InputFormProps) {
                     type="text"
                     placeholder="프로젝트 이름"
                     value={project.name}
-                    onChange={(e) => {
-                      updateProjectName(project.id, e.target.value);
-                      handleDataChange();
-                    }}
+                    onChange={(e) => updateProjectName(project.id || '', e.target.value)}
                     className="border p-2 rounded flex-grow"
                   />
                 </div>
                 <button
-                  onClick={() => removeProject(project.id)}
+                  onClick={() => removeProject(project.id || '')}
                   className="text-red-500 hover:text-red-700"
                 >
                   삭제
@@ -234,15 +289,12 @@ export default function InputForm({ onDataChange }: InputFormProps) {
                       <input
                         type="text"
                         placeholder="업무 설명"
-                        value={task.description}
-                        onChange={(e) => {
-                          updateTask(project.id, task.id, 'description', e.target.value);
-                          handleDataChange();
-                        }}
+                        value={task.description || ''}
+                        onChange={(e) => updateTask(project.id || '', task.id || '', 'description', e.target.value)}
                         className="border p-2 rounded flex-grow"
                       />
                       <button
-                        onClick={() => removeTask(project.id, task.id)}
+                        onClick={() => removeTask(project.id || '', task.id || '')}
                         className="text-red-500 hover:text-red-700"
                       >
                         삭제
@@ -253,10 +305,7 @@ export default function InputForm({ onDataChange }: InputFormProps) {
                         type="text"
                         placeholder="협업자 정보 (선택사항, 예: 김길동동)"
                         value={task.collaborator || ''}
-                        onChange={(e) => {
-                          updateTask(project.id, task.id, 'collaborator', e.target.value);
-                          handleDataChange();
-                        }}
+                        onChange={(e) => updateTask(project.id || '', task.id || '', 'collaborator', e.target.value)}
                         className="border p-2 rounded flex-grow text-sm"
                       />
                     </div>
@@ -265,17 +314,14 @@ export default function InputForm({ onDataChange }: InputFormProps) {
                         type="text"
                         placeholder="후속 조치 (선택사항)"
                         value={task.followUp || ''}
-                        onChange={(e) => {
-                          updateTask(project.id, task.id, 'followUp', e.target.value);
-                          handleDataChange();
-                        }}
+                        onChange={(e) => updateTask(project.id || '', task.id || '', 'followUp', e.target.value)}
                         className="border p-2 rounded flex-grow text-sm"
                       />
                     </div>
                   </div>
                 ))}
                 <button
-                  onClick={() => addTask(project.id)}
+                  onClick={() => addTask(project.id || '')}
                   className="ml-4 text-blue-500 hover:text-blue-700"
                 >
                   + 업무 추가
@@ -304,15 +350,12 @@ export default function InputForm({ onDataChange }: InputFormProps) {
                 <input
                   type="text"
                   placeholder="기타 업무"
-                  value={task.description}
-                  onChange={(e) => {
-                    updateMiscTask(task.id, 'description', e.target.value);
-                    handleDataChange();
-                  }}
+                  value={task.description || ''}
+                  onChange={(e) => updateMiscTask(task.id || '', 'description', e.target.value)}
                   className="border p-2 rounded flex-grow"
                 />
                 <button
-                  onClick={() => removeMiscTask(task.id)}
+                  onClick={() => removeMiscTask(task.id || '')}
                   className="text-red-500 hover:text-red-700"
                 >
                   삭제
@@ -323,20 +366,14 @@ export default function InputForm({ onDataChange }: InputFormProps) {
                   type="text"
                   placeholder="협업자 정보 (선택사항, 예: 김길동동)"
                   value={task.collaborator || ''}
-                  onChange={(e) => {
-                    updateMiscTask(task.id, 'collaborator', e.target.value);
-                    handleDataChange();
-                  }}
+                  onChange={(e) => updateMiscTask(task.id || '', 'collaborator', e.target.value)}
                   className="border p-2 rounded w-full text-sm"
                 />
                 <input
                   type="text"
                   placeholder="후속 조치 (선택사항)"
                   value={task.followUp || ''}
-                  onChange={(e) => {
-                    updateMiscTask(task.id, 'followUp', e.target.value);
-                    handleDataChange();
-                  }}
+                  onChange={(e) => updateMiscTask(task.id || '', 'followUp', e.target.value)}
                   className="border p-2 rounded w-full mt-1 text-sm"
                 />
               </div>
