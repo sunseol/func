@@ -122,7 +122,7 @@ export const WeeklyReportForm: React.FC<WeeklyReportFormProps> = ({ onSubmit }) 
                 required
                 placeholder="예: 내 서재 - 다독이_도서 목록 시스템 기획"
               />
-              <p className="text-xs text-gray-500 mt-1">그룹화를 위해 "그룹명 - 업무내용" 형식으로 입력하세요</p>
+              <p className="text-xs text-gray-500 mt-1">그룹화를 위해 &quot;그룹명 - 업무내용&quot; 형식으로 입력하세요</p>
             </div>
           ))}
 
