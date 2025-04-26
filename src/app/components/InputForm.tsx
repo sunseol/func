@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { Form, Input, Button, DatePicker, Card, List, Space, Popconfirm } from 'antd';
+import { Form, Input, Button, DatePicker, Card, Space, Popconfirm } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { Project, TaskItem, ReportData } from '../api/grop';
 import dayjs from 'dayjs'; // Dayjs import
@@ -48,7 +48,7 @@ export default function InputForm({ onDataChange, initialData }: InputFormProps)
   }, [initialData, form]);
 
   // 폼 값 변경 시 부모 컴포넌트에 알림
-  const handleValuesChange = (_changedValues: any, allValues: FormValues) => {
+  const handleValuesChange = (_changedValues: Partial<FormValues>, allValues: FormValues) => {
     // 날짜를 ISO 문자열 형식으로 변환하여 전달
     const dateString = allValues.date ? allValues.date.toISOString() : '';
     onDataChange({ 

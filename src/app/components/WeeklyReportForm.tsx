@@ -120,7 +120,7 @@ export const WeeklyReportForm: React.FC<WeeklyReportFormProps> = ({ onSubmit, in
                               <Input.TextArea placeholder="예: 내 서재 - 다독이_도서 목록 시스템 기획" autoSize={{ minRows: 1, maxRows: 3 }} />
                             </Form.Item>
                             <Paragraph type="secondary" style={{ marginTop: '-12px', marginBottom: '8px', fontSize: '12px' }}>
-                                그룹화를 위해 "그룹명 - 업무내용" 형식 권장
+                                그룹화를 위해 &quot;그룹명 - 업무내용&quot; 형식 권장
                                 {taskFields.length > 1 && ( // 업무가 1개 이상일 때만 삭제 버튼 표시
                                     <Button 
                                         icon={<DeleteOutlined />} 
