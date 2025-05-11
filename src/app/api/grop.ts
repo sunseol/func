@@ -28,13 +28,21 @@ function getWeeklyReportDateInfo(dateStr: string): { titleDate: string; subtitle
     let date: Date;
     if (dateStr.includes('T')) {
       date = new Date(dateStr);
-    } else if (dateStr.match(/\d+\.\d+\.\d+\(.+\)/)) {
+    } else if (dateStr.match(/\d+\.\d+\.\d+\(.+\)/)) { // 예: 2023.10.27(금)
       const match = dateStr.match(/(\d+)\.(\d+)\.(\d+)/);
-      if (!match) throw new Error('Invalid date format');
+      if (!match) throw new Error('Invalid date format: YYYY.MM.DD(Day)');
       const [, year, month, day] = match;
       date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    } else if (dateStr.match(/\d{4}-\d{2}-\d{2}\s.+요일/)) { // 예: 2025-05-12 월요일
+      const datePart = dateStr.substring(0, 10); // 'YYYY-MM-DD' 부분만 추출
+      // 로컬 타임존의 해당 날짜 자정으로 Date 객체 생성 시도
+      // new Date(YYYY, MM-1, DD) 형식이 타임존 이슈를 피하는 데 더 안전할 수 있음
+      const [year, month, day] = datePart.split('-').map(Number);
+      date = new Date(year, month - 1, day);
     } else {
-      date = new Date(); // 기본값: 현재 날짜
+      // 지원하지 않는 형식이거나 dateStr이 비어있는 경우 오늘 날짜 사용
+      console.warn(`Unsupported date format or empty dateStr: "${dateStr}". Using current date.`);
+      date = new Date(); 
     }
 
     const year = date.getFullYear();
@@ -270,7 +278,7 @@ ${formatPromptDataForTemplate(data)}`;
         },
         body: JSON.stringify({
           // model: "llama3-8b-8192", // 다른 모델 사용 가능 시
-          model: "llama3-70b-8192", // llama-4-scout 모델 대신 llama3 사용 시도
+          model: "meta-llama/llama-4-scout-17b-16e-instruct", // llama-4-scout 모델 대신 llama3 사용 시도
           messages: [
             {
               role: "system",

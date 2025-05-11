@@ -71,9 +71,9 @@ export const WeeklyReportForm: React.FC<WeeklyReportFormProps> = ({ onSubmit, in
 
       <Card title="주간 보고서 작성 가이드" style={{ marginBottom: 24 }}>
          <Paragraph type="secondary">
-          프로젝트명을 입력하세요 (예: 다독이 시스템 기획)<br />
+          프로젝트명을 입력하세요 (예: 신규 서비스 개발)<br />
           업무에는 다음과 같은 형식으로 입력하면 그룹화됩니다: 
-          <Text code>내 서재 - 다독이_도서 목록 시스템 기획</Text><br />
+          <Text code>UI 디자인 - 메인 페이지 시안 작업</Text><br />
           동일한 그룹의 업무는 자동으로 묶여서 표시됩니다.
         </Paragraph>
       </Card>
@@ -103,7 +103,7 @@ export const WeeklyReportForm: React.FC<WeeklyReportFormProps> = ({ onSubmit, in
                     rules={[{ required: true, message: '프로젝트명을 입력해주세요.' }]}
                     style={{ marginBottom: 16 }}
                   >
-                    <Input placeholder="예: 다독이 시스템 기획" />
+                    <Input placeholder="예: 신규 서비스 개발" />
                   </Form.Item>
                   
                   <Form.List name={[name, 'tasks']}>
@@ -117,7 +117,7 @@ export const WeeklyReportForm: React.FC<WeeklyReportFormProps> = ({ onSubmit, in
                               name={[taskName, 'description']}
                               rules={[{ required: true, message: '업무 내용을 입력해주세요.' }]}
                             >
-                              <Input.TextArea placeholder="예: 내 서재 - 다독이_도서 목록 시스템 기획" autoSize={{ minRows: 1, maxRows: 3 }} />
+                              <Input.TextArea placeholder="예: UI 디자인 - 메인 페이지 시안 작업" autoSize={{ minRows: 1, maxRows: 3 }} />
                             </Form.Item>
                             <Paragraph type="secondary" style={{ marginTop: '-12px', marginBottom: '8px', fontSize: '12px' }}>
                                 그룹화를 위해 &quot;그룹명 - 업무내용&quot; 형식 권장
