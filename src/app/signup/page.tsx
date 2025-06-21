@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 export default function SignupPage() {
@@ -12,7 +11,6 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
 
   const handleSignup = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -68,8 +66,12 @@ export default function SignupPage() {
       setPassword('');
       setFullName('');
 
-    } catch (err: any) {
-      setError(err.message || '회원가입 중 오류가 발생했습니다.');
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message || '회원가입 중 오류가 발생했습니다.');
+      } else {
+        setError('알 수 없는 오류로 회원가입에 실패했습니다.');
+      }
       console.error('Signup error:', err);
     } finally {
       setLoading(false);

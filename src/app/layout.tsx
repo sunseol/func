@@ -1,7 +1,6 @@
 'use client';
 
 import '@ant-design/v5-patch-for-react-19'; // Ant Design React 19 호환성 패치 임포트
-import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "./components/ThemeProvider";

@@ -201,9 +201,13 @@ export default function Home() {
         throw error;
       }
       message.success('보고서가 성공적으로 저장되었습니다!');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('보고서 저장 중 오류 발생:', error);
-      message.error(`보고서 저장 실패: ${error.message || '알 수 없는 오류'}`);
+      if (error instanceof Error) {
+        message.error(`보고서 저장 실패: ${error.message || '알 수 없는 오류가 발생했습니다.'}`);
+      } else {
+        message.error('보고서 저장 실패: 알 수 없는 오류가 발생했습니다.');
+      }
     } finally {
       setIsSavingReport(false);
     }

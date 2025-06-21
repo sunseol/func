@@ -3,7 +3,6 @@
 import { createContext, useContext, ReactNode, useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import type { User, AuthChangeEvent, Session } from '@supabase/supabase-js';
-import { useRouter } from 'next/navigation'; // 라우터 필요시 사용
 
 interface AuthContextType {
   user: User | null;
@@ -17,7 +16,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  // const router = useRouter(); // 필요시 사용
 
   useEffect(() => {
     const getSession = async () => {
