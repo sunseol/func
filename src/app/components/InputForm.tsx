@@ -153,7 +153,7 @@ export default function InputForm({ onDataChange, initialData }: InputFormProps)
                             <Button icon={<DeleteOutlined />} onClick={() => removeTask(taskName)} type="text" danger />
                           </Space>
                         ))}
-                        <Button type="dashed" onClick={() => addTask()} block icon={<PlusOutlined />}>
+                        <Button type="dashed" onClick={() => addTask({ description: '', collaborator: '', status: '진행 중' })} block icon={<PlusOutlined />}>
                           업무 추가
                         </Button>
                       </Space>
@@ -161,7 +161,7 @@ export default function InputForm({ onDataChange, initialData }: InputFormProps)
                   </Form.List>
                 </Card>
               ))}
-              <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
+              <Button type="dashed" onClick={() => add({ name: '', tasks: [{ description: '', collaborator: '', status: '진행 중' }] })} block icon={<PlusOutlined />}>
                 프로젝트 추가
               </Button>
             </Space>
@@ -193,7 +193,7 @@ export default function InputForm({ onDataChange, initialData }: InputFormProps)
                   <Button icon={<DeleteOutlined />} onClick={() => remove(name)} type="text" danger />
                 </Space>
               ))}
-              <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
+              <Button type="dashed" onClick={() => add({ description: '', collaborator: '', status: '진행 중' })} block icon={<PlusOutlined />}>
                 기타 업무 추가
               </Button>
             </Space>

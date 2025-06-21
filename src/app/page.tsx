@@ -20,6 +20,9 @@ import ResultDisplay from './components/ResultDisplay';
 import { WeeklyReportForm } from './components/WeeklyReportForm';
 import { ReportData, Project, TaskItem, formatDefaultReport, generateReport } from './api/grop';
 import { useTheme } from './components/ThemeProvider';
+import { useAuth } from '@/context/AuthContext';
+import Link from 'next/link';
+import { supabase } from '@/lib/supabaseClient';
 
 const { Header, Content } = Layout;
 const { Title, Paragraph } = Typography;
@@ -41,11 +44,21 @@ export default function Home() {
     reportType: 'morning',
   });
   const { isDarkMode, setIsDarkMode } = useTheme();
+  const { user, loading: authLoading, handleLogout } = useAuth();
 
   const [isLoadingAI, setIsLoadingAI] = useState(false);
   const [generatedText, setGeneratedText] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [defaultPreviewText, setDefaultPreviewText] = useState<string | null>(null);
+  const [isSavingReport, setIsSavingReport] = useState(false);
+
+  useEffect(() => {
+    if (user && !formData.userName) {
+      const nameFromMeta = user.user_metadata?.full_name as string | undefined;
+      const suggestedUserName = nameFromMeta || user.email?.split('@')[0] || '';
+      setFormData(prev => ({ ...prev, userName: suggestedUserName }));
+    }
+  }, [user, formData.userName]);
 
   useEffect(() => {
     if (aiError) {
@@ -152,6 +165,50 @@ export default function Home() {
   const hasAnyContent = formData.projects.some(p => p.tasks.some(t => t.description)) || formData.miscTasks.some(t => t.description);
   const isAiButtonDisabled = isLoadingAI || !hasRequiredUserInfo || !hasAnyContent;
 
+  const handleSaveReport = async () => {
+    if (!user) {
+      message.error('로그인이 필요합니다. 보고서를 저장할 수 없습니다.');
+      return;
+    }
+
+    const reportContentToSave = getTextForDailyDisplay();
+    if (!reportContentToSave) {
+      message.error('저장할 보고서 내용이 없습니다.');
+      return;
+    }
+
+    if (!formData.date) {
+      message.error('보고서 날짜를 입력해주세요.');
+      return;
+    }
+
+    setIsSavingReport(true);
+    try {
+      const reportToInsert = {
+        user_id: user.id,
+        report_date: formData.date,
+        report_type: formData.reportType,
+        user_name_snapshot: formData.userName,
+        projects_data: formData.projects,
+        misc_tasks_data: formData.miscTasks,
+        report_content: reportContentToSave,
+      };
+
+      const { error } = await supabase.from('daily_reports').insert([reportToInsert]);
+
+      if (error) {
+        console.error('Supabase 저장 오류:', error);
+        throw error;
+      }
+      message.success('보고서가 성공적으로 저장되었습니다!');
+    } catch (error: any) {
+      console.error('보고서 저장 중 오류 발생:', error);
+      message.error(`보고서 저장 실패: ${error.message || '알 수 없는 오류'}`);
+    } finally {
+      setIsSavingReport(false);
+    }
+  };
+
   const tabItems = [
     {
       key: 'daily',
@@ -187,6 +244,9 @@ export default function Home() {
                 <ResultDisplay
                   isLoading={isLoadingAI}
                   textToDisplay={getTextForDailyDisplay()}
+                  onSave={handleSaveReport}
+                  isSaving={isSavingReport}
+                  saveActionDisabled={activeTab !== 'daily' || !user}
                 />
               </Space>
             </Col>
@@ -208,7 +268,7 @@ export default function Home() {
                 type="primary"
                 icon={<RocketOutlined />}
                 loading={isLoadingAI}
-                disabled={isAiButtonDisabled}
+                disabled={isLoadingAI || !formData.userName || !formData.date || !(formData.projects.some(p => p.tasks.some(t => t.description)) || formData.miscTasks.some(t => t.description))}
                 onClick={handleGenerateAIReport}
                 block
                 size="large"
@@ -234,31 +294,38 @@ export default function Home() {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px' }}>
+      <Header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', backgroundColor: isDarkMode ? '#001529' : '#001529' }}>
         <Title level={3} style={{ color: 'white', margin: 0 }}>FunCommute</Title>
-        <Space>
-          <Paragraph style={{ color: 'rgba(255, 255, 255, 0.65)', margin: 0 }}>일일 업무 보고서 생성 도구</Paragraph>
+        <Space align="center">
+          <Paragraph style={{ color: 'rgba(255, 255, 255, 0.65)', margin: 0, display: 'none' }}>일일 업무 보고서 생성 도구</Paragraph>
           <Switch
             checkedChildren={<MoonOutlined />}
             unCheckedChildren={<SunOutlined />}
             checked={isDarkMode}
             onChange={setIsDarkMode}
+            style={{ marginRight: '20px' }}
           />
+          {authLoading ? (
+            <Typography.Text style={{ color: 'white' }}>로딩 중...</Typography.Text>
+          ) : user ? (
+            <Space align="center">
+              <Typography.Text style={{ color: 'white' }}>
+                {user.user_metadata?.full_name || user.email}
+              </Typography.Text>
+              <Button type="primary" danger onClick={handleLogout} size="small">
+                로그아웃
+              </Button>
+            </Space>
+          ) : (
+            <Link href="/login">
+              <Button type="primary" size="small">로그인</Button>
+            </Link>
+          )}
         </Space>
       </Header>
       <Content style={{ padding: '24px 48px' }}>
-        <div style={{ 
-              background: isDarkMode ? '#141414' : '#fff',
-              padding: 24, 
-              borderRadius: 8 
-           }}
-        >
-           <Tabs 
-              activeKey={activeTab} 
-              onChange={handleTabChange} 
-              items={tabItems} 
-              centered
-           />
+        <div style={{ background: isDarkMode ? '#141414' : '#fff', padding: 24, borderRadius: 8, boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)' }}>
+          <Tabs defaultActiveKey="daily" activeKey={activeTab} onChange={handleTabChange} items={tabItems} centered />
         </div>
       </Content>
     </Layout>
