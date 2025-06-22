@@ -11,8 +11,8 @@ import {
   Space,
   Typography,
   Switch,
-  message,
   RadioChangeEvent,
+  App,
 } from 'antd';
 import { SunOutlined, MoonOutlined, RocketOutlined } from '@ant-design/icons';
 import InputForm from './components/InputForm';
@@ -45,6 +45,7 @@ export default function Home() {
   });
   const { isDarkMode, setIsDarkMode } = useTheme();
   const { user, loading: authLoading, handleLogout } = useAuth();
+  const { message: messageApi } = App.useApp();
 
   const [isLoadingAI, setIsLoadingAI] = useState(false);
   const [generatedText, setGeneratedText] = useState<string | null>(null);
@@ -62,9 +63,9 @@ export default function Home() {
 
   useEffect(() => {
     if (aiError) {
-      message.error(aiError);
+      messageApi.error(aiError);
     }
-  }, [aiError]);
+  }, [aiError, messageApi]);
 
   useEffect(() => {
     if (activeTab === 'daily' && (formData.userName || formData.date || formData.projects.length > 0 || formData.miscTasks.length > 0)) {
@@ -147,10 +148,10 @@ export default function Home() {
       try {
           const result = await generateReport(formData);
           setGeneratedText(result);
-          message.success('AI 보고서 생성 완료!');
+          messageApi.success('AI 보고서 생성 완료!');
       } catch (err) {
           console.error('AI 보고서 생성 오류:', err);
-          setAiError('AI 보고서 생성 중 오류가 발생했습니다.');
+          setAiError(err instanceof Error ? err.message : 'AI 보고서 생성 중 오류가 발생했습니다.');
       } finally {
           setIsLoadingAI(false);
       }
@@ -167,26 +168,38 @@ export default function Home() {
 
   const handleSaveReport = async () => {
     if (!user) {
-      message.error('로그인이 필요합니다. 보고서를 저장할 수 없습니다.');
+      messageApi.error('로그인이 필요합니다. 보고서를 저장할 수 없습니다.');
       return;
     }
 
     const reportContentToSave = getTextForDailyDisplay();
     if (!reportContentToSave) {
-      message.error('저장할 보고서 내용이 없습니다.');
+      messageApi.error('저장할 보고서 내용이 없습니다.');
       return;
     }
 
     if (!formData.date) {
-      message.error('보고서 날짜를 입력해주세요.');
+      messageApi.error('보고서 날짜를 입력해주세요.');
       return;
     }
 
     setIsSavingReport(true);
     try {
+      const originalDateString = formData.date;
+      const formattedDate = originalDateString ? originalDateString.substring(0, 10) : null;
+      
+      console.log('[handleSaveReport] Original date string:', originalDateString);
+      console.log('[handleSaveReport] Formatted date for DB:', formattedDate);
+
+      if (!formattedDate || formattedDate.length !== 10 || !/^\d{4}-\d{2}-\d{2}$/.test(formattedDate)) {
+        messageApi.error('유효한 날짜 형식(YYYY-MM-DD)이 아닙니다. 날짜를 다시 확인해주세요.');
+        setIsSavingReport(false);
+        return;
+      }
+
       const reportToInsert = {
         user_id: user.id,
-        report_date: formData.date,
+        report_date: formattedDate,
         report_type: formData.reportType,
         user_name_snapshot: formData.userName,
         projects_data: formData.projects,
@@ -194,20 +207,23 @@ export default function Home() {
         report_content: reportContentToSave,
       };
 
-      const { error } = await supabase.from('daily_reports').insert([reportToInsert]);
+      const { error: dbError } = await supabase.from('daily_reports').insert([reportToInsert]);
 
-      if (error) {
-        console.error('Supabase 저장 오류:', error);
-        throw error;
+      if (dbError) {
+        let detailedErrorMessage = `Supabase DB Error (Code: ${dbError.code || 'N/A'}) - Message: ${dbError.message}`;
+        if (dbError.details) detailedErrorMessage += ` | Details: ${dbError.details}`;
+        if (dbError.hint) detailedErrorMessage += ` | Hint: ${dbError.hint}`;
+        console.error(detailedErrorMessage);
+        throw new Error(detailedErrorMessage);
       }
-      message.success('보고서가 성공적으로 저장되었습니다!');
-    } catch (error: unknown) {
-      console.error('보고서 저장 중 오류 발생:', error);
-      if (error instanceof Error) {
-        message.error(`보고서 저장 실패: ${error.message || '알 수 없는 오류가 발생했습니다.'}`);
-      } else {
-        message.error('보고서 저장 실패: 알 수 없는 오류가 발생했습니다.');
+      messageApi.success('보고서가 성공적으로 저장되었습니다!');
+    } catch (caughtError: unknown) {
+      console.error('보고서 저장 중 오류 발생 (catch 블록):', caughtError);
+      let displayErrorMessage = '보고서 저장 실패: 알 수 없는 오류가 발생했습니다.';
+      if (caughtError instanceof Error) {
+        displayErrorMessage = caughtError.message;
       }
+      messageApi.error(displayErrorMessage);
     } finally {
       setIsSavingReport(false);
     }
@@ -313,9 +329,14 @@ export default function Home() {
             <Typography.Text style={{ color: 'white' }}>로딩 중...</Typography.Text>
           ) : user ? (
             <Space align="center">
-              <Typography.Text style={{ color: 'white' }}>
+              <Typography.Text style={{ color: 'white', marginRight: '8px' }}>
                 {user.user_metadata?.full_name || user.email}
               </Typography.Text>
+              <Link href="/my-reports">
+                <Button type="link" size="small" style={{ padding: '0 8px', color: 'white' }}>
+                  내 보고서
+                </Button>
+              </Link>
               <Button type="primary" danger onClick={handleLogout} size="small">
                 로그아웃
               </Button>
