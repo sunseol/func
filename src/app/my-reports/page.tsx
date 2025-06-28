@@ -3,8 +3,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabaseClient';
+import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/context/AuthContext';
+import { useTheme } from '@/app/components/ThemeProvider';
 import { Card, List, Spin, Typography, Button, Space, Layout, Switch, Avatar, Input, Select, DatePicker, Row, Col, Modal, App as AntApp, Form } from 'antd';
 import { LogoutOutlined, UserOutlined, EditOutlined, SunOutlined, MoonOutlined, DeleteOutlined, DownOutlined, UpOutlined, PlusOutlined } from '@ant-design/icons';
 import type { Dayjs } from 'dayjs';
@@ -33,10 +34,12 @@ interface ManualReportFormValues {
 
 export default function MyReportsPage() {
   const { user, loading: authLoading, handleLogout } = useAuth();
+  const { isDarkMode, setIsDarkMode } = useTheme();
   const router = useRouter();
   const [reports, setReports] = useState<DailyReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [supabase] = useState(() => createClient());
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
@@ -75,7 +78,7 @@ export default function MyReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, supabase]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -87,8 +90,7 @@ export default function MyReportsPage() {
     if (user) {
       fetchReports();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, fetchReports]);
 
   const filteredReports = reports.filter(report => {
     const searchTermMatch = report.report_content.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -168,13 +170,14 @@ export default function MyReportsPage() {
         top: 0,
         zIndex: 1,
         width: '100%',
-        backgroundColor: '#fff',
-        borderBottom: '1px solid #f0f0f0',
+        backgroundColor: isDarkMode ? '#001529' : '#fff',
+        borderBottom: `1px solid ${isDarkMode ? '#303030' : '#f0f0f0'}`,
         padding: '0 24px',
+        transition: 'background-color 0.3s, border-color 0.3s',
       }}
     >
       <Link href="/" passHref>
-        <Title level={3} style={{ margin: 0, color: '#000' }}>
+        <Title level={3} style={{ margin: 0, color: isDarkMode ? '#fff' : '#000' }}>
           FunCommute
         </Title>
       </Link>
@@ -182,12 +185,8 @@ export default function MyReportsPage() {
         <Switch
           checkedChildren={<MoonOutlined />}
           unCheckedChildren={<SunOutlined />}
-          checked={false}
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          onChange={(_checked) => {
-            // This is a placeholder for the theme switch.
-            // The actual implementation should be handled by the ThemeProvider.
-          }}
+          checked={isDarkMode}
+          onChange={setIsDarkMode}
         />
         {user ? (
           <>
@@ -195,10 +194,10 @@ export default function MyReportsPage() {
               <Button icon={<EditOutlined />}>새 보고서 작성</Button>
             </Link>
             <Avatar icon={<UserOutlined />} style={{ marginRight: 8 }} />
-            <Text style={{ color: '#000' }}>
+            <Text style={{ color: isDarkMode ? 'rgba(255,255,255,0.85)' : '#000' }}>
               {user.user_metadata?.full_name || user.email?.split('@')[0]}
             </Text>
-            <Button icon={<LogoutOutlined />} onClick={handleLogout} ghost>
+            <Button icon={<LogoutOutlined />} onClick={handleLogout} ghost={!isDarkMode}>
               로그아웃
             </Button>
           </>
@@ -254,201 +253,184 @@ export default function MyReportsPage() {
   };
 
   return (
-    <Layout style={{ minHeight: '100vh', backgroundColor: '#f0f2f5' }}>
+    <Layout style={{ minHeight: '100vh', backgroundColor: isDarkMode ? '#001529' : '#f0f2f5' }}>
       <PageHeader />
-      <Content style={{ padding: '24px', paddingTop: '88px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-          <Title level={2} style={{ color: '#000', margin: 0 }}>내 보고서 목록</Title>
-          <Button 
-            type="primary" 
-            icon={<PlusOutlined />} 
-            onClick={() => setIsAddModalVisible(true)}
-          >
-            과거 보고서 추가
-          </Button>
-        </div>
-        
-        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-          <Col xs={24} sm={12} md={8} lg={6}>
-            <Input.Search
-              placeholder="보고서 내용, 날짜 검색"
-              allowClear
-              onSearch={setSearchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={{ width: '100%' }}
-              value={searchTerm}
-            />
-          </Col>
-          <Col xs={24} sm={12} md={8} lg={5}>
-            <Select
-              value={filterType}
-              onChange={setFilterType}
-              style={{ width: '100%' }}
-            >
-              <Option value="all">모든 종류</Option>
-              <Option value="daily">일일 보고서</Option>
-              <Option value="weekly">주간 보고서</Option>
-            </Select>
-          </Col>
-          <Col xs={24} sm={12} md={8} lg={5}>
-            <DatePicker 
-              placeholder="날짜 선택 (YYYY-MM-DD)"
-              onChange={(date, dateString) => {
-                const singleDateString = Array.isArray(dateString) ? dateString[0] : dateString;
-                if (singleDateString && /^\d{4}-\d{2}-\d{2}$/.test(singleDateString)) {
-                  setFilterDate(singleDateString);
-                } else if (!singleDateString) {
-                  setFilterDate(null);
-                }
-              }}
-              style={{ width: '100%' }}
-              format="YYYY-MM-DD"
-            />
-          </Col>
-        </Row>
-
-        {error && <Text type="danger" style={{ marginBottom: '16px', display: 'block' }}>오류: {error}</Text>}
-        {!loading && !filteredReports.length && !error && (
-          <Text style={{ color: 'rgba(0,0,0,0.65)', display: 'block', textAlign: 'center', fontSize: '16px' }}>
-            {searchTerm || filterType !== 'all' || filterDate ? '검색/필터 결과가 없습니다.' : '작성된 보고서가 없습니다. "새 보고서 작성" 버튼을 눌러 첫 보고서를 작성해보세요!'}
-          </Text>
-        )}
-        <List
-          grid={{ gutter: 16, xs: 1, sm: 1, md: 2, lg: 3, xl: 3, xxl: 4 }}
-          dataSource={filteredReports}
-          renderItem={(report) => {
-            const isExpanded = expandedReportId === report.id;
-            const needsExpansionToggle = report.report_content && report.report_content.length > 100;
-
-            return (
-              <List.Item>
-                <Card
-                  title={`${report.report_date} (${report.report_type})`}
-                  hoverable
-                  style={{ backgroundColor: '#fff', borderColor: '#f0f0f0' }}
-                  styles={{
-                    header: {
-                      color: 'rgba(0,0,0,0.85)',
-                      borderColor: '#f0f0f0',
-                    },
-                    body: {
-                      color: 'rgba(0,0,0,0.65)',
-                      position: 'relative',
-                    },
-                  }}
-                  actions={[
-                    <Button 
-                      key="delete" 
-                      icon={<DeleteOutlined />} 
-                      onClick={() => showDeleteConfirm(report.id, report.report_date)}
-                      danger 
-                      type="text"
-                    />
-                  ]}
-                >
-                  <div 
-                    style={{
-                      maxHeight: isExpanded ? 'none' : MAX_HEIGHT_THRESHOLD,
-                      overflow: 'hidden',
-                      position: 'relative',
-                      lineHeight: `${LINE_HEIGHT}em`,
-                      opacity: isExpanded && needsExpansionToggle ? 0.85 : 1, 
-                    }}
-                  >
-                    <Paragraph style={{ marginBottom: needsExpansionToggle ? '1em' : 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                      {report.report_content || '내용 없음'}
-                    </Paragraph>
-                    {!isExpanded && needsExpansionToggle && (
-                      <div
-                        style={{
-                          position: 'absolute',
-                          bottom: 0,
-                          left: 0,
-                          right: 0,
-                          height: '1.5em',
-                          background: 'linear-gradient(to bottom, transparent, #fff)',
-                        }}
-                      />
-                    )}
-                  </div>
-                  {needsExpansionToggle && (
-                    <Button 
-                      type="link" 
-                      onClick={() => setExpandedReportId(isExpanded ? null : report.id)}
-                      icon={isExpanded ? <UpOutlined /> : <DownOutlined />}
-                      style={{ paddingLeft: 0, marginTop: '8px' }}
-                    >
-                      {isExpanded ? '접기' : '더보기'}
-                    </Button>
-                  )}
-                  <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginTop: '10px' }}>
-                    작성자: {report.user_name_snapshot || '정보 없음'} <br/>
-                    생성일: {new Date(report.created_at).toLocaleString()}
-                  </Text>
-                </Card>
-              </List.Item>
-            );
+      <Content style={{ padding: '24px 48px', transition: 'background-color 0.3s' }}>
+        <div 
+          style={{
+            background: isDarkMode ? '#141414' : '#fff',
+            padding: 24,
+            borderRadius: 8,
+            transition: 'background-color 0.3s'
           }}
-        />
-
-        <Modal
-          title="과거 보고서 수동 추가"
-          open={isAddModalVisible}
-          onCancel={() => {
-            setIsAddModalVisible(false);
-            manualReportForm.resetFields();
-          }}
-          footer={[
-            <Button key="back" onClick={() => {
-              setIsAddModalVisible(false);
-              manualReportForm.resetFields();
-            }}>
-              취소
-            </Button>,
-            <Button 
-              key="submit" 
-              type="primary" 
-              loading={isSubmittingManualReport} 
-              onClick={() => manualReportForm.submit()}
-            >
-              저장
-            </Button>,
-          ]}
         >
-          <Form
-            form={manualReportForm}
-            layout="vertical"
-            onFinish={handleManualAddReport}
-            name="manual_report_form"
-          >
-            <Form.Item
-              name="report_date"
-              label="보고서 날짜"
-              rules={[{ required: true, message: '보고서 날짜를 선택해주세요!' }]}
-            >
-              <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
-            </Form.Item>
-            <Form.Item
-              name="report_type"
-              label="보고서 종류"
-              rules={[{ required: true, message: '보고서 종류를 선택해주세요!' }]}
-            >
-              <Select placeholder="보고서 종류 선택">
-                <Option value="daily">일일 보고서</Option>
-                <Option value="weekly">주간 보고서</Option>
-              </Select>
-            </Form.Item>
-            <Form.Item
-              name="report_content"
-              label="보고서 내용"
-              rules={[{ required: true, message: '보고서 내용을 입력해주세요!' }]}
-            >
-              <Input.TextArea rows={6} placeholder="여기에 과거 보고서 내용을 입력하세요..." />
-            </Form.Item>
-          </Form>
-        </Modal>
+          <Space direction="vertical" size="large" style={{ width: '100%' }}>
+            <Title level={2} style={{color: isDarkMode ? 'white' : 'black'}}>내 보고서 목록</Title>
+            <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+              <Col xs={24} sm={12} md={8}>
+                <Input
+                  placeholder="내용 또는 날짜으로 검색"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  allowClear
+                />
+              </Col>
+              <Col xs={24} sm={12} md={6}>
+                <Select
+                  value={filterType}
+                  onChange={setFilterType}
+                  style={{ width: '100%' }}
+                >
+                  <Option value="all">모든 종류</Option>
+                  <Option value="morning">출근 보고서</Option>
+                  <Option value="evening">퇴근 보고서</Option>
+                </Select>
+              </Col>
+              <Col xs={24} sm={12} md={6}>
+                <DatePicker
+                  onChange={(_date, dateString) => setFilterDate(typeof dateString === 'string' ? dateString : null)}
+                  style={{ width: '100%' }}
+                  placeholder="날짜 선택"
+                />
+              </Col>
+              <Col xs={24} sm={12} md={4}>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={() => setIsAddModalVisible(true)}
+                  style={{ width: '100%' }}
+                >
+                  수동 추가
+                </Button>
+              </Col>
+            </Row>
 
+            {loading ? (
+               <div style={{ textAlign: 'center', padding: '50px 0' }}>
+                 <Spin size="large" />
+               </div>
+            ) : error ? (
+              <div style={{ textAlign: 'center', color: 'red' }}>{error}</div>
+            ) : (
+              <List
+                itemLayout="vertical"
+                size="large"
+                dataSource={filteredReports}
+                renderItem={item => {
+                  const contentRef = React.useRef<HTMLDivElement>(null);
+                  const [isOverflowing, setIsOverflowing] = useState(false);
+
+                  useEffect(() => {
+                    if (contentRef.current) {
+                      const el = contentRef.current;
+                      if (el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth) {
+                         setIsOverflowing(true);
+                      } else {
+                         setIsOverflowing(false);
+                      }
+                    }
+                  }, [item.report_content]);
+                  
+                  return (
+                    <List.Item
+                      key={item.id}
+                      actions={[
+                        <Button
+                          type="text"
+                          danger
+                          icon={<DeleteOutlined />}
+                          onClick={() => showDeleteConfirm(item.id, item.report_date)}
+                        />,
+                      ]}
+                      style={{
+                        background: isDarkMode ? '#1d1d1d' : '#fafafa',
+                        padding: '16px',
+                        borderRadius: '8px',
+                        marginBottom: '16px'
+                      }}
+                    >
+                      <List.Item.Meta
+                        title={<Text style={{color: isDarkMode ? 'white' : 'black'}}>{`${item.report_date} - ${item.report_type === 'morning' ? '☀️ 출근' : '🌙 퇴근'} 보고서`}</Text>}
+                        description={<Text type="secondary">{`작성자: ${item.user_name_snapshot}`}</Text>}
+                      />
+
+                      <Paragraph
+                        ref={contentRef}
+                        style={{
+                           maxHeight: expandedReportId === item.id ? 'none' : MAX_HEIGHT_THRESHOLD,
+                           overflow: 'hidden',
+                           lineHeight: LINE_HEIGHT,
+                           position: 'relative',
+                           color: isDarkMode ? 'rgba(255,255,255,0.85)' : 'black'
+                        }}
+                      >
+                       {item.report_content.split('\n').map((line, index) => <React.Fragment key={index}>{line}<br/></React.Fragment>)}
+                      </Paragraph>
+                      {isOverflowing && (
+                         <Button
+                            type="link"
+                            icon={expandedReportId === item.id ? <UpOutlined /> : <DownOutlined />}
+                            onClick={() => setExpandedReportId(prevId => prevId === item.id ? null : item.id)}
+                            style={{ padding: 0, height: 'auto' }}
+                         >
+                           {expandedReportId === item.id ? '접기' : '더보기'}
+                         </Button>
+                      )}
+                    </List.Item>
+                  );
+                }}
+              />
+            )}
+          </Space>
+        </div>
       </Content>
+      <Modal
+        title="과거 보고서 수동 추가"
+        open={isAddModalVisible}
+        onCancel={() => setIsAddModalVisible(false)}
+        footer={null}
+        destroyOnHidden
+      >
+        <Form
+          form={manualReportForm}
+          layout="vertical"
+          onFinish={handleManualAddReport}
+          initialValues={{ report_type: 'morning' }}
+        >
+          <Form.Item
+            name="report_date"
+            label="보고 날짜"
+            rules={[{ required: true, message: '날짜를 선택해주세요.' }]}
+          >
+            <DatePicker style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item
+            name="report_type"
+            label="보고 종류"
+            rules={[{ required: true, message: '보고 종류를 선택해주세요.' }]}
+          >
+            <Select>
+              <Option value="morning">출근 보고서</Option>
+              <Option value="evening">퇴근 보고서</Option>
+            </Select>
+          </Form.Item>
+          <Form.Item
+            name="report_content"
+            label="보고 내용"
+            rules={[{ required: true, message: '내용을 입력해주세요.' }]}
+          >
+            <Input.TextArea rows={10} />
+          </Form.Item>
+          <Form.Item style={{ textAlign: 'right', marginBottom: 0 }}>
+            <Button onClick={() => setIsAddModalVisible(false)} style={{ marginRight: 8 }}>
+              취소
+            </Button>
+            <Button type="primary" htmlType="submit" loading={isSubmittingManualReport}>
+              {isSubmittingManualReport ? '저장 중...' : '저장'}
+            </Button>
+          </Form.Item>
+        </Form>
+      </Modal>
     </Layout>
   );
 } 

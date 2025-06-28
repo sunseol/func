@@ -22,7 +22,7 @@ import { ReportData, Project, TaskItem, formatDefaultReport, generateReport } fr
 import { useTheme } from './components/ThemeProvider';
 import { useAuth } from '@/context/AuthContext';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabaseClient';
+import { createClient } from '@/lib/supabase/client';
 
 const { Header, Content } = Layout;
 const { Title, Paragraph } = Typography;
@@ -46,6 +46,7 @@ export default function Home() {
   const { isDarkMode, setIsDarkMode } = useTheme();
   const { user, loading: authLoading, handleLogout } = useAuth();
   const { message: messageApi } = App.useApp();
+  const supabase = createClient();
 
   const [isLoadingAI, setIsLoadingAI] = useState(false);
   const [generatedText, setGeneratedText] = useState<string | null>(null);

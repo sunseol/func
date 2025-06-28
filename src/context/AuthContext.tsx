@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, ReactNode, useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { createClient } from '@/lib/supabase/client';
 import type { User, AuthChangeEvent, Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -14,17 +14,17 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const supabase = createClient();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const getSession = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) throw error;
-        setUser(session?.user ?? null);
+        const { data: { user } } = await supabase.auth.getUser();
+        setUser(user ?? null);
       } catch (error) {
-        console.error("Error getting session:", error);
+        console.error("Error getting user:", error);
         setUser(null);
       } finally {
         setLoading(false);
@@ -33,17 +33,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     getSession();
 
-    const handleAuthStateChange = async (event: AuthChangeEvent, session: Session | null) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
-      setLoading(false); // 세션 변경 시 로딩 상태 업데이트
-    };
-
-    const { data: authListener } = supabase.auth.onAuthStateChange(handleAuthStateChange);
+      setLoading(false);
+    });
 
     return () => {
-      authListener?.subscription?.unsubscribe();
+      subscription?.unsubscribe();
     };
-  }, []);
+  }, [supabase]);
 
   const handleLogout = async () => {
     setLoading(true);
