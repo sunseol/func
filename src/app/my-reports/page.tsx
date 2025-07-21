@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/app/components/ThemeProvider';
-import { Card, List, Spin, Typography, Button, Space, Layout, Switch, Avatar, Input, Select, DatePicker, Row, Col, Modal, App as AntApp, Form } from 'antd';
+import { List, Spin, Typography, Button, Space, Layout, Switch, Avatar, Input, Select, DatePicker, Row, Col, Modal, App as AntApp, Form } from 'antd';
 import { LogoutOutlined, UserOutlined, EditOutlined, SunOutlined, MoonOutlined, DeleteOutlined, DownOutlined, UpOutlined, PlusOutlined } from '@ant-design/icons';
 import type { Dayjs } from 'dayjs';
 
@@ -149,6 +149,89 @@ export default function MyReportsPage() {
   const MAX_LINES = 3;
   const LINE_HEIGHT = 1.5;
   const MAX_HEIGHT_THRESHOLD = `${MAX_LINES * LINE_HEIGHT}em`;
+
+  // ReportItem 컴포넌트
+  const ReportItem = ({ 
+    item, 
+    isDarkMode, 
+    expandedReportId, 
+    setExpandedReportId, 
+    showDeleteConfirm, 
+    MAX_HEIGHT_THRESHOLD, 
+    LINE_HEIGHT 
+  }: {
+    item: DailyReport;
+    isDarkMode: boolean;
+    expandedReportId: string | null;
+    setExpandedReportId: (id: string | null) => void;
+    showDeleteConfirm: (id: string, date: string) => void;
+    MAX_HEIGHT_THRESHOLD: string;
+    LINE_HEIGHT: number;
+  }) => {
+    const contentRef = React.useRef<HTMLDivElement>(null);
+    const [isOverflowing, setIsOverflowing] = useState(false);
+
+    useEffect(() => {
+      if (contentRef.current) {
+        const el = contentRef.current;
+        if (el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth) {
+          setIsOverflowing(true);
+        } else {
+          setIsOverflowing(false);
+        }
+      }
+    }, [item.report_content]);
+
+    return (
+      <List.Item
+        key={item.id}
+        actions={[
+          <Button
+            key="delete"
+            type="text"
+            danger
+            icon={<DeleteOutlined />}
+            onClick={() => showDeleteConfirm(item.id, item.report_date)}
+          />,
+        ]}
+        style={{
+          background: isDarkMode ? '#1d1d1d' : '#fafafa',
+          padding: '16px',
+          borderRadius: '8px',
+          marginBottom: '16px'
+        }}
+      >
+        <List.Item.Meta
+          title={<Text style={{color: isDarkMode ? 'white' : 'black'}}>{`${item.report_date} - ${item.report_type === 'morning' ? '☀️ 출근' : '🌙 퇴근'} 보고서`}</Text>}
+          description={<Text type="secondary">{`작성자: ${item.user_name_snapshot}`}</Text>}
+        />
+
+        <Paragraph
+          ref={contentRef}
+          style={{
+            maxHeight: expandedReportId === item.id ? 'none' : MAX_HEIGHT_THRESHOLD,
+            overflow: 'hidden',
+            lineHeight: LINE_HEIGHT,
+            position: 'relative',
+            color: isDarkMode ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.85)',
+            whiteSpace: 'pre-wrap'
+          }}
+        >
+          {item.report_content}
+        </Paragraph>
+        {isOverflowing && (
+          <Button
+            type="link"
+            icon={expandedReportId === item.id ? <UpOutlined /> : <DownOutlined />}
+            onClick={() => setExpandedReportId(expandedReportId === item.id ? null : item.id)}
+            style={{ padding: 0, height: 'auto' }}
+          >
+            {expandedReportId === item.id ? '접기' : '더보기'}
+          </Button>
+        )}
+      </List.Item>
+    );
+  };
 
   if (authLoading || (loading && !reports.length && !error)) {
     return (
@@ -316,69 +399,18 @@ export default function MyReportsPage() {
                 itemLayout="vertical"
                 size="large"
                 dataSource={filteredReports}
-                renderItem={item => {
-                  const contentRef = React.useRef<HTMLDivElement>(null);
-                  const [isOverflowing, setIsOverflowing] = useState(false);
-
-                  useEffect(() => {
-                    if (contentRef.current) {
-                      const el = contentRef.current;
-                      if (el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth) {
-                         setIsOverflowing(true);
-                      } else {
-                         setIsOverflowing(false);
-                      }
-                    }
-                  }, [item.report_content]);
-                  
-                  return (
-                    <List.Item
-                      key={item.id}
-                      actions={[
-                        <Button
-                          type="text"
-                          danger
-                          icon={<DeleteOutlined />}
-                          onClick={() => showDeleteConfirm(item.id, item.report_date)}
-                        />,
-                      ]}
-                      style={{
-                        background: isDarkMode ? '#1d1d1d' : '#fafafa',
-                        padding: '16px',
-                        borderRadius: '8px',
-                        marginBottom: '16px'
-                      }}
-                    >
-                      <List.Item.Meta
-                        title={<Text style={{color: isDarkMode ? 'white' : 'black'}}>{`${item.report_date} - ${item.report_type === 'morning' ? '☀️ 출근' : '🌙 퇴근'} 보고서`}</Text>}
-                        description={<Text type="secondary">{`작성자: ${item.user_name_snapshot}`}</Text>}
-                      />
-
-                      <Paragraph
-                        ref={contentRef}
-                        style={{
-                           maxHeight: expandedReportId === item.id ? 'none' : MAX_HEIGHT_THRESHOLD,
-                           overflow: 'hidden',
-                           lineHeight: LINE_HEIGHT,
-                           position: 'relative',
-                           color: isDarkMode ? 'rgba(255,255,255,0.85)' : 'black'
-                        }}
-                      >
-                       {item.report_content.split('\n').map((line, index) => <React.Fragment key={index}>{line}<br/></React.Fragment>)}
-                      </Paragraph>
-                      {isOverflowing && (
-                         <Button
-                            type="link"
-                            icon={expandedReportId === item.id ? <UpOutlined /> : <DownOutlined />}
-                            onClick={() => setExpandedReportId(prevId => prevId === item.id ? null : item.id)}
-                            style={{ padding: 0, height: 'auto' }}
-                         >
-                           {expandedReportId === item.id ? '접기' : '더보기'}
-                         </Button>
-                      )}
-                    </List.Item>
-                  );
-                }}
+                renderItem={item => (
+                  <ReportItem 
+                    key={item.id}
+                    item={item}
+                    isDarkMode={isDarkMode}
+                    expandedReportId={expandedReportId}
+                    setExpandedReportId={setExpandedReportId}
+                    showDeleteConfirm={showDeleteConfirm}
+                    MAX_HEIGHT_THRESHOLD={MAX_HEIGHT_THRESHOLD}
+                    LINE_HEIGHT={LINE_HEIGHT}
+                  />
+                )}
               />
             )}
           </Space>

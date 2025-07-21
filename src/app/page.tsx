@@ -167,13 +167,14 @@ export default function Home() {
   const hasAnyContent = formData.projects.some(p => p.tasks.some(t => t.description)) || formData.miscTasks.some(t => t.description);
   const isAiButtonDisabled = isLoadingAI || !hasRequiredUserInfo || !hasAnyContent;
 
-  const handleSaveReport = async () => {
+  const handleSaveReport = async (editedContent?: string) => {
     if (!user) {
       messageApi.error('로그인이 필요합니다. 보고서를 저장할 수 없습니다.');
       return;
     }
 
-    const reportContentToSave = getTextForDailyDisplay();
+    // 편집된 내용이 있으면 사용, 없으면 기본 내용 사용
+    const reportContentToSave = editedContent || getTextForDailyDisplay();
     if (!reportContentToSave) {
       messageApi.error('저장할 보고서 내용이 없습니다.');
       return;
@@ -331,13 +332,20 @@ export default function Home() {
           ) : user ? (
             <Space align="center">
               <Typography.Text style={{ color: 'white', marginRight: '8px' }}>
-                {user.user_metadata?.full_name || user.email}
+                {user.user_metadata?.full_name || user.email?.split('@')[0]}
               </Typography.Text>
               <Link href="/my-reports">
                 <Button type="link" size="small" style={{ padding: '0 8px', color: 'white' }}>
                   내 보고서
                 </Button>
               </Link>
+              {(user.email === 'jakeseol99@keduall.com' || user.user_metadata?.role === 'admin') && (
+                <Link href="/admin">
+                  <Button type="link" size="small" style={{ padding: '0 8px', color: 'white' }}>
+                    관리자
+                  </Button>
+                </Link>
+              )}
               <Button type="primary" danger onClick={handleLogout} size="small">
                 로그아웃
               </Button>

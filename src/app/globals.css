@@ -39,3 +39,53 @@ body {
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* MDEditor 스타일 */
+.w-md-editor {
+  background-color: transparent !important;
+}
+
+.w-md-editor-text-pre, 
+.w-md-editor-text-input, 
+.w-md-editor-text {
+  font-size: 14px !important;
+  line-height: 1.6 !important;
+}
+
+.w-md-editor.w-md-editor-focus {
+  border-color: #1890ff !important;
+}
+
+/* 다크 모드에서 MDEditor 스타일 */
+[data-color-mode="dark"] .w-md-editor {
+  background-color: #1f1f1f !important;
+  border-color: #434343 !important;
+}
+
+[data-color-mode="dark"] .w-md-editor-text-pre,
+[data-color-mode="dark"] .w-md-editor-text-input {
+  color: #ffffff !important;
+  background-color: #1f1f1f !important;
+}
+
+[data-color-mode="dark"] .w-md-editor-preview {
+  background-color: #1f1f1f !important;
+  color: #ffffff !important;
+}
+
+/* 라이트 모드에서 MDEditor 스타일 */
+[data-color-mode="light"] .w-md-editor {
+  background-color: #ffffff !important;
+  border-color: #d9d9d9 !important;
+}
+
+[data-color-mode="light"] .w-md-editor-text-pre,
+[data-color-mode="light"] .w-md-editor-text-input {
+  color: #000000 !important;
+  background-color: #ffffff !important;
+}
+
+[data-color-mode="light"] .w-md-editor-preview {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}

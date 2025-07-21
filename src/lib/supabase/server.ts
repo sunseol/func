@@ -10,22 +10,14 @@ export function createClient() {
     {
       cookies: {
         get(name: string) {
-          // The linter is correctly complaining that `ReadonlyRequestCookies`
-          // does not have a `get` method. However, in the context of a
-          // Server Action or Server Component, the `cookies()` function from `next/headers`
-          // returns a request cookie jar that does have a `get` method.
-          // We can use `as any` to bypass the TypeScript type check.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           return (cookieStore as any).get(name)?.value
         },
         set(name: string, value: string, options: CookieOptions) {
           try {
-            // The linter is correctly complaining that `ReadonlyRequestCookies`
-            // does not have a `set` method. However, in the context of a
-            // Server Action, the `cookies()` function from `next/headers`
-            // returns a request cookie jar that does have a `set` method.
-            // We can use `as any` to bypass the TypeScript type check.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (cookieStore as any).set({ name, value, ...options })
-          } catch (error) {
+          } catch {
             // The `set` method was called from a Server Component.
             // This can be ignored if you have middleware refreshing
             // user sessions.
@@ -33,9 +25,9 @@ export function createClient() {
         },
         remove(name: string, options: CookieOptions) {
           try {
-            // Same as above for `set`.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (cookieStore as any).set({ name, value: '', ...options })
-          } catch (error) {
+          } catch {
             // The `delete` method was called from a Server Component.
             // This can be ignored if you have middleware refreshing
             // user sessions.
