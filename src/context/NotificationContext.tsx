@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { useAuth } from './AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface NotificationSettings {
   id: string;
@@ -208,7 +208,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         console.error('알림 설정 업데이트 오류:', error);
         // 업데이트 실패 시 메모리에서만 업데이트
         setSettings(prev => prev ? { ...prev, ...newSettings } : null);
-        throw err;
+        throw error;
       }
       setSettings(data);
     } catch (err) {

@@ -4,7 +4,7 @@ import '@ant-design/v5-patch-for-react-19'; // Ant Design React 19 호환성 패
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "./components/ThemeProvider";
-import { AuthProvider } from "@/context/AuthContext";
+import { AuthProvider } from "@/contexts/AuthContext";
 import { NotificationProvider } from "@/context/NotificationContext";
 import { App as AntApp } from 'antd'; // Ant Design의 App 컴포넌트 임포트
 

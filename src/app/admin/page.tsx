@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/app/components/ThemeProvider';
 import { 
   Card, 
@@ -573,6 +573,9 @@ export default function AdminPage() {
         />
         {user ? (
           <>
+            <Link href="/ai-pm" passHref>
+              <Button icon={<RobotOutlined />}>🤖 AI PM</Button>
+            </Link>
             <Link href="/" passHref>
               <Button icon={<EditOutlined />}>메인으로</Button>
             </Link>

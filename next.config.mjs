@@ -4,6 +4,98 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_GROQ_API_KEY: process.env.NEXT_PUBLIC_GROQ_API_KEY,
   },
+  
+  // 성능 최적화 설정
+  experimental: {
+    optimizeCss: true,
+    optimizePackageImports: ['@heroicons/react'],
+  },
+  
+  // 이미지 최적화 설정
+  images: {
+    formats: ['image/webp', 'image/avif'],
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
+    minimumCacheTTL: 60 * 60 * 24 * 7, // 7 days
+    dangerouslyAllowSVG: true,
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
+  },
+  
+  // 압축 설정
+  compress: true,
+  
+  // 캐싱 설정
+  headers: async () => {
+    return [
+      {
+        source: '/api/(.*)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=300, stale-while-revalidate=600',
+          },
+        ],
+      },
+      {
+        source: '/(.*).css',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      {
+        source: '/(.*).js',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      {
+        source: '/images/(.*)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+    ];
+  },
+  
+  // Webpack 최적화
+  webpack: (config, { isServer }) => {
+    // Bundle analyzer
+    if (process.env.ANALYZE === 'true') {
+      const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
+      config.plugins.push(
+        new BundleAnalyzerPlugin({
+          analyzerMode: 'static',
+          openAnalyzer: false,
+        })
+      );
+    }
+    
+    // 트리 쉐이킹 최적화
+    config.optimization = {
+      ...config.optimization,
+      usedExports: true,
+      sideEffects: false,
+    };
+    
+    return config;
+  },
+  
+  // PoweredByHeader 비활성화 (보안)
+  poweredByHeader: false,
+  
+  // 개발 환경 설정
+  ...(process.env.NODE_ENV === 'development' && {
+    reactStrictMode: true,
+  }),
 };
 
 export default nextConfig; 

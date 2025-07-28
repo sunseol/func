@@ -4,7 +4,7 @@ import React from 'react';
 import { Layout, Typography, Button, Space, Switch, Avatar } from 'antd';
 import { LogoutOutlined, UserOutlined, SunOutlined, MoonOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import { useTheme } from '@/app/components/ThemeProvider';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 import NotificationSettings from '@/app/components/NotificationSettings';
 import Link from 'next/link';
 
@@ -36,6 +36,11 @@ export default function NotificationsPage() {
           <Link href="/" passHref>
             <Button icon={<ArrowLeftOutlined />} type="text" style={{ color: isDarkMode ? '#fff' : '#000' }}>
               돌아가기
+            </Button>
+          </Link>
+          <Link href="/ai-pm" passHref>
+            <Button type="text" style={{ color: isDarkMode ? '#fff' : '#000' }}>
+              🤖 AI PM
             </Button>
           </Link>
           <Title level={3} style={{ margin: 0, color: isDarkMode ? '#fff' : '#000' }}>

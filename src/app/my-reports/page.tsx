@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/app/components/ThemeProvider';
 import { useNotification } from '@/context/NotificationContext';
 import { List, Spin, Typography, Button, Space, Layout, Switch, Avatar, Input, Select, DatePicker, Row, Col, Modal, App as AntApp, Form } from 'antd';
@@ -307,6 +307,9 @@ export default function MyReportsPage() {
         />
         {user ? (
           <>
+            <Link href="/ai-pm" passHref>
+              <Button icon={<EditOutlined />}>🤖 AI PM</Button>
+            </Link>
             <Link href="/" passHref>
               <Button icon={<EditOutlined />}>새 보고서 작성</Button>
             </Link>

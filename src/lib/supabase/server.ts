@@ -9,24 +9,24 @@ export function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
+        async get(name: string) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          return (cookieStore as any).get(name)?.value
+          return (await cookieStore).get(name)?.value
         },
-        set(name: string, value: string, options: CookieOptions) {
+        async set(name: string, value: string, options: CookieOptions) {
           try {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (cookieStore as any).set({ name, value, ...options })
+            (await cookieStore).set({ name, value, ...options })
           } catch {
             // The `set` method was called from a Server Component.
             // This can be ignored if you have middleware refreshing
             // user sessions.
           }
         },
-        remove(name: string, options: CookieOptions) {
+        async remove(name: string, options: CookieOptions) {
           try {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (cookieStore as any).set({ name, value: '', ...options })
+            (await cookieStore).set({ name, value: '', ...options })
           } catch {
             // The `delete` method was called from a Server Component.
             // This can be ignored if you have middleware refreshing

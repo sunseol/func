@@ -20,7 +20,7 @@ import ResultDisplay from './components/ResultDisplay';
 import { WeeklyReportForm } from './components/WeeklyReportForm';
 import { ReportData, Project, TaskItem, formatDefaultReport, generateReport } from './api/grop';
 import { useTheme } from './components/ThemeProvider';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useNotification } from '@/context/NotificationContext';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -45,7 +45,7 @@ export default function Home() {
     reportType: 'morning',
   });
   const { isDarkMode, setIsDarkMode } = useTheme();
-  const { user, loading: authLoading, handleLogout } = useAuth();
+  const { user, loading: authLoading, signOut } = useAuth();
   const { unreadCount, sendBrowserNotification } = useNotification();
   const { message: messageApi } = App.useApp();
   const supabase = createClient();
@@ -359,6 +359,11 @@ export default function Home() {
               <Typography.Text style={{ color: 'white', marginRight: '8px' }}>
                 {user.user_metadata?.full_name || user.email?.split('@')[0]}
               </Typography.Text>
+              <Link href="/ai-pm">
+                <Button type="link" size="small" style={{ padding: '0 8px', color: 'white' }}>
+                  🤖 AI PM
+                </Button>
+              </Link>
               <Link href="/my-reports">
                 <Button type="link" size="small" style={{ padding: '0 8px', color: 'white' }}>
                   내 보고서
@@ -402,7 +407,7 @@ export default function Home() {
                   </Button>
                 </Link>
               )}
-              <Button type="primary" danger onClick={handleLogout} size="small">
+              <Button type="primary" danger onClick={signOut} size="small">
                 로그아웃
               </Button>
             </Space>
