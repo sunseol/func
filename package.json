@@ -11,11 +11,14 @@
   "dependencies": {
     "@ant-design/nextjs-registry": "^1.0.2",
     "@ant-design/v5-patch-for-react-19": "^1.0.3",
+    "@playwright/test": "^1.54.1",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.50.0",
     "@uiw/react-md-editor": "^4.0.8",
     "antd": "^5.24.8",
     "cookie": "^1.0.2",
+    "dayjs": "^1.11.13",
+    "groq-sdk": "^0.27.0",
     "next": "15.2.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

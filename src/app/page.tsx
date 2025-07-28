@@ -14,13 +14,14 @@ import {
   RadioChangeEvent,
   App,
 } from 'antd';
-import { SunOutlined, MoonOutlined, RocketOutlined } from '@ant-design/icons';
+import { SunOutlined, MoonOutlined, RocketOutlined, BellOutlined } from '@ant-design/icons';
 import InputForm from './components/InputForm';
 import ResultDisplay from './components/ResultDisplay';
 import { WeeklyReportForm } from './components/WeeklyReportForm';
 import { ReportData, Project, TaskItem, formatDefaultReport, generateReport } from './api/grop';
 import { useTheme } from './components/ThemeProvider';
 import { useAuth } from '@/context/AuthContext';
+import { useNotification } from '@/context/NotificationContext';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 
@@ -45,6 +46,7 @@ export default function Home() {
   });
   const { isDarkMode, setIsDarkMode } = useTheme();
   const { user, loading: authLoading, handleLogout } = useAuth();
+  const { unreadCount, sendBrowserNotification } = useNotification();
   const { message: messageApi } = App.useApp();
   const supabase = createClient();
 
@@ -53,6 +55,8 @@ export default function Home() {
   const [aiError, setAiError] = useState<string | null>(null);
   const [defaultPreviewText, setDefaultPreviewText] = useState<string | null>(null);
   const [isSavingReport, setIsSavingReport] = useState(false);
+
+
 
   useEffect(() => {
     if (user && !formData.userName) {
@@ -163,9 +167,16 @@ export default function Home() {
       return generatedText ?? defaultPreviewText;
   }
 
+  const getTextForWeeklyDisplay = (): string | null => {
+      if (activeTab !== 'weekly') return null;
+      return generatedText ?? defaultPreviewText;
+  }
+
   const hasRequiredUserInfo = !!formData.userName && !!formData.date;
   const hasAnyContent = formData.projects.some(p => p.tasks.some(t => t.description)) || formData.miscTasks.some(t => t.description);
   const isAiButtonDisabled = isLoadingAI || !hasRequiredUserInfo || !hasAnyContent;
+
+
 
   const handleSaveReport = async (editedContent?: string) => {
     if (!user) {
@@ -218,7 +229,18 @@ export default function Home() {
         console.error(detailedErrorMessage);
         throw new Error(detailedErrorMessage);
       }
+
       messageApi.success('보고서가 성공적으로 저장되었습니다!');
+      
+      // 보고서 저장 완료 알림
+      const reportTypeText = formData.reportType === 'morning' ? '출근' : '퇴근';
+      sendBrowserNotification(
+        '📝 보고서 저장 완료',
+        `${reportTypeText} 보고서가 성공적으로 저장되었습니다!`,
+        'report_completed'
+      );
+      
+
     } catch (caughtError: unknown) {
       console.error('보고서 저장 중 오류 발생 (catch 블록):', caughtError);
       let displayErrorMessage = '보고서 저장 실패: 알 수 없는 오류가 발생했습니다.';
@@ -263,6 +285,9 @@ export default function Home() {
                 >
                   {isLoadingAI ? 'AI 생성 중...' : '✨ AI야 도와줘'}
                 </Button>
+                
+
+
                 <ResultDisplay
                   isLoading={isLoadingAI}
                   textToDisplay={getTextForDailyDisplay()}
@@ -337,6 +362,37 @@ export default function Home() {
               <Link href="/my-reports">
                 <Button type="link" size="small" style={{ padding: '0 8px', color: 'white' }}>
                   내 보고서
+                </Button>
+              </Link>
+              <Link href="/notifications">
+                <Button 
+                  type="link" 
+                  size="small" 
+                  style={{ padding: '0 8px', color: 'white', position: 'relative' }}
+                  icon={<BellOutlined />}
+                >
+                  알림
+                  {unreadCount > 0 && (
+                    <span
+                      style={{
+                        position: 'absolute',
+                        top: -2,
+                        right: -2,
+                        backgroundColor: '#ff4d4f',
+                        color: 'white',
+                        borderRadius: '50%',
+                        width: 16,
+                        height: 16,
+                        fontSize: 10,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        lineHeight: 1,
+                      }}
+                    >
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
                 </Button>
               </Link>
               {(user.email === 'jakeseol99@keduall.com' || user.user_metadata?.role === 'admin') && (

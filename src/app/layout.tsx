@@ -5,6 +5,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { AuthProvider } from "@/context/AuthContext";
+import { NotificationProvider } from "@/context/NotificationContext";
 import { App as AntApp } from 'antd'; // Ant Design의 App 컴포넌트 임포트
 
 const inter = Inter({ subsets: ["latin"] });
@@ -26,9 +27,11 @@ export default function RootLayout({
       <body className={inter.className}>
         <ThemeProvider>
           <AuthProvider>
-            <AntApp>
-              <main style={{ padding: '0' }}>{children}</main>
-            </AntApp>
+            <NotificationProvider>
+              <AntApp>
+                <main style={{ padding: '0' }}>{children}</main>
+              </AntApp>
+            </NotificationProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

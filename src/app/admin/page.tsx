@@ -28,6 +28,8 @@ import {
   Statistic,
   Tabs
 } from 'antd';
+import ReportSummary from '@/app/components/ReportSummary';
+import AdminAIAssistant from '@/app/components/AdminAIAssistant';
 import { 
   LogoutOutlined, 
   UserOutlined, 
@@ -38,7 +40,9 @@ import {
   EyeOutlined,
   BarChartOutlined,
   TeamOutlined,
-  FileTextOutlined
+  FileTextOutlined,
+  RobotOutlined,
+  PieChartOutlined
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 
@@ -97,7 +101,7 @@ export default function AdminPage() {
   const [filterDate, setFilterDate] = useState<string | null>(null);
   const [selectedReport, setSelectedReport] = useState<DailyReport | null>(null);
   const [isReportModalVisible, setIsReportModalVisible] = useState(false);
-  const [activeTab, setActiveTab] = useState('reports');
+  const [activeTab, setActiveTab] = useState('ai-summary');
 
   const { message: messageApi } = AntApp.useApp();
 
@@ -351,7 +355,9 @@ export default function AdminPage() {
         title: '이름',
         key: 'full_name',
         render: (_, record) => (
-          <Text>{record.user_metadata?.full_name || '-'}</Text>
+          <Text style={{ color: isDarkMode ? '#fff' : '#000' }}>
+            {record.user_metadata?.full_name || '-'}
+          </Text>
         ),
         width: 150,
       },
@@ -414,7 +420,7 @@ export default function AdminPage() {
       <div>
         <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
           <Col span={24}>
-            <Text type="secondary">
+            <Text type="secondary" style={{ color: isDarkMode ? '#999' : '#666' }}>
               총 {users.length}명의 사용자가 등록되어 있습니다.
             </Text>
           </Col>
@@ -485,7 +491,13 @@ export default function AdminPage() {
       dataIndex: 'report_content',
       key: 'report_content',
       render: (content: string) => (
-        <Text ellipsis={{ tooltip: true }} style={{ maxWidth: 300 }}>
+        <Text 
+          ellipsis={{ tooltip: true }} 
+          style={{ 
+            maxWidth: 300,
+            color: isDarkMode ? '#fff' : '#000'
+          }}
+        >
           {content.substring(0, 100)}...
         </Text>
       ),
@@ -647,8 +659,32 @@ export default function AdminPage() {
               onChange={setActiveTab}
               items={[
                 {
+                  key: 'ai-summary',
+                  label: (
+                    <Space>
+                      <RobotOutlined />
+                      AI 분석
+                    </Space>
+                  ),
+                  children: (
+                    <Row gutter={[24, 24]} align="stretch">
+                      <Col xs={24} lg={14}>
+                        <ReportSummary />
+                      </Col>
+                      <Col xs={24} lg={10} style={{ display: 'flex' }}>
+                        <AdminAIAssistant style={{ width: '100%' }} />
+                      </Col>
+                    </Row>
+                  )
+                },
+                {
                   key: 'reports',
-                  label: '보고서 관리',
+                  label: (
+                    <Space>
+                      <FileTextOutlined />
+                      보고서 관리
+                    </Space>
+                  ),
                   children: (
                     <>
                       {/* 필터 */}
@@ -708,7 +744,12 @@ export default function AdminPage() {
                 },
                 {
                   key: 'users',
-                  label: '사용자 관리',
+                  label: (
+                    <Space>
+                      <TeamOutlined />
+                      사용자 관리
+                    </Space>
+                  ),
                   children: <UserManagementTab />
                 }
               ]}
@@ -733,17 +774,19 @@ export default function AdminPage() {
           <div>
             <Space direction="vertical" size="middle" style={{ width: '100%' }}>
               <div>
-                <Text strong>종류: </Text>
+                <Text strong style={{ color: isDarkMode ? '#fff' : '#000' }}>종류: </Text>
                 <Tag color={selectedReport.report_type === 'morning' ? 'blue' : selectedReport.report_type === 'evening' ? 'orange' : 'green'}>
                   {selectedReport.report_type === 'morning' ? '출근 보고서' : selectedReport.report_type === 'evening' ? '퇴근 보고서' : '주간 보고서'}
                 </Tag>
               </div>
               <div>
-                <Text strong>작성일시: </Text>
-                <Text>{new Date(selectedReport.created_at).toLocaleString('ko-KR')}</Text>
+                <Text strong style={{ color: isDarkMode ? '#fff' : '#000' }}>작성일시: </Text>
+                <Text style={{ color: isDarkMode ? '#fff' : '#000' }}>
+                  {new Date(selectedReport.created_at).toLocaleString('ko-KR')}
+                </Text>
               </div>
               <div>
-                <Text strong>내용:</Text>
+                <Text strong style={{ color: isDarkMode ? '#fff' : '#000' }}>내용:</Text>
                 <div style={{ 
                   marginTop: 8, 
                   padding: 16, 
