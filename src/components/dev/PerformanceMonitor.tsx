@@ -25,28 +25,24 @@ export default function PerformanceMonitor() {
   });
   const [cacheStats, setCacheStats] = useState<ReturnType<typeof ApiCache.getStats> | null>(null);
 
-  // Performance tracking
+  // Performance tracking - 컴포넌트 마운트 시에만 측정
   useEffect(() => {
     const startTime = performance.now();
     
-    return () => {
+    // 컴포넌트가 마운트된 후 약간의 지연을 두고 측정
+    const timer = setTimeout(() => {
       const endTime = performance.now();
       const renderTime = endTime - startTime;
       
-      setMetrics(prev => {
-        const newRenderCount = prev.renderCount + 1;
-        const newAverageRenderTime = 
-          (prev.averageRenderTime * prev.renderCount + renderTime) / newRenderCount;
-        
-        return {
-          renderCount: newRenderCount,
-          lastRenderTime: renderTime,
-          averageRenderTime: newAverageRenderTime,
-          memoryUsage: (performance as any).memory
-        };
-      });
-    };
-  });
+      setMetrics(prev => ({
+        ...prev,
+        lastRenderTime: renderTime,
+        memoryUsage: (performance as any).memory
+      }));
+    }, 100);
+    
+    return () => clearTimeout(timer);
+  }, []); // 빈 의존성 배열로 한 번만 실행
 
   // Cache stats update
   const updateCacheStats = useCallback(() => {

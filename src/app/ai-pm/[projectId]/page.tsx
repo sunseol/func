@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { useProjectNavigation } from '@/contexts/NavigationContext';
+import { useNavigation } from '@/contexts/NavigationContext';
 import { 
   ProjectResponse, 
   ProjectWithCreator, 
@@ -26,7 +26,7 @@ export default function ProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { user, profile } = useAuth();
-  const { setCurrentProject } = useProjectNavigation();
+  const { state: navState, setCurrentProject } = useNavigation();
   const projectId = params.projectId as string;
 
   const [project, setProject] = useState<ProjectWithCreator | null>(null);
@@ -58,20 +58,27 @@ export default function ProjectDetailPage() {
       setMembers(data.members);
       setProgress(data.progress);
       
-      // Update navigation context
-      setCurrentProject(data.project);
+      // DO NOT UPDATE CONTEXT HERE
     } catch (err) {
       setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.');
     } finally {
       setLoading(false);
     }
-  }, [projectId, setCurrentProject]);
+  }, [projectId]);
 
   useEffect(() => {
-    if (user && projectId) {
+    if (user?.id && projectId) {
       fetchProjectData();
     }
-  }, [user, projectId, fetchProjectData]);
+  }, [user?.id, projectId, fetchProjectData]);
+
+  // This effect syncs the fetched project data to the navigation context
+  useEffect(() => {
+    // Prevent infinite loop by checking if the project in context is already set
+    if (project && project.id !== navState.currentProject?.id) {
+      setCurrentProject(project);
+    }
+  }, [project, setCurrentProject, navState.currentProject]);
 
   const handleMembersUpdate = () => {
     fetchProjectData();
@@ -91,7 +98,10 @@ export default function ProjectDetailPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">프로젝트 정보를 불러오는 중...</p>
+        </div>
       </div>
     );
   }
@@ -102,18 +112,26 @@ export default function ProjectDetailPage() {
         <div className="text-center">
           <h2 className="text-2xl font-bold text-red-600 mb-4">오류 발생</h2>
           <p className="text-gray-600 mb-4">{error}</p>
-          <div className="space-x-4">
+          <div className="space-y-3">
+            <div className="flex gap-2 justify-center">
+              <button
+                onClick={() => router.push('/ai-pm')}
+                className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
+              >
+                대시보드로 돌아가기
+              </button>
+              <button
+                onClick={fetchProjectData}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                다시 시도
+              </button>
+            </div>
             <button
-              onClick={() => router.push('/ai-pm')}
-              className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
+              onClick={() => router.push('/')}
+              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
             >
-              대시보드로 돌아가기
-            </button>
-            <button
-              onClick={fetchProjectData}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-            >
-              다시 시도
+              홈으로 가기
             </button>
           </div>
         </div>
@@ -124,6 +142,13 @@ export default function ProjectDetailPage() {
   if (!project) {
     return null;
   }
+
+  // 현재 단계와 완료된 단계 계산
+  const currentStep = progress?.find(p => p.has_official_document)?.workflow_step || 1;
+  const completedSteps = (progress || [])
+    .filter(p => p.has_official_document)
+    .map(p => p.workflow_step)
+    .filter(step => step !== undefined && step !== null);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('ko-KR', {
@@ -143,23 +168,35 @@ export default function ProjectDetailPage() {
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Workflow Sidebar - Mobile Overlay */}
-      {showWorkflowSidebar && (
+      {showWorkflowSidebar && project && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="fixed inset-0 bg-black bg-opacity-50" onClick={() => setShowWorkflowSidebar(false)} />
-          <WorkflowSidebar 
-            projectId={projectId}
-            progress={progress}
-            className="relative w-80 h-full"
-          />
+          <div className="relative w-80 h-full">
+            <WorkflowSidebar 
+              projectId={projectId}
+              projectName={project.name}
+              currentStep={currentStep}
+              completedSteps={completedSteps}
+              memberCount={members.length}
+              documentCount={progress.reduce((sum, p) => sum + p.document_count, 0)}
+            />
+          </div>
         </div>
       )}
 
       {/* Workflow Sidebar - Desktop */}
-      <WorkflowSidebar 
-        projectId={projectId}
-        progress={progress}
-        className="hidden lg:block w-80 flex-shrink-0"
-      />
+      {project && (
+        <div className="hidden lg:block w-80 flex-shrink-0">
+          <WorkflowSidebar 
+            projectId={projectId}
+            projectName={project.name}
+            currentStep={currentStep}
+            completedSteps={completedSteps}
+            memberCount={members.length}
+            documentCount={progress.reduce((sum, p) => sum + p.document_count, 0)}
+          />
+        </div>
+      )}
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -262,7 +299,13 @@ export default function ProjectDetailPage() {
             </div>
 
             {/* Workflow Progress */}
-            <WorkflowProgress progress={progress} projectId={projectId} />
+            {project && (
+              <WorkflowProgress 
+                currentStep={currentStep}
+                completedSteps={completedSteps}
+                totalSteps={9}
+              />
+            )}
 
             {/* Recent Members */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200">

@@ -1,69 +1,129 @@
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import { AIService, createAIService, getAIService } from '../ai-service';
-import { AIChatMessage, WorkflowStep } from '@/types/ai-pm';
+import { AIService, getAIService, createAIService } from '../ai-service';
+import { AIChatMessage, WorkflowStep, AIpmErrorType } from '@/types/ai-pm';
 
-// Mock Groq SDK
-jest.mock('groq-sdk', () => {
-  return {
-    __esModule: true,
-    default: jest.fn().mockImplementation(() => ({
-      chat: {
-        completions: {
-          create: jest.fn()
-        }
+// Mock GROQ SDK
+const mockGroqCompletion = {
+  choices: [
+    {
+      message: {
+        content: 'AI generated response'
       }
-    }))
-  };
+    }
+  ]
+};
+
+const mockGroqStream = {
+  async *[Symbol.asyncIterator]() {
+    yield {
+      choices: [
+        {
+          delta: {
+            content: 'AI '
+          }
+        }
+      ]
+    };
+    yield {
+      choices: [
+        {
+          delta: {
+            content: 'generated '
+          }
+        }
+      ]
+    };
+    yield {
+      choices: [
+        {
+          delta: {
+            content: 'response'
+          }
+        }
+      ]
+    };
+  }
+};
+
+const mockGroq = {
+  chat: {
+    completions: {
+      create: jest.fn()
+    }
+  }
+};
+
+jest.mock('groq-sdk', () => {
+  return jest.fn().mockImplementation(() => mockGroq);
 });
+
+// Mock security modules
+jest.mock('@/lib/security/promptInjection', () => ({
+  validateAiPmPrompt: jest.fn(() => ({
+    isSecure: true,
+    riskLevel: 'low',
+    sanitizedInput: 'sanitized input'
+  })),
+  logSecurityEvent: jest.fn(),
+  securePromptTemplate: jest.fn((template, vars) => template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] || ''))
+}));
+
+jest.mock('@/lib/security/secretsManager', () => ({
+  DataSanitizer: {
+    sanitizeForLogging: jest.fn((data) => data)
+  }
+}));
 
 describe('AIService', () => {
   let aiService: AIService;
-  let mockGroq: any;
 
   beforeEach(() => {
-    // Reset mocks
     jest.clearAllMocks();
-    
-    // Create AI service instance
-    aiService = createAIService({
+    aiService = new AIService({
       apiKey: 'test-api-key',
       model: 'test-model',
       temperature: 0.7,
       maxTokens: 1000
     });
+    mockGroq.chat.completions.create.mockResolvedValue(mockGroqCompletion);
+  });
 
-    // Get mock Groq instance
-    const Groq = require('groq-sdk').default;
-    mockGroq = new Groq();
+  describe('constructor', () => {
+    it('should initialize with provided config', () => {
+      const config = {
+        apiKey: 'test-key',
+        model: 'custom-model',
+        temperature: 0.5,
+        maxTokens: 2000
+      };
+
+      const service = new AIService(config);
+      expect(service).toBeInstanceOf(AIService);
+    });
+
+    it('should use default values for optional config', () => {
+      const service = new AIService({ apiKey: 'test-key' });
+      expect(service).toBeInstanceOf(AIService);
+    });
   });
 
   describe('generateResponse', () => {
-    it('should generate AI response for workflow step 1', async () => {
-      // Mock successful API response
-      mockGroq.chat.completions.create.mockResolvedValue({
-        choices: [{
-          message: {
-            content: '안녕하세요! 플랫폼 기획의 1단계인 컨셉 정의를 도와드리겠습니다.'
-          }
-        }]
-      });
+    const mockMessages: AIChatMessage[] = [
+      {
+        id: '1',
+        role: 'user',
+        content: 'Test message',
+        timestamp: new Date()
+      }
+    ];
 
-      const messages: AIChatMessage[] = [
-        {
-          id: 'msg1',
-          role: 'user',
-          content: '전자책 플랫폼을 기획하고 싶습니다.',
-          timestamp: new Date()
-        }
-      ];
+    it('should generate AI response successfully', async () => {
+      const response = await aiService.generateResponse(mockMessages, 1);
 
-      const response = await aiService.generateResponse(messages, 1 as WorkflowStep);
-
-      expect(response).toBe('안녕하세요! 플랫폼 기획의 1단계인 컨셉 정의를 도와드리겠습니다.');
+      expect(response).toBe('AI generated response');
       expect(mockGroq.chat.completions.create).toHaveBeenCalledWith({
         messages: expect.arrayContaining([
           expect.objectContaining({ role: 'system' }),
-          expect.objectContaining({ role: 'user', content: '전자책 플랫폼을 기획하고 싶습니다.' })
+          expect.objectContaining({ role: 'user', content: 'Test message' })
         ]),
         model: 'test-model',
         temperature: 0.7,
@@ -71,266 +131,359 @@ describe('AIService', () => {
       });
     });
 
-    it('should include project context in system prompt', async () => {
-      mockGroq.chat.completions.create.mockResolvedValue({
-        choices: [{
-          message: {
-            content: '프로젝트 컨텍스트를 고려한 응답입니다.'
-          }
-        }]
-      });
+    it('should include project context when provided', async () => {
+      const projectContext = 'Project: Test Platform';
+      await aiService.generateResponse(mockMessages, 1, projectContext);
 
-      const messages: AIChatMessage[] = [
-        {
-          id: 'msg1',
-          role: 'user',
-          content: '도움이 필요합니다.',
-          timestamp: new Date()
-        }
-      ];
-
-      const projectContext = '프로젝트명: 테스트 플랫폼\n프로젝트 설명: 테스트용 플랫폼입니다.';
-
-      await aiService.generateResponse(messages, 2 as WorkflowStep, projectContext);
-
-      const callArgs = mockGroq.chat.completions.create.mock.calls[0][0];
-      const systemMessage = callArgs.messages.find((msg: any) => msg.role === 'system');
-      
-      expect(systemMessage.content).toContain(projectContext);
+      expect(mockGroq.chat.completions.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messages: expect.arrayContaining([
+            expect.objectContaining({
+              role: 'system',
+              content: expect.stringContaining(projectContext)
+            })
+          ])
+        })
+      );
     });
 
-    it('should handle API errors gracefully', async () => {
+    it('should handle different workflow steps', async () => {
+      await aiService.generateResponse(mockMessages, 2);
+
+      expect(mockGroq.chat.completions.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messages: expect.arrayContaining([
+            expect.objectContaining({
+              role: 'system',
+              content: expect.stringContaining('2단계')
+            })
+          ])
+        })
+      );
+    });
+
+    it('should handle API errors', async () => {
       mockGroq.chat.completions.create.mockRejectedValue(new Error('API Error'));
 
-      const messages: AIChatMessage[] = [
-        {
-          id: 'msg1',
-          role: 'user',
-          content: '테스트 메시지',
-          timestamp: new Date()
-        }
-      ];
+      await expect(aiService.generateResponse(mockMessages, 1))
+        .rejects
+        .toMatchObject({
+          error: AIpmErrorType.AI_SERVICE_ERROR,
+          message: 'API Error'
+        });
+    });
 
-      await expect(aiService.generateResponse(messages, 1 as WorkflowStep))
-        .rejects.toThrow('API Error');
+    it('should handle rate limiting errors', async () => {
+      mockGroq.chat.completions.create.mockRejectedValue({ status: 429 });
+
+      await expect(aiService.generateResponse(mockMessages, 1))
+        .rejects
+        .toMatchObject({
+          error: AIpmErrorType.RATE_LIMITED,
+          message: expect.stringContaining('요청 한도를 초과')
+        });
+    });
+
+    it('should handle authentication errors', async () => {
+      mockGroq.chat.completions.create.mockRejectedValue({ status: 401 });
+
+      await expect(aiService.generateResponse(mockMessages, 1))
+        .rejects
+        .toMatchObject({
+          error: AIpmErrorType.UNAUTHORIZED,
+          message: expect.stringContaining('인증에 실패')
+        });
     });
 
     it('should handle empty AI response', async () => {
       mockGroq.chat.completions.create.mockResolvedValue({
-        choices: [{
-          message: {
-            content: null
-          }
-        }]
+        choices: [{ message: { content: null } }]
       });
 
-      const messages: AIChatMessage[] = [
-        {
-          id: 'msg1',
-          role: 'user',
-          content: '테스트 메시지',
-          timestamp: new Date()
-        }
-      ];
+      await expect(aiService.generateResponse(mockMessages, 1))
+        .rejects
+        .toThrow('AI 서비스에서 응답을 받지 못했습니다.');
+    });
+  });
 
-      await expect(aiService.generateResponse(messages, 1 as WorkflowStep))
-        .rejects.toThrow('AI 서비스에서 응답을 받지 못했습니다.');
+  describe('generateStreamingResponse', () => {
+    const mockMessages: AIChatMessage[] = [
+      {
+        id: '1',
+        role: 'user',
+        content: 'Test message',
+        timestamp: new Date()
+      }
+    ];
+
+    it('should generate streaming response successfully', async () => {
+      mockGroq.chat.completions.create.mockResolvedValue(mockGroqStream);
+
+      const generator = aiService.generateStreamingResponse(mockMessages, 1);
+      const responses = [];
+
+      for await (const response of generator) {
+        responses.push(response);
+      }
+
+      expect(responses).toHaveLength(4); // 3 chunks + final
+      expect(responses[0]).toEqual({
+        content: 'AI ',
+        isComplete: false
+      });
+      expect(responses[1]).toEqual({
+        content: 'AI generated ',
+        isComplete: false
+      });
+      expect(responses[2]).toEqual({
+        content: 'AI generated response',
+        isComplete: false
+      });
+      expect(responses[3]).toEqual({
+        content: 'AI generated response',
+        isComplete: true
+      });
+    });
+
+    it('should handle streaming errors', async () => {
+      mockGroq.chat.completions.create.mockRejectedValue(new Error('Streaming error'));
+
+      const generator = aiService.generateStreamingResponse(mockMessages, 1);
+      const responses = [];
+
+      for await (const response of generator) {
+        responses.push(response);
+      }
+
+      expect(responses).toHaveLength(1);
+      expect(responses[0]).toEqual({
+        content: '',
+        isComplete: true,
+        error: 'Streaming error'
+      });
     });
   });
 
   describe('generateDocument', () => {
-    it('should generate document based on conversation', async () => {
-      mockGroq.chat.completions.create.mockResolvedValue({
-        choices: [{
-          message: {
-            content: '# 플랫폼 기획서\n\n## 개요\n테스트 문서입니다.'
+    const mockMessages: AIChatMessage[] = [
+      {
+        id: '1',
+        role: 'user',
+        content: 'Generate a document',
+        timestamp: new Date()
+      }
+    ];
+
+    it('should generate document successfully', async () => {
+      const mockDocumentResponse = {
+        choices: [
+          {
+            message: {
+              content: '# Generated Document\n\nThis is a generated document.'
+            }
           }
-        }]
-      });
+        ]
+      };
 
-      const messages: AIChatMessage[] = [
-        {
-          id: 'msg1',
-          role: 'user',
-          content: '전자책 플랫폼 기획서를 작성해주세요.',
-          timestamp: new Date()
-        },
-        {
-          id: 'msg2',
-          role: 'assistant',
-          content: '네, 전자책 플랫폼 기획을 도와드리겠습니다.',
-          timestamp: new Date()
-        }
-      ];
+      mockGroq.chat.completions.create.mockResolvedValue(mockDocumentResponse);
 
-      const document = await aiService.generateDocument(messages, 1 as WorkflowStep);
+      const document = await aiService.generateDocument(mockMessages, 1);
 
-      expect(document).toBe('# 플랫폼 기획서\n\n## 개요\n테스트 문서입니다.');
+      expect(document).toBe('# Generated Document\n\nThis is a generated document.');
       expect(mockGroq.chat.completions.create).toHaveBeenCalledWith(
         expect.objectContaining({
           temperature: 0.5 // Lower temperature for document generation
         })
       );
     });
+
+    it('should handle security validation', async () => {
+      const { validateAiPmPrompt } = require('@/lib/security/promptInjection');
+      validateAiPmPrompt.mockReturnValue({
+        isSecure: false,
+        riskLevel: 'critical',
+        sanitizedInput: 'sanitized input'
+      });
+
+      await expect(aiService.generateDocument(mockMessages, 1))
+        .rejects
+        .toThrow('입력에서 보안 위험이 감지되었습니다');
+    });
+
+    it('should sanitize project context when security risk detected', async () => {
+      const { validateAiPmPrompt } = require('@/lib/security/promptInjection');
+      validateAiPmPrompt
+        .mockReturnValueOnce({ isSecure: true, riskLevel: 'low' }) // For user input
+        .mockReturnValueOnce({ isSecure: false, riskLevel: 'medium', sanitizedInput: 'sanitized context' }); // For project context
+
+      mockGroq.chat.completions.create.mockResolvedValue(mockGroqCompletion);
+
+      await aiService.generateDocument(mockMessages, 1, 'risky project context', 'user-123');
+
+      expect(mockGroq.chat.completions.create).toHaveBeenCalled();
+    });
+
+    it('should handle document generation errors', async () => {
+      mockGroq.chat.completions.create.mockRejectedValue(new Error('Document generation failed'));
+
+      await expect(aiService.generateDocument(mockMessages, 1))
+        .rejects
+        .toMatchObject({
+          error: AIpmErrorType.AI_SERVICE_ERROR,
+          message: 'Document generation failed'
+        });
+    });
   });
 
   describe('analyzeConflicts', () => {
-    it('should analyze conflicts between documents', async () => {
-      mockGroq.chat.completions.create.mockResolvedValue({
-        choices: [{
-          message: {
-            content: '충돌 분석 결과: 문서 간 일부 불일치가 발견되었습니다.'
+    const currentDocument = '# Current Document\n\nThis is the current document.';
+    const officialDocuments = [
+      { step: 1 as WorkflowStep, content: '# Step 1 Document\n\nStep 1 content.' },
+      { step: 2 as WorkflowStep, content: '# Step 2 Document\n\nStep 2 content.' }
+    ];
+
+    it('should analyze conflicts successfully', async () => {
+      const mockConflictResponse = {
+        choices: [
+          {
+            message: {
+              content: '# 충돌 분석 결과\n\n충돌이 발견되지 않았습니다.'
+            }
           }
-        }]
-      });
+        ]
+      };
 
-      const currentDocument = '현재 문서 내용입니다.';
-      const officialDocuments = [
-        { step: 1 as WorkflowStep, content: '1단계 공식 문서' },
-        { step: 2 as WorkflowStep, content: '2단계 공식 문서' }
-      ];
+      mockGroq.chat.completions.create.mockResolvedValue(mockConflictResponse);
 
-      const analysis = await aiService.analyzeConflicts(
-        currentDocument,
-        officialDocuments,
-        3 as WorkflowStep
-      );
+      const analysis = await aiService.analyzeConflicts(currentDocument, officialDocuments, 3);
 
-      expect(analysis).toBe('충돌 분석 결과: 문서 간 일부 불일치가 발견되었습니다.');
+      expect(analysis).toBe('# 충돌 분석 결과\n\n충돌이 발견되지 않았습니다.');
       expect(mockGroq.chat.completions.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          temperature: 0.3 // Lower temperature for analytical response
+          temperature: 0.3, // Lower temperature for analytical response
+          messages: expect.arrayContaining([
+            expect.objectContaining({
+              role: 'user',
+              content: expect.stringContaining('현재 문서:')
+            })
+          ])
         })
       );
     });
-  });
 
-  describe('generateStreamingResponse', () => {
-    it('should generate streaming response', async () => {
-      // Mock streaming response
-      const mockStream = {
-        async *[Symbol.asyncIterator]() {
-          yield { choices: [{ delta: { content: '안녕' } }] };
-          yield { choices: [{ delta: { content: '하세요!' } }] };
-        }
-      };
+    it('should handle conflict analysis errors', async () => {
+      mockGroq.chat.completions.create.mockRejectedValue(new Error('Conflict analysis failed'));
 
-      mockGroq.chat.completions.create.mockResolvedValue(mockStream);
-
-      const messages: AIChatMessage[] = [
-        {
-          id: 'msg1',
-          role: 'user',
-          content: '안녕하세요',
-          timestamp: new Date()
-        }
-      ];
-
-      const chunks = [];
-      for await (const chunk of aiService.generateStreamingResponse(messages, 1 as WorkflowStep)) {
-        chunks.push(chunk);
-      }
-
-      expect(chunks).toHaveLength(3); // Two content chunks + final complete chunk
-      expect(chunks[0]).toEqual({ content: '안녕', isComplete: false });
-      expect(chunks[1]).toEqual({ content: '안녕하세요!', isComplete: false });
-      expect(chunks[2]).toEqual({ content: '안녕하세요!', isComplete: true });
+      await expect(aiService.analyzeConflicts(currentDocument, officialDocuments, 3))
+        .rejects
+        .toMatchObject({
+          error: AIpmErrorType.AI_SERVICE_ERROR,
+          message: 'Conflict analysis failed'
+        });
     });
 
-    it('should handle streaming errors', async () => {
-      mockGroq.chat.completions.create.mockRejectedValue(new Error('Streaming Error'));
+    it('should handle empty conflict analysis response', async () => {
+      mockGroq.chat.completions.create.mockResolvedValue({
+        choices: [{ message: { content: null } }]
+      });
 
-      const messages: AIChatMessage[] = [
-        {
-          id: 'msg1',
-          role: 'user',
-          content: '테스트',
-          timestamp: new Date()
-        }
-      ];
+      await expect(aiService.analyzeConflicts(currentDocument, officialDocuments, 3))
+        .rejects
+        .toThrow('충돌 분석 중 AI 서비스에서 응답을 받지 못했습니다.');
+    });
+  });
 
-      const chunks = [];
-      for await (const chunk of aiService.generateStreamingResponse(messages, 1 as WorkflowStep)) {
-        chunks.push(chunk);
-      }
+  describe('utility functions', () => {
+    describe('getAIService', () => {
+      beforeEach(() => {
+        // Reset the module to clear the singleton
+        jest.resetModules();
+      });
 
-      expect(chunks).toHaveLength(1);
-      expect(chunks[0]).toEqual({
-        content: '',
-        isComplete: true,
-        error: expect.stringContaining('Streaming Error')
+      it('should return singleton AI service instance', () => {
+        process.env.NEXT_PUBLIC_GROQ_API_KEY = 'test-api-key';
+        
+        const service1 = getAIService();
+        const service2 = getAIService();
+
+        expect(service1).toBe(service2);
+      });
+
+      it('should throw error when API key is not configured', () => {
+        delete process.env.NEXT_PUBLIC_GROQ_API_KEY;
+
+        expect(() => getAIService()).toThrow('GROQ API key is not configured');
+      });
+    });
+
+    describe('createAIService', () => {
+      it('should create new AI service instance', () => {
+        const config = { apiKey: 'test-key' };
+        const service = createAIService(config);
+
+        expect(service).toBeInstanceOf(AIService);
       });
     });
   });
 
   describe('error handling', () => {
-    it('should handle rate limiting errors', async () => {
-      const rateLimitError = new Error('Rate limited');
-      (rateLimitError as any).status = 429;
-      
-      mockGroq.chat.completions.create.mockRejectedValue(rateLimitError);
+    it('should handle timeout errors', async () => {
+      mockGroq.chat.completions.create.mockRejectedValue({
+        message: 'timeout',
+        code: 'ECONNABORTED'
+      });
 
-      const messages: AIChatMessage[] = [
-        {
-          id: 'msg1',
-          role: 'user',
-          content: '테스트',
-          timestamp: new Date()
-        }
+      const mockMessages: AIChatMessage[] = [
+        { id: '1', role: 'user', content: 'Test', timestamp: new Date() }
       ];
 
-      await expect(aiService.generateResponse(messages, 1 as WorkflowStep))
-        .rejects.toMatchObject({
-          error: 'RATE_LIMITED',
-          message: expect.stringContaining('요청 한도를 초과')
+      await expect(aiService.generateResponse(mockMessages, 1))
+        .rejects
+        .toMatchObject({
+          error: AIpmErrorType.AI_SERVICE_ERROR,
+          message: expect.stringContaining('응답 시간이 초과')
         });
     });
 
-    it('should handle authentication errors', async () => {
-      const authError = new Error('Unauthorized');
-      (authError as any).status = 401;
-      
-      mockGroq.chat.completions.create.mockRejectedValue(authError);
+    it('should handle unknown errors', async () => {
+      mockGroq.chat.completions.create.mockRejectedValue({
+        status: 500,
+        message: 'Internal server error'
+      });
 
-      const messages: AIChatMessage[] = [
-        {
-          id: 'msg1',
-          role: 'user',
-          content: '테스트',
-          timestamp: new Date()
-        }
+      const mockMessages: AIChatMessage[] = [
+        { id: '1', role: 'user', content: 'Test', timestamp: new Date() }
       ];
 
-      await expect(aiService.generateResponse(messages, 1 as WorkflowStep))
-        .rejects.toMatchObject({
-          error: 'UNAUTHORIZED',
-          message: expect.stringContaining('인증에 실패')
+      await expect(aiService.generateResponse(mockMessages, 1))
+        .rejects
+        .toMatchObject({
+          error: AIpmErrorType.AI_SERVICE_ERROR,
+          message: 'Internal server error'
         });
     });
   });
 
-  describe('getAIService', () => {
-    it('should throw error when API key is not configured', () => {
-      // Mock missing environment variable
-      const originalEnv = process.env.NEXT_PUBLIC_GROQ_API_KEY;
-      delete process.env.NEXT_PUBLIC_GROQ_API_KEY;
+  describe('message conversion', () => {
+    it('should convert chat messages to GROQ format correctly', async () => {
+      const messages: AIChatMessage[] = [
+        { id: '1', role: 'user', content: 'User message', timestamp: new Date() },
+        { id: '2', role: 'assistant', content: 'Assistant message', timestamp: new Date() },
+        { id: '3', role: 'user', content: 'Another user message', timestamp: new Date() }
+      ];
 
-      expect(() => getAIService()).toThrow('GROQ API key is not configured');
+      await aiService.generateResponse(messages, 1);
 
-      // Restore environment variable
-      if (originalEnv) {
-        process.env.NEXT_PUBLIC_GROQ_API_KEY = originalEnv;
-      }
-    });
-
-    it('should return singleton instance', () => {
-      // Mock environment variable
-      process.env.NEXT_PUBLIC_GROQ_API_KEY = 'test-key';
-
-      const service1 = getAIService();
-      const service2 = getAIService();
-
-      expect(service1).toBe(service2);
+      expect(mockGroq.chat.completions.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messages: [
+            expect.objectContaining({ role: 'system' }),
+            expect.objectContaining({ role: 'user', content: 'User message' }),
+            expect.objectContaining({ role: 'assistant', content: 'Assistant message' }),
+            expect.objectContaining({ role: 'user', content: 'Another user message' })
+          ]
+        })
+      );
     });
   });
 });

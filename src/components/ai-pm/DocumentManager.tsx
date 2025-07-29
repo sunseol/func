@@ -1,484 +1,528 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import DocumentEditor from './DocumentEditor';
-import { useToast, useApiError } from '@/contexts/ToastContext';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/contexts/ToastContext';
 import { 
   PlanningDocumentWithUsers,
   DocumentStatus,
   WorkflowStep,
+  CreateDocumentRequest,
   UpdateDocumentRequest
 } from '@/types/ai-pm';
+import { 
+  PlusIcon,
+  PencilIcon,
+  EyeIcon,
+  CheckIcon,
+  XMarkIcon,
+  DocumentTextIcon,
+  ClockIcon,
+  ExclamationTriangleIcon,
+  TrashIcon,
+  ArrowUpIcon,
+  DocumentDuplicateIcon
+} from '@heroicons/react/24/outline';
 
 interface DocumentManagerProps {
   projectId: string;
   workflowStep: WorkflowStep;
-  userId: string;
-  onDocumentChange?: (document: PlanningDocumentWithUsers | null) => void;
-  onShowVersionHistory?: () => void;
+  onDocumentCreated?: (document: PlanningDocumentWithUsers) => void;
+  onDocumentUpdated?: (document: PlanningDocumentWithUsers) => void;
   className?: string;
 }
 
-interface DocumentState {
-  document: PlanningDocumentWithUsers | null;
-  isLoading: boolean;
-  error: string | null;
-  isGenerating: boolean;
+interface DocumentFormData {
+  title: string;
+  content: string;
 }
+
+const STEP_LABELS: Record<WorkflowStep, string> = {
+  1: '컨셉 정의',
+  2: '기능 기획',
+  3: '기술 설계',
+  4: '개발 계획',
+  5: '테스트 계획',
+  6: '배포 준비',
+  7: '운영 계획',
+  8: '마케팅 전략',
+  9: '사업화 계획'
+};
+
+const STATUS_LABELS: Record<DocumentStatus, string> = {
+  private: '개인',
+  pending_approval: '승인 대기',
+  official: '공식'
+};
+
+const STATUS_COLORS: Record<DocumentStatus, string> = {
+  private: 'bg-gray-100 text-gray-800',
+  pending_approval: 'bg-yellow-100 text-yellow-800',
+  official: 'bg-green-100 text-green-800'
+};
 
 export default function DocumentManager({
   projectId,
   workflowStep,
-  userId,
-  onDocumentChange,
-  onShowVersionHistory,
+  onDocumentCreated,
+  onDocumentUpdated,
   className = ''
 }: DocumentManagerProps) {
-  // Toast notifications
-  const { success, error: showError, info } = useToast();
-  const { handleApiError } = useApiError();
-
-  // Log activity helper
-  const logActivity = useCallback(async (activityType: string, description: string, targetId?: string) => {
-    try {
-      await fetch(`/api/ai-pm/projects/${projectId}/activities`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          activity_type: activityType,
-          target_type: 'document',
-          target_id: targetId,
-          description
-        })
-      });
-    } catch (error) {
-      console.error('Failed to log activity:', error);
-    }
-  }, [projectId]);
-  const [state, setState] = useState<DocumentState>({
-    document: null,
-    isLoading: true,
-    error: null,
-    isGenerating: false
+  const { user } = useAuth();
+  const { success, error: showError } = useToast();
+  const [documents, setDocuments] = useState<PlanningDocumentWithUsers[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [editingDocument, setEditingDocument] = useState<PlanningDocumentWithUsers | null>(null);
+  const [formData, setFormData] = useState<DocumentFormData>({
+    title: '',
+    content: ''
   });
 
-  // Load existing document for this workflow step
-  const loadDocument = useCallback(async () => {
-    setState(prev => ({ ...prev, isLoading: true, error: null }));
+  // 문서 목록 로드
+  useEffect(() => {
+    loadDocuments();
+  }, [projectId, workflowStep]);
 
+  const loadDocuments = async () => {
     try {
-      const response = await fetch(
-        `/api/ai-pm/documents?projectId=${projectId}&workflowStep=${workflowStep}`,
-        {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || '문서 로드에 실패했습니다.');
-      }
-
-      const data = await response.json();
-      const documents = data.documents || [];
+      setIsLoading(true);
+      const response = await fetch(`/api/ai-pm/documents?projectId=${projectId}&workflowStep=${workflowStep}`);
       
-      // Find the user's document or the official document
-      const userDocument = documents.find((doc: PlanningDocumentWithUsers) => 
-        doc.created_by === userId
-      );
-      const officialDocument = documents.find((doc: PlanningDocumentWithUsers) => 
-        doc.status === 'official'
-      );
-
-      const document = userDocument || officialDocument || null;
-
-      setState(prev => ({ 
-        ...prev, 
-        document, 
-        isLoading: false 
-      }));
-
-      if (onDocumentChange) {
-        onDocumentChange(document);
-      }
-
-    } catch (error: any) {
-      console.error('Error loading document:', error);
-      setState(prev => ({ 
-        ...prev, 
-        error: error.message, 
-        isLoading: false 
-      }));
-    }
-  }, [projectId, workflowStep, userId, onDocumentChange]);
-
-  // Generate new document from AI conversation
-  const generateDocument = useCallback(async () => {
-    setState(prev => ({ ...prev, isGenerating: true, error: null }));
-
-    try {
-      const response = await fetch(
-        `/api/ai-pm/documents/generate?projectId=${projectId}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            workflow_step: workflowStep
-          }),
-        }
-      );
-
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'AI 문서 생성에 실패했습니다.');
+        throw new Error('문서 목록을 불러오는데 실패했습니다.');
       }
 
       const data = await response.json();
-      const newDocument = data.document;
-
-      setState(prev => ({ 
-        ...prev, 
-        document: newDocument, 
-        isGenerating: false 
-      }));
-
-      if (onDocumentChange) {
-        onDocumentChange(newDocument);
-      }
-
-      // Log activity
-      await logActivity(
-        'document_created',
-        `AI를 사용하여 워크플로우 ${workflowStep}단계 문서 "${newDocument.title}"를 생성했습니다.`,
-        newDocument.id
-      );
-
-    } catch (error: any) {
-      console.error('Error generating document:', error);
-      setState(prev => ({ 
-        ...prev, 
-        error: error.message, 
-        isGenerating: false 
-      }));
+      setDocuments(data.documents || []);
+    } catch (err) {
+      console.error('Error loading documents:', err);
+      showError('문서 로드 오류', '문서 목록을 불러오는데 실패했습니다.');
+    } finally {
+      setIsLoading(false);
     }
-  }, [projectId, workflowStep, onDocumentChange, logActivity]);
+  };
 
-  // Create new document
-  const createDocument = useCallback(async (title: string, content: string) => {
+  const handleCreateDocument = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.title.trim() || !formData.content.trim()) {
+      showError('입력 오류', '제목과 내용을 모두 입력해주세요.');
+      return;
+    }
+
     try {
-      const response = await fetch('/api/ai-pm/documents', {
+      const request: CreateDocumentRequest = {
+        workflow_step: workflowStep,
+        title: formData.title.trim(),
+        content: formData.content.trim()
+      };
+
+      const response = await fetch(`/api/ai-pm/documents?projectId=${projectId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          project_id: projectId,
-          workflow_step: workflowStep,
-          title,
-          content
-        }),
+        body: JSON.stringify(request)
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || '문서 생성에 실패했습니다.');
+        throw new Error('문서 생성에 실패했습니다.');
       }
 
       const data = await response.json();
       const newDocument = data.document;
-
-      setState(prev => ({ 
-        ...prev, 
-        document: newDocument 
-      }));
-
-      if (onDocumentChange) {
-        onDocumentChange(newDocument);
-      }
-
-      // Log activity
-      await logActivity(
-        'document_created',
-        `워크플로우 ${workflowStep}단계에 새 문서 "${title}"를 생성했습니다.`,
-        newDocument.id
-      );
-
-      // Show success notification
-      success('문서 생성 완료', `"${title}" 문서가 성공적으로 생성되었습니다.`);
-
-      return newDocument;
-    } catch (error: unknown) {
-      console.error('Error creating document:', error);
-      handleApiError(error, '문서 생성에 실패했습니다.');
-      throw error;
-    }
-  }, [projectId, workflowStep, onDocumentChange, logActivity, success, handleApiError]);
-
-  // Save document changes
-  const saveDocument = useCallback(async (content: string, title?: string) => {
-    if (!state.document) {
-      // Create new document if none exists
-      if (!title) {
-        throw new Error('새 문서를 생성하려면 제목이 필요합니다.');
-      }
-      return await createDocument(title, content);
-    }
-
-    try {
-      const updateData: UpdateDocumentRequest = { content };
-      if (title !== undefined) {
-        updateData.title = title;
-      }
-
-      const response = await fetch(`/api/ai-pm/documents/${state.document.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updateData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || '문서 저장에 실패했습니다.');
-      }
-
-      const data = await response.json();
-      const updatedDocument = data.document;
-
-      setState(prev => ({ 
-        ...prev, 
-        document: updatedDocument 
-      }));
-
-      if (onDocumentChange) {
-        onDocumentChange(updatedDocument);
-      }
-
-      // Log activity
-      await logActivity(
-        'document_updated',
-        `워크플로우 ${workflowStep}단계 문서 "${updatedDocument.title}"를 수정했습니다.`,
-        updatedDocument.id
-      );
-
-      // Show success notification
-      success('문서 저장 완료', '변경사항이 성공적으로 저장되었습니다.');
-
-      return updatedDocument;
-    } catch (error: unknown) {
-      console.error('Error saving document:', error);
-      handleApiError(error, '문서 저장에 실패했습니다.');
-      throw error;
-    }
-  }, [state.document, createDocument, onDocumentChange, logActivity, workflowStep, success, handleApiError]);
-
-  // Change document status
-  const changeDocumentStatus = useCallback(async (status: DocumentStatus) => {
-    if (!state.document) return;
-
-    try {
-      const response = await fetch(`/api/ai-pm/documents/${state.document.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ status }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || '문서 상태 변경에 실패했습니다.');
-      }
-
-      const data = await response.json();
-      const updatedDocument = data.document;
-
-      setState(prev => ({ 
-        ...prev, 
-        document: updatedDocument 
-      }));
-
-      if (onDocumentChange) {
-        onDocumentChange(updatedDocument);
-      }
-
-      // Log activity based on status
-      let activityType = '';
-      let description = '';
       
-      switch (status) {
-        case 'pending_approval':
-          activityType = 'document_approval_requested';
-          description = `"${updatedDocument.title}" 문서의 승인을 요청했습니다.`;
-          break;
-        case 'official':
-          activityType = 'document_approved';
-          description = `"${updatedDocument.title}" 문서를 승인했습니다.`;
-          break;
-        case 'private':
-          activityType = 'document_rejected';
-          description = `"${updatedDocument.title}" 문서 승인을 반려했습니다.`;
-          break;
-      }
-
-      if (activityType) {
-        await logActivity(activityType, description, updatedDocument.id);
-      }
-
-    } catch (error: any) {
-      console.error('Error changing document status:', error);
-      throw error;
+      setDocuments(prev => [newDocument, ...prev]);
+      setShowCreateForm(false);
+      setFormData({ title: '', content: '' });
+      
+      success('문서 생성', '문서가 성공적으로 생성되었습니다.');
+      onDocumentCreated?.(newDocument);
+    } catch (err) {
+      console.error('Error creating document:', err);
+      showError('문서 생성 오류', '문서 생성에 실패했습니다.');
     }
-  }, [state.document, onDocumentChange, logActivity]);
+  };
 
-  // Delete document
-  const deleteDocument = useCallback(async () => {
-    if (!state.document) return;
-
-    const documentToDelete = state.document; // Store reference before deletion
+  const handleUpdateDocument = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingDocument || !formData.title.trim() || !formData.content.trim()) {
+      showError('입력 오류', '제목과 내용을 모두 입력해주세요.');
+      return;
+    }
 
     try {
-      const response = await fetch(`/api/ai-pm/documents/${state.document.id}`, {
+      const request: UpdateDocumentRequest = {
+        title: formData.title.trim(),
+        content: formData.content.trim()
+      };
+
+      const response = await fetch(`/api/ai-pm/documents/${editingDocument.id}?projectId=${projectId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request)
+      });
+
+      if (!response.ok) {
+        throw new Error('문서 수정에 실패했습니다.');
+      }
+
+      const data = await response.json();
+      const updatedDocument = data.document;
+      
+      setDocuments(prev => 
+        prev.map(doc => 
+          doc.id === editingDocument.id ? updatedDocument : doc
+        )
+      );
+      setEditingDocument(null);
+      setFormData({ title: '', content: '' });
+      
+      success('문서 수정', '문서가 성공적으로 수정되었습니다.');
+      onDocumentUpdated?.(updatedDocument);
+    } catch (err) {
+      console.error('Error updating document:', err);
+      showError('문서 수정 오류', '문서 수정에 실패했습니다.');
+    }
+  };
+
+  const handleRequestApproval = async (documentId: string) => {
+    try {
+      const response = await fetch(`/api/ai-pm/documents/${documentId}/request-approval?projectId=${projectId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('승인 요청에 실패했습니다.');
+      }
+
+      await loadDocuments();
+      success('승인 요청', '승인 요청이 성공적으로 전송되었습니다.');
+    } catch (err) {
+      console.error('Error requesting approval:', err);
+      showError('승인 요청 오류', '승인 요청에 실패했습니다.');
+    }
+  };
+
+  const handleApproveDocument = async (documentId: string) => {
+    try {
+      const response = await fetch(`/api/ai-pm/documents/${documentId}/approve?projectId=${projectId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('문서 승인에 실패했습니다.');
+      }
+
+      await loadDocuments();
+      success('문서 승인', '문서가 성공적으로 승인되었습니다.');
+    } catch (err) {
+      console.error('Error approving document:', err);
+      showError('승인 오류', '문서 승인에 실패했습니다.');
+    }
+  };
+
+  const handleDeleteDocument = async (documentId: string) => {
+    if (!confirm('정말로 이 문서를 삭제하시겠습니까?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/ai-pm/documents/${documentId}?projectId=${projectId}`, {
         method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        }
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || '문서 삭제에 실패했습니다.');
+        throw new Error('문서 삭제에 실패했습니다.');
       }
 
-      setState(prev => ({ 
-        ...prev, 
-        document: null 
-      }));
-
-      if (onDocumentChange) {
-        onDocumentChange(null);
-      }
-
-      // Log activity
-      await logActivity(
-        'document_deleted',
-        `워크플로우 ${workflowStep}단계 문서 "${documentToDelete.title}"를 삭제했습니다.`,
-        documentToDelete.id
-      );
-
-    } catch (error: any) {
-      console.error('Error deleting document:', error);
-      throw error;
+      setDocuments(prev => prev.filter(doc => doc.id !== documentId));
+      success('문서 삭제', '문서가 성공적으로 삭제되었습니다.');
+    } catch (err) {
+      console.error('Error deleting document:', err);
+      showError('삭제 오류', '문서 삭제에 실패했습니다.');
     }
-  }, [state.document, onDocumentChange, logActivity, workflowStep]);
+  };
 
-  // Load document on mount and when dependencies change
-  useEffect(() => {
-    loadDocument();
-  }, [loadDocument]);
+  const startEditing = (document: PlanningDocumentWithUsers) => {
+    setEditingDocument(document);
+    setFormData({
+      title: document.title,
+      content: document.content
+    });
+  };
 
-  // Render loading state
-  if (state.isLoading) {
+  const cancelEditing = () => {
+    setEditingDocument(null);
+    setFormData({ title: '', content: '' });
+  };
+
+  const canEdit = (document: PlanningDocumentWithUsers) => {
+    return document.created_by === user?.id && document.status === 'private';
+  };
+
+  const canRequestApproval = (document: PlanningDocumentWithUsers) => {
+    return document.created_by === user?.id && document.status === 'private';
+  };
+
+  const canApprove = (document: PlanningDocumentWithUsers) => {
+    return document.status === 'pending_approval' && document.created_by !== user?.id;
+  };
+
+  const canDelete = (document: PlanningDocumentWithUsers) => {
+    return document.created_by === user?.id && document.status !== 'official';
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('ko-KR', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  if (isLoading) {
     return (
-      <div className={`flex items-center justify-center h-64 bg-gray-50 border border-gray-200 rounded-lg ${className}`}>
-        <div className="flex items-center gap-2 text-gray-600">
-          <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-          문서를 불러오는 중...
-        </div>
-      </div>
-    );
-  }
-
-  // Render error state
-  if (state.error && !state.document) {
-    return (
-      <div className={`flex flex-col items-center justify-center h-64 bg-red-50 border border-red-200 rounded-lg ${className}`}>
-        <div className="text-red-600 mb-4">{state.error}</div>
-        <button
-          onClick={loadDocument}
-          className="px-4 py-2 text-sm text-white bg-red-600 rounded hover:bg-red-700"
-        >
-          다시 시도
-        </button>
-      </div>
-    );
-  }
-
-  // Render empty state with AI generation option
-  if (!state.document) {
-    return (
-      <div className={`flex flex-col items-center justify-center h-64 bg-gray-50 border border-gray-200 rounded-lg ${className}`}>
-        <div className="text-center mb-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
-            이 단계의 문서가 없습니다
-          </h3>
-          <p className="text-gray-600">
-            AI와의 대화를 바탕으로 문서를 생성하거나 직접 작성할 수 있습니다.
-          </p>
-        </div>
-        
-        <div className="flex gap-3">
-          <button
-            onClick={generateDocument}
-            disabled={state.isGenerating}
-            className="px-4 py-2 text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            {state.isGenerating && (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-            )}
-            {state.isGenerating ? 'AI 문서 생성 중...' : 'AI로 문서 생성'}
-          </button>
-          
-          <button
-            onClick={() => createDocument('새 문서', '# 새 문서\n\n여기에 내용을 작성하세요.')}
-            className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50"
-          >
-            직접 작성
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Render document editor
-  const isReadOnly = state.document.created_by !== userId && state.document.status === 'official';
-
-  return (
-    <div className={className}>
-      <DocumentEditor
-        projectId={projectId}
-        workflowStep={workflowStep}
-        document={state.document}
-        isReadOnly={isReadOnly}
-        onSave={saveDocument}
-        onStatusChange={changeDocumentStatus}
-        onDelete={deleteDocument}
-        onShowVersionHistory={onShowVersionHistory}
-      />
-      
-      {/* AI regeneration option for existing documents */}
-      {!isReadOnly && (
-        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="text-sm font-medium text-blue-900">AI 문서 재생성</h4>
-              <p className="text-sm text-blue-700">
-                현재 대화 내용을 바탕으로 문서를 다시 생성할 수 있습니다.
-              </p>
-            </div>
-            <button
-              onClick={generateDocument}
-              disabled={state.isGenerating}
-              className="px-3 py-1 text-sm text-blue-700 border border-blue-300 rounded hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {state.isGenerating ? '생성 중...' : '재생성'}
-            </button>
+      <div className={`bg-white rounded-lg shadow-sm border border-gray-200 p-6 ${className}`}>
+        <div className="animate-pulse space-y-4">
+          <div className="h-6 bg-gray-200 rounded w-1/4"></div>
+          <div className="space-y-3">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-20 bg-gray-200 rounded"></div>
+            ))}
           </div>
         </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 ${className}`}>
+      {/* 헤더 */}
+      <div className="p-6 border-b border-gray-200">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">문서 관리</h3>
+            <p className="text-sm text-gray-600 mt-1">
+              {STEP_LABELS[workflowStep]} 단계 문서
+            </p>
+          </div>
+          <button
+            onClick={() => setShowCreateForm(true)}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+          >
+            <PlusIcon className="w-4 h-4 mr-2" />
+            새 문서
+          </button>
+        </div>
+      </div>
+
+      {/* 문서 생성 폼 */}
+      {showCreateForm && (
+        <div className="p-6 border-b border-gray-200 bg-gray-50">
+          <h4 className="text-md font-medium text-gray-900 mb-4">새 문서 생성</h4>
+          <form onSubmit={handleCreateDocument} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                제목
+              </label>
+              <input
+                type="text"
+                value={formData.title}
+                onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="문서 제목을 입력하세요"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                내용
+              </label>
+              <textarea
+                value={formData.content}
+                onChange={(e) => setFormData(prev => ({ ...prev, content: e.target.value }))}
+                rows={6}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="문서 내용을 입력하세요"
+                required
+              />
+            </div>
+            <div className="flex space-x-3">
+              <button
+                type="submit"
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              >
+                생성
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCreateForm(false);
+                  setFormData({ title: '', content: '' });
+                }}
+                className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors"
+              >
+                취소
+              </button>
+            </div>
+          </form>
+        </div>
       )}
+
+      {/* 문서 목록 */}
+      <div className="p-6">
+        {documents.length === 0 ? (
+          <div className="text-center py-8">
+            <DocumentTextIcon className="mx-auto h-12 w-12 text-gray-400" />
+            <h3 className="mt-2 text-sm font-medium text-gray-900">문서가 없습니다</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              첫 번째 문서를 생성해보세요.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {documents.map((document) => (
+              <div
+                key={document.id}
+                className="border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow"
+              >
+                {/* 문서 편집 폼 */}
+                {editingDocument?.id === document.id ? (
+                  <form onSubmit={handleUpdateDocument} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        제목
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.title}
+                        onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        내용
+                      </label>
+                      <textarea
+                        value={formData.content}
+                        onChange={(e) => setFormData(prev => ({ ...prev, content: e.target.value }))}
+                        rows={6}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        required
+                      />
+                    </div>
+                    <div className="flex space-x-3">
+                      <button
+                        type="submit"
+                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                      >
+                        저장
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelEditing}
+                        className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors"
+                      >
+                        취소
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    {/* 문서 정보 */}
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2 mb-2">
+                          <h4 className="text-lg font-medium text-gray-900">
+                            {document.title}
+                          </h4>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[document.status]}`}>
+                            {STATUS_LABELS[document.status]}
+                          </span>
+                          {document.version > 1 && (
+                            <span className="text-xs text-gray-500">
+                              v{document.version}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-600 mb-3 line-clamp-3">
+                          {document.content}
+                        </p>
+                        <div className="flex items-center space-x-4 text-xs text-gray-500">
+                          <span>작성자: {document.creator_name || document.creator_email}</span>
+                          <span>작성일: {formatDate(document.created_at)}</span>
+                          {document.approved_by && (
+                            <span>승인자: {document.approver_name || document.approver_email}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 액션 버튼 */}
+                    <div className="mt-4 flex items-center space-x-2">
+                      {canEdit(document) && (
+                        <button
+                          onClick={() => startEditing(document)}
+                          className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+                        >
+                          <PencilIcon className="w-3 h-3 mr-1" />
+                          편집
+                        </button>
+                      )}
+                      
+                      {canRequestApproval(document) && (
+                        <button
+                          onClick={() => handleRequestApproval(document.id)}
+                          className="inline-flex items-center px-3 py-1.5 border border-blue-300 text-xs font-medium rounded text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
+                        >
+                          <ArrowUpIcon className="w-3 h-3 mr-1" />
+                          승인 요청
+                        </button>
+                      )}
+                      
+                      {canApprove(document) && (
+                        <button
+                          onClick={() => handleApproveDocument(document.id)}
+                          className="inline-flex items-center px-3 py-1.5 border border-green-300 text-xs font-medium rounded text-green-700 bg-green-50 hover:bg-green-100 transition-colors"
+                        >
+                          <CheckIcon className="w-3 h-3 mr-1" />
+                          승인
+                        </button>
+                      )}
+                      
+                      {canDelete(document) && (
+                        <button
+                          onClick={() => handleDeleteDocument(document.id)}
+                          className="inline-flex items-center px-3 py-1.5 border border-red-300 text-xs font-medium rounded text-red-700 bg-red-50 hover:bg-red-100 transition-colors"
+                        >
+                          <TrashIcon className="w-3 h-3 mr-1" />
+                          삭제
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

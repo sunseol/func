@@ -1,247 +1,313 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
-import dynamic from 'next/dynamic';
-import { useParams, useRouter } from 'next/navigation';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { useProjectNavigation, useWorkflowNavigation } from '@/contexts/NavigationContext';
+import { useToast } from '@/contexts/ToastContext';
+import { WorkflowStep, PlanningDocumentWithUsers } from '@/types/ai-pm';
+import WorkflowSidebar from '@/components/ai-pm/WorkflowSidebar';
+import WorkflowProgress from '@/components/ai-pm/WorkflowProgress';
+import WorkflowGuide from '@/components/ai-pm/WorkflowGuide';
+import DocumentEditor from '@/components/ai-pm/DocumentEditor';
+import AIChatPanel from '@/components/ai-pm/AIChatPanel';
+import DocumentManager from '@/components/ai-pm/DocumentManager';
 import { 
-  ProjectResponse, 
-  ProjectWithCreator, 
-  WORKFLOW_STEPS, 
-  WorkflowStep,
-  isValidWorkflowStep 
-} from '@/types/ai-pm';
-import { ArrowLeftIcon } from '@heroicons/react/24/outline';
-import { LoadingSpinner } from '@/components/ui/LoadingSkeletons';
+  DocumentTextIcon,
+  ChatBubbleLeftRightIcon,
+  LightBulbIcon,
+  ArrowLeftIcon
+} from '@heroicons/react/24/outline';
+import Link from 'next/link';
 
-// Dynamic imports for heavy components
-const WorkflowSidebar = dynamic(() => import('@/components/ai-pm/WorkflowSidebar'), {
-  loading: () => <div className="w-80 bg-gray-100 animate-pulse rounded-lg h-96"></div>,
-  ssr: false
-});
-
-const WorkflowStepNavigation = dynamic(() => import('@/components/ai-pm/WorkflowStepNavigation'), {
-  loading: () => <div className="h-16 bg-gray-100 animate-pulse rounded-lg"></div>,
-  ssr: false
-});
-
-const WorkflowGuide = dynamic(() => import('@/components/ai-pm/WorkflowGuide'), {
-  loading: () => <div className="bg-gray-100 animate-pulse rounded-lg h-32"></div>,
-  ssr: false
-});
-
-const AIChatPanel = dynamic(() => import('@/components/ai-pm/AIChatPanel'), {
-  loading: () => <div className="bg-gray-100 animate-pulse rounded-lg h-96"></div>,
-  ssr: false
-});
+interface ProjectData {
+  id: string;
+  name: string;
+  description: string | null;
+  memberCount: number;
+  documentCount: number;
+}
 
 export default function WorkflowStepPage() {
   const params = useParams();
-  const router = useRouter();
   const { user } = useAuth();
-  const { setCurrentProject } = useProjectNavigation();
-  const { setCurrentWorkflowStep } = useWorkflowNavigation();
+  const { error: showError } = useToast();
   
   const projectId = params.projectId as string;
-  const stepParam = params.step as string;
-  const step = parseInt(stepParam);
+  const step = parseInt(params.step as string) as WorkflowStep;
+  
+  const [project, setProject] = useState<ProjectData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'document' | 'chat' | 'guide'>('document');
+  const [completedSteps, setCompletedSteps] = useState<WorkflowStep[]>([]);
+  const [currentDocument, setCurrentDocument] = useState<PlanningDocumentWithUsers | null>(null);
 
-  const [project, setProject] = useState<ProjectWithCreator | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchProjectData = useCallback(async () => {
+  const loadProjectData = useCallback(async () => {
     try {
-      setLoading(true);
+      setIsLoading(true);
       const response = await fetch(`/api/ai-pm/projects/${projectId}`);
       
       if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error('프로젝트를 찾을 수 없습니다.');
-        } else if (response.status === 403) {
-          throw new Error('이 프로젝트에 접근할 권한이 없습니다.');
-        }
         throw new Error('프로젝트 정보를 불러오는데 실패했습니다.');
       }
 
-      const data: ProjectResponse = await response.json();
-      const projectWithProgress = {
-        ...data.project,
-        progress: data.progress || []
-      };
-      setProject(projectWithProgress);
+      const data = await response.json();
+      const projectData = data.project;
       
-      // Update navigation context
-      setCurrentProject(data.project);
-      setCurrentWorkflowStep(step);
+      setProject({
+        id: projectData.id,
+        name: projectData.name,
+        description: projectData.description,
+        memberCount: data.members?.length || 0,
+        documentCount: data.progress?.reduce((sum: number, p: any) => sum + p.document_count, 0) || 0
+      });
+
+      // 완료된 단계 계산
+      const completed = data.progress
+        ?.filter((p: any) => p && p.has_official_document)
+        .map((p: any) => p.workflow_step)
+        .filter((step: any) => step !== undefined && step !== null) || [];
+      setCompletedSteps(completed);
+
     } catch (err) {
-      setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.');
+      console.error('Error loading project:', err);
+      showError('프로젝트 로드 오류', '프로젝트 정보를 불러오는데 실패했습니다.');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
-  }, [projectId, step, setCurrentProject, setCurrentWorkflowStep]);
+  }, [projectId, showError]);
 
+  // 프로젝트 정보 로드
   useEffect(() => {
-    if (user && projectId) {
-      fetchProjectData();
+    loadProjectData();
+  }, [loadProjectData]);
+
+  const handleStepClick = (clickedStep: WorkflowStep) => {
+    // 현재 단계보다 낮은 단계로만 이동 가능
+    if (clickedStep <= step) {
+      window.location.href = `/ai-pm/${projectId}/workflow/${clickedStep}`;
     }
-  }, [user, projectId, fetchProjectData]);
+  };
 
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">로그인이 필요합니다</h2>
-          <p className="text-gray-600">이 페이지에 접근하려면 로그인해주세요.</p>
-        </div>
-      </div>
-    );
-  }
+  const handleDocumentCreated = (document: PlanningDocumentWithUsers) => {
+    setCurrentDocument(document);
+    // 프로젝트 데이터 새로고침
+    loadProjectData();
+  };
 
-  if (!isValidWorkflowStep(step)) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-red-600 mb-4">잘못된 워크플로우 단계</h2>
-          <p className="text-gray-600 mb-4">유효하지 않은 워크플로우 단계입니다.</p>
-          <button
-            onClick={() => router.push(`/ai-pm/${projectId}`)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-          >
-            프로젝트로 돌아가기
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const handleDocumentUpdated = (document: PlanningDocumentWithUsers) => {
+    setCurrentDocument(document);
+    // 프로젝트 데이터 새로고침
+    loadProjectData();
+  };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
+  const handleMessageSent = (message: any) => {
+    // 메시지 전송 후 필요한 경우 문서 상태 업데이트
+    console.log('Message sent:', message);
+  };
 
-  if (error) {
+  if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-red-600 mb-4">오류 발생</h2>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <div className="space-x-4">
-            <button
-              onClick={() => router.push(`/ai-pm/${projectId}`)}
-              className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
-            >
-              프로젝트로 돌아가기
-            </button>
-            <button
-              onClick={fetchProjectData}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-            >
-              다시 시도
-            </button>
-          </div>
+      <div className="min-h-screen bg-gray-50">
+        <div className="flex items-center justify-center h-screen">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
         </div>
       </div>
     );
   }
 
   if (!project) {
-    return null;
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">프로젝트를 찾을 수 없습니다</h2>
+          <p className="text-gray-600 mb-4">요청하신 프로젝트가 존재하지 않거나 접근 권한이 없습니다.</p>
+          <Link
+            href="/ai-pm"
+            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          >
+            <ArrowLeftIcon className="w-4 h-4 mr-2" />
+            프로젝트 목록으로
+          </Link>
+        </div>
+      </div>
+    );
   }
 
-  const stepName = WORKFLOW_STEPS[step as WorkflowStep];
-
   return (
-    <div className="flex h-screen bg-gray-50">
-      {/* Workflow Sidebar */}
-      <WorkflowSidebar 
-        projectId={projectId}
-        progress={project.progress || []}
-        currentStep={step as WorkflowStep}
-        className="w-80 flex-shrink-0"
-      />
+    <div className="min-h-screen bg-gray-50">
+      <div className="flex h-screen">
+        {/* 사이드바 */}
+        <WorkflowSidebar
+          projectId={projectId}
+          projectName={project.name}
+          currentStep={step}
+          completedSteps={completedSteps}
+          memberCount={project.memberCount}
+          documentCount={project.documentCount}
+          onStepClick={handleStepClick}
+        />
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="bg-white border-b border-gray-200 px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => router.push(`/ai-pm/${projectId}`)}
-                className="p-2 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100"
-              >
-                <ArrowLeftIcon className="h-5 w-5" />
-              </button>
+        {/* 메인 콘텐츠 */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* 헤더 */}
+          <div className="bg-white border-b border-gray-200 px-6 py-4">
+            <div className="flex items-center justify-between">
               <div>
-                <div className="flex items-center text-sm text-gray-500 mb-1">
-                  <span>{project.name}</span>
-                  <span className="mx-2">›</span>
-                  <span>워크플로우</span>
-                </div>
                 <h1 className="text-2xl font-bold text-gray-900">
-                  {step}단계: {stepName}
+                  {step}. {getWorkflowStepName(step)}
                 </h1>
+                <p className="text-gray-600 mt-1">
+                  {project.name} - {getWorkflowStepDescription(step)}
+                </p>
+              </div>
+              
+              {/* 진행률 */}
+              <div className="text-right">
+                <div className="text-sm text-gray-600">
+                  {completedSteps?.length || 0}/9 단계 완료
+                </div>
+                <div className="text-lg font-semibold text-gray-900">
+                  {Math.round(((completedSteps?.length || 0) / 9) * 100)}%
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Step Navigation */}
-          <WorkflowStepNavigation 
-            projectId={projectId}
-            currentStep={step as WorkflowStep}
-            progress={project.progress || []}
-          />
+          {/* 탭 네비게이션 */}
+          <div className="bg-white border-b border-gray-200 px-6">
+            <div className="flex space-x-8">
+              <button
+                onClick={() => setActiveTab('document')}
+                className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                  activeTab === 'document'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <DocumentTextIcon className="w-4 h-4 inline mr-2" />
+                문서 편집
+              </button>
+              <button
+                onClick={() => setActiveTab('chat')}
+                className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                  activeTab === 'chat'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <ChatBubbleLeftRightIcon className="w-4 h-4 inline mr-2" />
+                AI 어시스턴트
+              </button>
+              <button
+                onClick={() => setActiveTab('guide')}
+                className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                  activeTab === 'guide'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <LightBulbIcon className="w-4 h-4 inline mr-2" />
+                워크플로우 가이드
+              </button>
+            </div>
+          </div>
 
-          {/* Workflow Guide */}
-          <WorkflowGuide currentStep={step as WorkflowStep} />
-
-          {/* Main Workspace */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* AI Chat Panel */}
-            <AIChatPanel
-              projectId={projectId}
-              workflowStep={step as WorkflowStep}
-              onDocumentGenerated={(documentId) => {
-                // TODO: Handle document generation - will be implemented in task 10
-                console.log('Document generated:', documentId);
-              }}
-              className="h-[600px]"
-            />
-
-            {/* Document Editor Placeholder */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <div className="text-center">
-                <div className="mx-auto h-16 w-16 text-gray-400 mb-4">
-                  <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  문서 편집기
-                </h3>
-                <p className="text-gray-600 mb-4">
-                  AI와 대화 후 &quot;문서 생성&quot; 버튼을 클릭하면 이 영역에 문서 편집기가 표시됩니다.
-                </p>
-                <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-                  <h4 className="font-medium text-blue-900 mb-2">현재 단계: {stepName}</h4>
-                  <p className="text-sm text-blue-700">
-                    왼쪽 AI 어시스턴트와 대화하여 이 단계의 기획 문서를 작성해보세요.
-                    대화가 충분히 진행된 후 &quot;문서 생성&quot; 버튼을 클릭하면 AI가 자동으로 문서를 생성합니다.
-                  </p>
+          {/* 콘텐츠 영역 */}
+          <div className="flex-1 overflow-hidden">
+            {activeTab === 'document' && (
+              <div className="h-full flex">
+                                 {/* 문서 편집기 */}
+                 <div className="flex-1 p-6">
+                   <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                     <div className="text-center">
+                       <DocumentTextIcon className="mx-auto h-16 w-16 text-gray-400 mb-4" />
+                       <h3 className="text-lg font-medium text-gray-900 mb-2">
+                         문서 편집기
+                       </h3>
+                       <p className="text-gray-600 mb-4">
+                         AI와 대화 후 문서를 생성하면 이 영역에 편집기가 표시됩니다.
+                       </p>
+                       <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+                         <h4 className="font-medium text-blue-900 mb-2">
+                           현재 단계: {getWorkflowStepName(step)}
+                         </h4>
+                         <p className="text-sm text-blue-700">
+                           AI 어시스턴트와 대화하여 이 단계의 기획 문서를 작성해보세요.
+                         </p>
+                       </div>
+                     </div>
+                   </div>
+                 </div>
+                
+                {/* 문서 관리 */}
+                <div className="w-80 p-6 border-l border-gray-200 overflow-y-auto">
+                  <DocumentManager
+                    projectId={projectId}
+                    workflowStep={step}
+                    onDocumentCreated={handleDocumentCreated}
+                    onDocumentUpdated={handleDocumentUpdated}
+                  />
                 </div>
               </div>
-            </div>
+            )}
+
+            {activeTab === 'chat' && (
+              <div className="h-full p-6">
+                <AIChatPanel
+                  projectId={projectId}
+                  workflowStep={step}
+                  onMessageSent={handleMessageSent}
+                  className="h-full"
+                />
+              </div>
+            )}
+
+            {activeTab === 'guide' && (
+              <div className="h-full p-6 overflow-y-auto">
+                <div className="max-w-4xl mx-auto space-y-6">
+                  <WorkflowProgress
+                    currentStep={step}
+                    completedSteps={completedSteps}
+                    totalSteps={9}
+                    onStepClick={handleStepClick}
+                  />
+                  <WorkflowGuide currentStep={step} />
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
     </div>
   );
+}
+
+function getWorkflowStepName(step: WorkflowStep): string {
+  const stepNames: Record<WorkflowStep, string> = {
+    1: '컨셉 정의',
+    2: '기능 기획',
+    3: '기술 설계',
+    4: '개발 계획',
+    5: '테스트 계획',
+    6: '배포 준비',
+    7: '운영 계획',
+    8: '마케팅 전략',
+    9: '사업화 계획'
+  };
+  return stepNames[step];
+}
+
+function getWorkflowStepDescription(step: WorkflowStep): string {
+  const descriptions: Record<WorkflowStep, string> = {
+    1: '플랫폼의 기본 컨셉과 방향성을 정의합니다',
+    2: '핵심 기능과 요구사항을 정리합니다',
+    3: '기술 스택과 아키텍처를 설계합니다',
+    4: '개발 일정과 리소스를 계획합니다',
+    5: '테스트 전략과 품질 보증을 수립합니다',
+    6: '배포 전략과 운영 환경을 준비합니다',
+    7: '운영 프로세스와 모니터링을 계획합니다',
+    8: '마케팅 전략과 사용자 확보를 계획합니다',
+    9: '수익화 모델과 사업화 전략을 수립합니다'
+  };
+  return descriptions[step];
 }

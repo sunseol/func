@@ -1,58 +1,72 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
+import { useAuth } from '@/contexts/AuthContext';
+import { useToast, useApiError } from '@/contexts/ToastContext';
 import { 
-  PlanningDocumentWithUsers, 
-  DocumentStatus
+  PlanningDocumentWithUsers,
+  DocumentStatus,
+  WorkflowStep,
+  UpdateDocumentRequest
 } from '@/types/ai-pm';
-import { ClockIcon, EyeIcon, PencilIcon, DocumentDuplicateIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
-import ConflictAnalysisPanel from './ConflictAnalysisPanel';
+import { 
+  CheckIcon,
+  XMarkIcon,
+  EyeIcon,
+  EyeSlashIcon,
+  DocumentTextIcon,
+  ClockIcon,
+  ExclamationTriangleIcon,
+  TrashIcon,
+  ArrowPathIcon
+} from '@heroicons/react/24/outline';
 
-// Dynamic import to avoid SSR issues with the markdown editor
-const MDEditor = dynamic(
-  () => import('@uiw/react-md-editor'),
-  { ssr: false }
-);
-
-const MDPreview = dynamic(
-  () => import('@uiw/react-md-editor').then((mod) => mod.default.Markdown),
-  { ssr: false }
-);
-
-interface ConflictAnalysisResult {
-  hasConflicts: boolean;
-  conflictLevel: 'none' | 'minor' | 'major' | 'critical';
-  conflicts: Array<{
-    type: 'content' | 'requirement' | 'design' | 'technical';
-    description: string;
-    conflictingDocument: string;
-    severity: 'low' | 'medium' | 'high';
-    suggestion: string;
-  }>;
-  recommendations: string[];
-  summary: string;
-}
+// Dynamic import for markdown editor
+const RichEditor = dynamic(() => import('@/app/components/RichEditor'), {
+  loading: () => <div className="animate-pulse bg-gray-100 h-96 rounded-lg"></div>,
+  ssr: false
+});
 
 interface DocumentEditorProps {
   projectId: string;
-  workflowStep: number;
-  document?: PlanningDocumentWithUsers;
+  workflowStep: WorkflowStep;
+  document: PlanningDocumentWithUsers;
   isReadOnly?: boolean;
-  onSave?: (content: string, title?: string) => Promise<void>;
-  onStatusChange?: (status: DocumentStatus) => Promise<void>;
-  onDelete?: () => Promise<void>;
+  onSave: (content: string, title?: string) => Promise<PlanningDocumentWithUsers>;
+  onStatusChange: (status: DocumentStatus) => Promise<void>;
+  onDelete: () => Promise<void>;
   onShowVersionHistory?: () => void;
-  className?: string;
 }
 
-interface AutoSaveState {
-  isSaving: boolean;
-  lastSaved: Date | null;
-  hasUnsavedChanges: boolean;
-}
+const STATUS_CONFIG = {
+  private: {
+    label: '개인 문서',
+    color: 'bg-gray-100 text-gray-800',
+    icon: EyeSlashIcon,
+    description: '본인만 볼 수 있는 개인 문서입니다.'
+  },
+  pending_approval: {
+    label: '승인 대기',
+    color: 'bg-yellow-100 text-yellow-800',
+    icon: ClockIcon,
+    description: '관리자 승인을 기다리는 문서입니다.'
+  },
+  official: {
+    label: '공식 문서',
+    color: 'bg-green-100 text-green-800',
+    icon: CheckIcon,
+    description: '승인된 공식 문서입니다.'
+  },
+  rejected: {
+    label: '승인 반려',
+    color: 'bg-red-100 text-red-800',
+    icon: XMarkIcon,
+    description: '승인이 반려된 문서입니다.'
+  }
+};
 
-function DocumentEditor({
+export default function DocumentEditor({
   projectId,
   workflowStep,
   document,
@@ -60,481 +74,284 @@ function DocumentEditor({
   onSave,
   onStatusChange,
   onDelete,
-  onShowVersionHistory,
-  className = ''
+  onShowVersionHistory
 }: DocumentEditorProps) {
-  const [title, setTitle] = useState(document?.title || '');
-  const [content, setContent] = useState(document?.content || '');
-  const [isPreviewMode, setIsPreviewMode] = useState(false);
-  const [autoSave, setAutoSave] = useState<AutoSaveState>({
-    isSaving: false,
-    lastSaved: document ? new Date(document.updated_at) : null,
-    hasUnsavedChanges: false
-  });
-  const [error, setError] = useState<string | null>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showConflictAnalysis, setShowConflictAnalysis] = useState(false);
-  const [conflictAnalysisResult, setConflictAnalysisResult] = useState<ConflictAnalysisResult | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisMetadata, setAnalysisMetadata] = useState<{
-    analyzedDocuments: number;
-    timestamp: string;
-  } | null>(null);
+  const { user, profile } = useAuth();
+  const { success, error: showError, info } = useToast();
+  const { handleApiError } = useApiError();
 
-  const autoSaveTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
-  const initialContentRef = useRef(content);
-  const initialTitleRef = useRef(title);
+  const [title, setTitle] = useState(document.title);
+  const [content, setContent] = useState(document.content);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // Auto-save functionality
-  const performAutoSave = useCallback(async () => {
-    if (!onSave || isReadOnly || autoSave.isSaving) return;
+  const isAdmin = profile?.role === 'admin';
+  const isOwner = document.created_by === user?.id;
+  const canEdit = !isReadOnly && (isOwner || isAdmin);
+  const canChangeStatus = isAdmin || isOwner;
+  const canDelete = isOwner || isAdmin;
 
-    const hasContentChanged = content !== initialContentRef.current;
-    const hasTitleChanged = title !== initialTitleRef.current;
+  const statusConfig = STATUS_CONFIG[document.status];
 
-    if (!hasContentChanged && !hasTitleChanged) return;
-
-    setAutoSave(prev => ({ ...prev, isSaving: true }));
-    setError(null);
-
-    try {
-      await onSave(content, title);
-      
-      // Update refs to new saved state
-      initialContentRef.current = content;
-      initialTitleRef.current = title;
-      
-      setAutoSave({
-        isSaving: false,
-        lastSaved: new Date(),
-        hasUnsavedChanges: false
-      });
-    } catch (err: any) {
-      console.error('Auto-save failed:', err);
-      setError(err.message || '자동 저장에 실패했습니다.');
-      setAutoSave(prev => ({ 
-        ...prev, 
-        isSaving: false,
-        hasUnsavedChanges: true 
-      }));
-    }
-  }, [content, title, onSave, isReadOnly, autoSave.isSaving]);
-
-  // Set up auto-save timer
+  // Track unsaved changes
   useEffect(() => {
-    if (autoSaveTimeoutRef.current) {
-      clearTimeout(autoSaveTimeoutRef.current);
-    }
+    const hasChanges = title !== document.title || content !== document.content;
+    setHasUnsavedChanges(hasChanges);
+  }, [title, content, document.title, document.content]);
 
-    const hasContentChanged = content !== initialContentRef.current;
-    const hasTitleChanged = title !== initialTitleRef.current;
-    const hasChanges = hasContentChanged || hasTitleChanged;
-
-    setAutoSave(prev => ({ 
-      ...prev, 
-      hasUnsavedChanges: hasChanges 
-    }));
-
-    if (hasChanges && !isReadOnly) {
-      autoSaveTimeoutRef.current = setTimeout(performAutoSave, 2000); // Auto-save after 2 seconds
-    }
-
-    return () => {
-      if (autoSaveTimeoutRef.current) {
-        clearTimeout(autoSaveTimeoutRef.current);
+  // Warn before leaving with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
       }
     };
-  }, [content, title, performAutoSave, isReadOnly]);
 
-  // Manual save
-  const handleManualSave = async () => {
-    if (!onSave || isReadOnly) return;
-    await performAutoSave();
-  };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
 
-  // Status change handler
-  const handleStatusChange = async (newStatus: DocumentStatus) => {
-    if (!onStatusChange) return;
+  const handleSave = useCallback(async () => {
+    if (!hasUnsavedChanges) return;
 
+    setIsSaving(true);
     try {
-      setError(null);
-      await onStatusChange(newStatus);
-    } catch (err: any) {
-      setError(err.message || '상태 변경에 실패했습니다.');
-    }
-  };
-
-  // Delete handler
-  const handleDelete = async () => {
-    if (!onDelete) return;
-
-    const confirmed = window.confirm('정말로 이 문서를 삭제하시겠습니까?');
-    if (!confirmed) return;
-
-    try {
-      setError(null);
-      await onDelete();
-    } catch (err: any) {
-      setError(err.message || '문서 삭제에 실패했습니다.');
-    }
-  };
-
-  // Format last saved time
-  const formatLastSaved = (date: Date) => {
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const minutes = Math.floor(diff / 60000);
-    
-    if (minutes < 1) return '방금 전';
-    if (minutes < 60) return `${minutes}분 전`;
-    
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}시간 전`;
-    
-    return date.toLocaleDateString('ko-KR');
-  };
-
-  // Run conflict analysis
-  const runConflictAnalysis = async () => {
-    if (!content.trim() || !title.trim()) {
-      setError('충돌 분석을 위해서는 제목과 내용이 필요합니다.');
-      return;
-    }
-
-    setIsAnalyzing(true);
-    setError(null);
-
-    try {
-      const response = await fetch('/api/ai-pm/documents/analyze-conflicts', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          projectId,
-          currentContent: content,
-          currentTitle: title,
-          workflowStep
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || '충돌 분석에 실패했습니다.');
-      }
-
-      const data = await response.json();
-      setConflictAnalysisResult(data.analysis);
-      setAnalysisMetadata({
-        analyzedDocuments: data.analyzedDocuments,
-        timestamp: data.timestamp
-      });
-      setShowConflictAnalysis(true);
-
-    } catch (err: any) {
-      console.error('Conflict analysis failed:', err);
-      setError(err.message || '충돌 분석 중 오류가 발생했습니다.');
+      await onSave(content, title);
+      setHasUnsavedChanges(false);
+      success('문서 저장 완료', '변경사항이 성공적으로 저장되었습니다.');
+    } catch (error) {
+      handleApiError(error, '문서 저장에 실패했습니다.');
     } finally {
-      setIsAnalyzing(false);
+      setIsSaving(false);
     }
-  };
+  }, [content, title, hasUnsavedChanges, onSave, success, handleApiError]);
 
-  // Get status color
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'official':
-        return 'bg-green-100 text-green-800 border-green-200';
-      case 'pending_approval':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+  const handleStatusChange = useCallback(async (newStatus: DocumentStatus) => {
+    try {
+      await onStatusChange(newStatus);
+      
+      const statusMessages = {
+        pending_approval: '승인 요청이 완료되었습니다.',
+        official: '문서가 공식 문서로 승인되었습니다.',
+        private: '문서가 개인 문서로 변경되었습니다.',
+        rejected: '문서 승인이 반려되었습니다.'
+      };
+      
+      success('상태 변경 완료', statusMessages[newStatus]);
+    } catch (error) {
+      handleApiError(error, '문서 상태 변경에 실패했습니다.');
     }
-  };
+  }, [onStatusChange, success, handleApiError]);
 
-  // Get status text
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'official':
-        return '공식 승인됨';
-      case 'pending_approval':
-        return '승인 대기 중';
-      default:
-        return '개인 작업 중';
+  const handleDelete = useCallback(async () => {
+    setIsDeleting(true);
+    try {
+      await onDelete();
+      success('문서 삭제 완료', '문서가 성공적으로 삭제되었습니다.');
+    } catch (error) {
+      handleApiError(error, '문서 삭제에 실패했습니다.');
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
     }
+  }, [onDelete, success, handleApiError]);
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('ko-KR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   return (
-    <div className={`flex flex-col h-full bg-white border border-gray-200 rounded-lg ${isFullscreen ? 'fixed inset-0 z-50' : ''} ${className}`}>
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50">
-        <div className="flex-1 min-w-0">
-          {!isReadOnly ? (
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="문서 제목을 입력하세요"
-              className="w-full text-lg font-semibold bg-transparent border-none outline-none focus:ring-0 placeholder-gray-400"
-            />
-          ) : (
-            <h2 className="text-lg font-semibold text-gray-900 truncate">{title}</h2>
-          )}
-          
-          {/* Auto-save status */}
-          <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
-            {autoSave.isSaving && (
-              <span className="flex items-center gap-2">
-                <div className="w-3 h-3 border border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                저장 중...
-              </span>
-            )}
-            {!autoSave.isSaving && autoSave.hasUnsavedChanges && (
-              <span className="flex items-center gap-1 text-orange-600">
-                <PencilIcon className="w-4 h-4" />
-                저장되지 않은 변경사항
-              </span>
-            )}
-            {!autoSave.isSaving && !autoSave.hasUnsavedChanges && autoSave.lastSaved && (
-              <span className="flex items-center gap-1">
-                <ClockIcon className="w-4 h-4" />
-                마지막 저장: {formatLastSaved(autoSave.lastSaved)}
-              </span>
-            )}
-
-            {/* Document version info */}
-            {document && document.version > 1 && (
-              <span className="flex items-center gap-1 text-blue-600">
-                <DocumentDuplicateIcon className="w-4 h-4" />
-                v{document.version}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Action buttons */}
-        <div className="flex items-center gap-2 ml-4">
-          {/* Version history button */}
-          {document && onShowVersionHistory && (
-            <button
-              onClick={onShowVersionHistory}
-              className="flex items-center gap-1 px-3 py-1 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded hover:bg-gray-50"
-              title="버전 히스토리 보기"
-            >
-              <ClockIcon className="w-4 h-4" />
-              히스토리
-            </button>
-          )}
-
-          {/* Preview/Edit toggle */}
-          {!isReadOnly && (
-            <button
-              onClick={() => setIsPreviewMode(!isPreviewMode)}
-              className="flex items-center gap-1 px-3 py-1 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded hover:bg-gray-50"
-            >
-              {isPreviewMode ? (
-                <>
-                  <PencilIcon className="w-4 h-4" />
-                  편집
-                </>
-              ) : (
-                <>
-                  <EyeIcon className="w-4 h-4" />
-                  미리보기
-                </>
-              )}
-            </button>
-          )}
-          
-          {/* Fullscreen toggle */}
-          <button
-            onClick={() => setIsFullscreen(!isFullscreen)}
-            className="px-3 py-1 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded hover:bg-gray-50"
-          >
-            {isFullscreen ? '창 모드' : '전체화면'}
-          </button>
-
-          {/* AI PM Feedback button */}
-          {!isReadOnly && content.trim() && title.trim() && (
-            <button
-              onClick={runConflictAnalysis}
-              disabled={isAnalyzing}
-              className="flex items-center gap-1 px-3 py-1 text-sm text-blue-600 hover:text-blue-800 border border-blue-300 rounded hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isAnalyzing ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                  분석 중...
-                </>
-              ) : (
-                <>
-                  <ExclamationTriangleIcon className="w-4 h-4" />
-                  AI PM 피드백
-                </>
-              )}
-            </button>
-          )}
-
-          {/* Manual save button */}
-          {!isReadOnly && (
-            <button
-              onClick={handleManualSave}
-              disabled={autoSave.isSaving || !autoSave.hasUnsavedChanges}
-              className="px-3 py-1 text-sm text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              저장
-            </button>
-          )}
-
-          {/* Status change buttons */}
-          {document && onStatusChange && (
-            <div className="flex items-center gap-1">
-              {document.status === 'private' && (
-                <button
-                  onClick={() => handleStatusChange('pending_approval')}
-                  className="px-3 py-1 text-sm text-white bg-yellow-600 rounded hover:bg-yellow-700"
-                >
-                  승인 요청
-                </button>
-              )}
-              {document.status === 'pending_approval' && (
-                <>
-                  <button
-                    onClick={() => handleStatusChange('official')}
-                    className="px-3 py-1 text-sm text-white bg-green-600 rounded hover:bg-green-700"
-                  >
-                    승인
-                  </button>
-                  <button
-                    onClick={() => handleStatusChange('private')}
-                    className="px-3 py-1 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
-                  >
-                    반려
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Delete button */}
-          {document && onDelete && !isReadOnly && (
-            <button
-              onClick={handleDelete}
-              className="px-3 py-1 text-sm text-red-600 border border-red-300 rounded hover:bg-red-50"
-            >
-              삭제
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Error message */}
-      {error && (
-        <div className="p-3 bg-red-50 border-b border-red-200">
-          <p className="text-sm text-red-600">{error}</p>
-        </div>
-      )}
-
-      {/* Document status badge */}
-      {document && (
-        <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600">상태:</span>
-              <span className={`px-2 py-1 text-xs rounded-full border ${getStatusColor(document.status)}`}>
-                {getStatusText(document.status)}
+      <div className="px-6 py-4 border-b border-gray-200">
+        <div className="flex items-center justify-between">
+          <div className="flex-1">
+            <div className="flex items-center gap-3 mb-2">
+              <DocumentTextIcon className="h-5 w-5 text-gray-400" />
+              <h2 className="text-lg font-semibold text-gray-900">
+                {isEditing ? '문서 편집' : '문서 보기'}
+              </h2>
+              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusConfig.color}`}>
+                <statusConfig.icon className="h-3 w-3 mr-1" />
+                {statusConfig.label}
               </span>
             </div>
             
-            {/* Document metadata */}
-            <div className="flex items-center gap-4 text-xs text-gray-500">
-              <span>워크플로우 {workflowStep}단계</span>
-              {document.creator_name && (
-                <span>작성자: {document.creator_name}</span>
-              )}
-            </div>
+            {isEditing ? (
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="문서 제목을 입력하세요"
+              />
+            ) : (
+              <h3 className="text-xl font-medium text-gray-900">{document.title}</h3>
+            )}
+            
+            <p className="mt-1 text-sm text-gray-500">
+              {statusConfig.description}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Version History Button */}
+            {onShowVersionHistory && (
+              <button
+                onClick={onShowVersionHistory}
+                className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                <ArrowPathIcon className="h-4 w-4 mr-1" />
+                버전 기록
+              </button>
+            )}
+
+            {/* Status Change Dropdown */}
+            {canChangeStatus && !isReadOnly && (
+              <select
+                value={document.status}
+                onChange={(e) => handleStatusChange(e.target.value as DocumentStatus)}
+                className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="private">개인 문서</option>
+                <option value="pending_approval">승인 요청</option>
+                {isAdmin && <option value="official">공식 문서</option>}
+                {isAdmin && <option value="rejected">승인 반려</option>}
+              </select>
+            )}
+
+            {/* Edit/Save Button */}
+            {canEdit && (
+              <button
+                onClick={() => {
+                  if (isEditing) {
+                    handleSave();
+                  }
+                  setIsEditing(!isEditing);
+                }}
+                disabled={isSaving || (isEditing && !hasUnsavedChanges)}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSaving ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                    저장 중...
+                  </>
+                ) : isEditing ? (
+                  <>
+                    <CheckIcon className="h-4 w-4 mr-1" />
+                    저장
+                  </>
+                ) : (
+                  <>
+                    <DocumentTextIcon className="h-4 w-4 mr-1" />
+                    편집
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* Delete Button */}
+            {canDelete && (
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={isDeleting}
+                className="inline-flex items-center px-3 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <TrashIcon className="h-4 w-4 mr-1" />
+                삭제
+              </button>
+            )}
           </div>
         </div>
-      )}
 
-      {/* Editor/Preview content */}
-      <div className="flex-1 overflow-hidden">
-        {isReadOnly || isPreviewMode ? (
-          <div className="h-full overflow-y-auto">
-            <MDPreview
-              source={content}
-              style={{ 
-                padding: 16,
-                background: 'transparent',
-                minHeight: '100%'
-              }}
-            />
+        {/* Document Info */}
+        <div className="mt-4 flex items-center justify-between text-sm text-gray-500">
+          <div className="flex items-center gap-4">
+            <span>작성자: {document.creator_name || document.creator_email}</span>
+            <span>작성일: {formatDate(document.created_at)}</span>
+            {document.updated_at !== document.created_at && (
+              <span>수정일: {formatDate(document.updated_at)}</span>
+            )}
           </div>
-        ) : (
-          <div className="h-full" data-color-mode="light">
-            <MDEditor
-              value={content}
-              onChange={(val) => setContent(val || '')}
-              preview="edit"
-              hideToolbar={false}
-              height="100%"
-              textareaProps={{
-                placeholder: '마크다운 형식으로 문서를 작성하세요...',
-                style: {
-                  fontSize: 14,
-                  lineHeight: 1.6,
-                  fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace'
-                }
+          <div className="flex items-center gap-2">
+            {hasUnsavedChanges && (
+              <span className="inline-flex items-center text-orange-600">
+                <ExclamationTriangleIcon className="h-4 w-4 mr-1" />
+                저장되지 않은 변경사항
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Content Area */}
+      <div className="p-6">
+                 {isEditing ? (
+           <RichEditor
+             initialContent={content}
+             onSave={(newContent) => setContent(newContent)}
+             title="문서 편집"
+           />
+         ) : (
+          <div className="prose max-w-none">
+            <div 
+              className="markdown-content"
+              dangerouslySetInnerHTML={{ 
+                __html: content 
+                  .replace(/\n/g, '<br>')
+                  .replace(/#{1,6}\s+(.+)/g, '<h1>$1</h1>')
+                  .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                  .replace(/\*(.+?)\*/g, '<em>$1</em>')
+                  .replace(/`(.+?)`/g, '<code>$1</code>')
               }}
             />
           </div>
         )}
       </div>
 
-      {/* Footer with document info */}
-      {document && (
-        <div className="p-3 bg-gray-50 border-t border-gray-200 text-xs text-gray-500">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <div className="flex justify-between">
-                <span>생성일:</span>
-                <span>{new Date(document.created_at).toLocaleString('ko-KR')}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>수정일:</span>
-                <span>{new Date(document.updated_at).toLocaleString('ko-KR')}</span>
-              </div>
-            </div>
-            
-            <div>
-              {document.approved_by && document.approved_at && (
-                <>
-                  <div className="flex justify-between">
-                    <span>승인자:</span>
-                    <span>{document.approver_name || document.approver_email}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>승인일:</span>
-                    <span>{new Date(document.approved_at).toLocaleString('ko-KR')}</span>
-                  </div>
-                </>
-              )}
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">
+              문서 삭제 확인
+            </h3>
+            <p className="text-gray-600 mb-6">
+              "{document.title}" 문서를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeleting}
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 disabled:opacity-50"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="px-4 py-2 text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50 flex items-center"
+              >
+                {isDeleting && (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                )}
+                삭제
+              </button>
             </div>
           </div>
         </div>
       )}
-
-      {/* Conflict Analysis Panel */}
-      <ConflictAnalysisPanel
-        isOpen={showConflictAnalysis}
-        onClose={() => setShowConflictAnalysis(false)}
-        analysisResult={conflictAnalysisResult}
-        isAnalyzing={isAnalyzing}
-        onRunAnalysis={runConflictAnalysis}
-        analyzedDocuments={analysisMetadata?.analyzedDocuments}
-        timestamp={analysisMetadata?.timestamp}
-      />
     </div>
   );
 }
-
-export default memo(DocumentEditor);

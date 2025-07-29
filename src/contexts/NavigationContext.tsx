@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { ProjectWithCreator } from '@/types/ai-pm';
 
@@ -82,7 +82,7 @@ export function NavigationProvider({ children }: NavigationProviderProps) {
   }, [pathname]);
 
   // Navigation actions
-  const navigateToProject = (projectId: string) => {
+  const navigateToProject = useCallback((projectId: string) => {
     setState(prev => ({ ...prev, isNavigating: true }));
     router.push(`/ai-pm/${projectId}`);
     
@@ -90,9 +90,9 @@ export function NavigationProvider({ children }: NavigationProviderProps) {
     setTimeout(() => {
       setState(prev => ({ ...prev, isNavigating: false }));
     }, 300);
-  };
+  }, [router]);
 
-  const navigateToWorkflowStep = (projectId: string, step: number) => {
+  const navigateToWorkflowStep = useCallback((projectId: string, step: number) => {
     if (!canAccessWorkflowStep(projectId, step)) {
       console.warn(`Cannot access workflow step ${step} for project ${projectId}`);
       return;
@@ -104,9 +104,9 @@ export function NavigationProvider({ children }: NavigationProviderProps) {
     setTimeout(() => {
       setState(prev => ({ ...prev, isNavigating: false }));
     }, 300);
-  };
+  }, [router]);
 
-  const navigateBack = () => {
+  const navigateBack = useCallback(() => {
     const history = state.navigationHistory;
     if (history.length > 1) {
       const previousRoute = history[history.length - 2];
@@ -123,34 +123,34 @@ export function NavigationProvider({ children }: NavigationProviderProps) {
     } else {
       router.back();
     }
-  };
+  }, [router, state.navigationHistory]);
 
   // State management
-  const setCurrentProject = (project: ProjectWithCreator | null) => {
+  const setCurrentProject = useCallback((project: ProjectWithCreator | null) => {
     setState(prev => ({ ...prev, currentProject: project }));
-  };
+  }, []);
 
-  const setCurrentWorkflowStep = (step: number | null) => {
+  const setCurrentWorkflowStep = useCallback((step: number | null) => {
     setState(prev => ({ ...prev, currentWorkflowStep: step }));
-  };
+  }, []);
 
   // UI actions
-  const toggleSidebar = () => {
+  const toggleSidebar = useCallback(() => {
     setState(prev => ({ ...prev, showSidebar: !prev.showSidebar }));
-  };
+  }, []);
 
-  const setSidebarCollapsed = (collapsed: boolean) => {
+  const setSidebarCollapsed = useCallback((collapsed: boolean) => {
     setState(prev => ({ ...prev, sidebarCollapsed: collapsed }));
-  };
+  }, []);
 
   // Route guards
-  const canAccessProject = (projectId: string): boolean => {
+  const canAccessProject = useCallback((projectId: string): boolean => {
     // TODO: Implement project access validation based on user permissions
     // For now, allow access if user is authenticated
     return !!projectId;
-  };
+  }, []);
 
-  const canAccessWorkflowStep = (projectId: string, step: number): boolean => {
+  const canAccessWorkflowStep = useCallback((projectId: string, step: number): boolean => {
     // Validate step range
     if (step < 1 || step > 9) return false;
     
@@ -160,9 +160,9 @@ export function NavigationProvider({ children }: NavigationProviderProps) {
     // TODO: Add more sophisticated step access logic based on project progress
     // For now, allow access to all steps
     return true;
-  };
+  }, [canAccessProject]);
 
-  const contextValue: NavigationContextType = {
+  const contextValue: NavigationContextType = useMemo(() => ({
     state,
     navigateToProject,
     navigateToWorkflowStep,
@@ -173,7 +173,7 @@ export function NavigationProvider({ children }: NavigationProviderProps) {
     setSidebarCollapsed,
     canAccessProject,
     canAccessWorkflowStep
-  };
+  }), [state, navigateToProject, navigateToWorkflowStep, navigateBack, setCurrentProject, setCurrentWorkflowStep, toggleSidebar, setSidebarCollapsed, canAccessProject, canAccessWorkflowStep]);
 
   return (
     <NavigationContext.Provider value={contextValue}>

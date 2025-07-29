@@ -1,161 +1,172 @@
 'use client';
 
-import Link from 'next/link';
-import { ProjectProgress, WORKFLOW_STEPS, WorkflowStep } from '@/types/ai-pm';
+import React from 'react';
+import { WorkflowStep } from '@/types/ai-pm';
 import { 
-  ClockIcon, 
-  DocumentTextIcon,
-  ChevronRightIcon 
+  CheckCircleIcon,
+  ClockIcon,
+  ExclamationTriangleIcon,
+  ArrowRightIcon
 } from '@heroicons/react/24/outline';
-import { CheckCircleIcon as CheckCircleIconSolid } from '@heroicons/react/24/solid';
 
 interface WorkflowProgressProps {
-  progress: ProjectProgress[];
-  projectId: string;
+  currentStep: WorkflowStep;
+  completedSteps: WorkflowStep[];
+  totalSteps: number;
+  onStepClick?: (step: WorkflowStep) => void;
 }
 
-export default function WorkflowProgress({ progress, projectId }: WorkflowProgressProps) {
-  // Create a complete workflow steps array with progress data
-  const workflowSteps = Object.entries(WORKFLOW_STEPS).map(([stepNum, stepName]) => {
-    const stepNumber = parseInt(stepNum) as WorkflowStep;
-    const stepProgress = progress.find(p => p.workflow_step === stepNumber);
-    
-    return {
-      step: stepNumber,
-      name: stepName,
-      hasOfficialDocument: stepProgress?.has_official_document || false,
-      documentCount: stepProgress?.document_count || 0,
-      lastUpdated: stepProgress?.last_updated || null
-    };
-  });
+const STEP_LABELS: Record<WorkflowStep, string> = {
+  1: '컨셉 정의',
+  2: '기능 기획',
+  3: '기술 설계',
+  4: '개발 계획',
+  5: '테스트 계획',
+  6: '배포 준비',
+  7: '운영 계획',
+  8: '마케팅 전략',
+  9: '사업화 계획'
+};
 
-  const completedSteps = workflowSteps.filter(step => step.hasOfficialDocument).length;
-  const progressPercentage = Math.round((completedSteps / 9) * 100);
+const STEP_DESCRIPTIONS: Record<WorkflowStep, string> = {
+  1: '플랫폼 컨셉과 방향성 정의',
+  2: '핵심 기능과 요구사항 정리',
+  3: '기술 스택과 아키텍처 설계',
+  4: '개발 일정과 리소스 계획',
+  5: '테스트 전략과 품질 보증',
+  6: '배포 전략과 운영 준비',
+  7: '운영 프로세스와 모니터링 계획',
+  8: '마케팅 전략과 사용자 확보 계획',
+  9: '수익화 모델과 사업화 전략'
+};
 
-  const formatLastUpdated = (dateString: string | null) => {
-    if (!dateString) return null;
-    
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
-    
-    if (diffInHours < 1) return '방금 전';
-    if (diffInHours < 24) return `${diffInHours}시간 전`;
-    if (diffInHours < 24 * 7) return `${Math.floor(diffInHours / 24)}일 전`;
-    
-    return date.toLocaleDateString('ko-KR', {
-      month: 'short',
-      day: 'numeric'
-    });
+export default function WorkflowProgress({
+  currentStep,
+  completedSteps,
+  totalSteps,
+  onStepClick
+}: WorkflowProgressProps) {
+  const steps = Array.from({ length: totalSteps }, (_, i) => (i + 1) as WorkflowStep);
+  const progressPercentage = (completedSteps.length / totalSteps) * 100;
+
+  const getStepStatus = (step: WorkflowStep) => {
+    if (completedSteps.includes(step)) return 'completed';
+    if (step === currentStep) return 'current';
+    return 'pending';
+  };
+
+  const getStepIcon = (step: WorkflowStep, status: string) => {
+    switch (status) {
+      case 'completed':
+        return <CheckCircleIcon className="w-6 h-6 text-green-500" />;
+      case 'current':
+        return <ClockIcon className="w-6 h-6 text-blue-500" />;
+      default:
+        return <div className="w-6 h-6 rounded-full border-2 border-gray-300 bg-gray-50" />;
+    }
+  };
+
+  const getStepColor = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return 'text-green-600 bg-green-50 border-green-200';
+      case 'current':
+        return 'text-blue-600 bg-blue-50 border-blue-200';
+      default:
+        return 'text-gray-500 bg-gray-50 border-gray-200';
+    }
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-      <div className="px-6 py-4 border-b border-gray-200">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-medium text-gray-900">워크플로우 진행 상황</h3>
-          <div className="flex items-center text-sm text-gray-600">
-            <span className="font-medium">{completedSteps}/9 단계 완료</span>
-            <span className="ml-2 text-blue-600 font-medium">({progressPercentage}%)</span>
-          </div>
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      {/* 전체 진행률 */}
+      <div className="mb-6">
+        <div className="flex justify-between items-center mb-2">
+          <h3 className="text-lg font-semibold text-gray-900">워크플로우 진행률</h3>
+          <span className="text-sm font-medium text-gray-600">
+            {completedSteps.length} / {totalSteps} 완료
+          </span>
         </div>
-        
-        {/* Progress Bar */}
-        <div className="mt-4">
-          <div className="w-full bg-gray-200 rounded-full h-2">
-            <div 
-              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${progressPercentage}%` }}
-            />
-          </div>
+        <div className="w-full bg-gray-200 rounded-full h-2">
+          <div 
+            className="bg-gradient-to-r from-blue-500 to-green-500 h-2 rounded-full transition-all duration-300"
+            style={{ width: `${progressPercentage}%` }}
+          ></div>
+        </div>
+        <div className="mt-2 text-sm text-gray-600">
+          {Math.round(progressPercentage)}% 완료
         </div>
       </div>
 
-      <div className="p-6">
-        <div className="space-y-4">
-          {workflowSteps.map((step, index) => {
-            const isCompleted = step.hasOfficialDocument;
-            const hasDocuments = step.documentCount > 0;
-            
-            return (
-              <Link
-                key={step.step}
-                href={`/ai-pm/${projectId}/workflow/${step.step}`}
-                className="block"
+      {/* 단계별 진행 상황 */}
+      <div className="space-y-4">
+        {steps.map((step, index) => {
+          const status = getStepStatus(step);
+          const isClickable = onStepClick && (status === 'completed' || status === 'current');
+          
+          return (
+            <div key={step} className="relative">
+              {/* 연결선 */}
+              {index < steps.length - 1 && (
+                <div className="absolute left-3 top-6 w-0.5 h-8 bg-gray-200"></div>
+              )}
+              
+              <div 
+                className={`flex items-start space-x-4 p-4 rounded-lg border transition-all duration-200 ${
+                  getStepColor(status)
+                } ${isClickable ? 'cursor-pointer hover:shadow-md' : ''}`}
+                onClick={() => isClickable && onStepClick?.(step)}
               >
-                <div className="flex items-center p-4 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors cursor-pointer">
-                  {/* Step Number & Status Icon */}
-                  <div className="flex-shrink-0 mr-4">
-                    {isCompleted ? (
-                      <CheckCircleIconSolid className="h-8 w-8 text-green-500" />
-                    ) : hasDocuments ? (
-                      <ClockIcon className="h-8 w-8 text-yellow-500" />
-                    ) : (
-                      <div className="h-8 w-8 rounded-full border-2 border-gray-300 flex items-center justify-center">
-                        <span className="text-sm font-medium text-gray-500">{step.step}</span>
-                      </div>
+                {/* 아이콘 */}
+                <div className="flex-shrink-0 mt-1">
+                  {getStepIcon(step, status)}
+                </div>
+
+                {/* 내용 */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center space-x-2">
+                    <h4 className="text-sm font-medium">
+                      {step}. {STEP_LABELS[step]}
+                    </h4>
+                    {status === 'current' && (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        진행 중
+                      </span>
+                    )}
+                    {status === 'completed' && (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        완료
+                      </span>
                     )}
                   </div>
-
-                  {/* Step Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-sm font-medium text-gray-900 truncate">
-                        {step.step}. {step.name}
-                      </h4>
-                      <ChevronRightIcon className="h-5 w-5 text-gray-400 ml-2 flex-shrink-0" />
-                    </div>
-                    
-                    <div className="mt-1 flex items-center text-xs text-gray-500">
-                      {isCompleted && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 mr-2">
-                          완료
-                        </span>
-                      )}
-                      
-                      {hasDocuments && (
-                        <div className="flex items-center mr-3">
-                          <DocumentTextIcon className="h-3 w-3 mr-1" />
-                          <span>문서 {step.documentCount}개</span>
-                        </div>
-                      )}
-                      
-                      {step.lastUpdated && (
-                        <span>최근 업데이트: {formatLastUpdated(step.lastUpdated)}</span>
-                      )}
-                      
-                      {!hasDocuments && (
-                        <span className="text-gray-400">시작하지 않음</span>
-                      )}
-                    </div>
-                  </div>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {STEP_DESCRIPTIONS[step]}
+                  </p>
                 </div>
-              </Link>
-            );
-          })}
-        </div>
 
-        {/* Summary */}
-        <div className="mt-6 pt-6 border-t border-gray-200">
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div>
-              <div className="text-2xl font-bold text-green-600">{completedSteps}</div>
-              <div className="text-sm text-gray-600">완료</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-yellow-600">
-                {workflowSteps.filter(s => s.documentCount > 0 && !s.hasOfficialDocument).length}
+                {/* 화살표 */}
+                {index < steps.length - 1 && (
+                  <div className="flex-shrink-0 mt-1">
+                    <ArrowRightIcon className="w-4 h-4 text-gray-400" />
+                  </div>
+                )}
               </div>
-              <div className="text-sm text-gray-600">진행 중</div>
             </div>
-            <div>
-              <div className="text-2xl font-bold text-gray-400">
-                {workflowSteps.filter(s => s.documentCount === 0).length}
-              </div>
-              <div className="text-sm text-gray-600">미시작</div>
-            </div>
-          </div>
+          );
+        })}
+      </div>
+
+      {/* 현재 단계 정보 */}
+      <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+        <div className="flex items-center space-x-2">
+          <ClockIcon className="w-5 h-5 text-blue-500" />
+          <h4 className="font-medium text-blue-900">
+            현재 단계: {STEP_LABELS[currentStep]}
+          </h4>
         </div>
+        <p className="text-sm text-blue-700 mt-1">
+          {STEP_DESCRIPTIONS[currentStep]}
+        </p>
       </div>
     </div>
   );

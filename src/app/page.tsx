@@ -24,6 +24,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useNotification } from '@/context/NotificationContext';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import MainHeader from '@/components/layout/MainHeader';
 
 const { Header, Content } = Layout;
 const { Title, Paragraph } = Typography;
@@ -341,83 +342,7 @@ export default function Home() {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', backgroundColor: isDarkMode ? '#001529' : '#001529' }}>
-        <Title level={3} style={{ color: 'white', margin: 0 }}>FunCommute</Title>
-        <Space align="center">
-          <Paragraph style={{ color: 'rgba(255, 255, 255, 0.65)', margin: 0, display: 'none' }}>일일 업무 보고서 생성 도구</Paragraph>
-          <Switch
-            checkedChildren={<MoonOutlined />}
-            unCheckedChildren={<SunOutlined />}
-            checked={isDarkMode}
-            onChange={setIsDarkMode}
-            style={{ marginRight: '20px' }}
-          />
-          {authLoading ? (
-            <Typography.Text style={{ color: 'white' }}>로딩 중...</Typography.Text>
-          ) : user ? (
-            <Space align="center">
-              <Typography.Text style={{ color: 'white', marginRight: '8px' }}>
-                {user.user_metadata?.full_name || user.email?.split('@')[0]}
-              </Typography.Text>
-              <Link href="/ai-pm">
-                <Button type="link" size="small" style={{ padding: '0 8px', color: 'white' }}>
-                  🤖 AI PM
-                </Button>
-              </Link>
-              <Link href="/my-reports">
-                <Button type="link" size="small" style={{ padding: '0 8px', color: 'white' }}>
-                  내 보고서
-                </Button>
-              </Link>
-              <Link href="/notifications">
-                <Button 
-                  type="link" 
-                  size="small" 
-                  style={{ padding: '0 8px', color: 'white', position: 'relative' }}
-                  icon={<BellOutlined />}
-                >
-                  알림
-                  {unreadCount > 0 && (
-                    <span
-                      style={{
-                        position: 'absolute',
-                        top: -2,
-                        right: -2,
-                        backgroundColor: '#ff4d4f',
-                        color: 'white',
-                        borderRadius: '50%',
-                        width: 16,
-                        height: 16,
-                        fontSize: 10,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        lineHeight: 1,
-                      }}
-                    >
-                      {unreadCount > 9 ? '9+' : unreadCount}
-                    </span>
-                  )}
-                </Button>
-              </Link>
-              {(user.email === 'jakeseol99@keduall.com' || user.user_metadata?.role === 'admin') && (
-                <Link href="/admin">
-                  <Button type="link" size="small" style={{ padding: '0 8px', color: 'white' }}>
-                    관리자
-                  </Button>
-                </Link>
-              )}
-              <Button type="primary" danger onClick={signOut} size="small">
-                로그아웃
-              </Button>
-            </Space>
-          ) : (
-            <Link href="/login">
-              <Button type="primary" size="small">로그인</Button>
-            </Link>
-          )}
-        </Space>
-      </Header>
+      <MainHeader />
       <Content style={{ padding: '24px 48px' }}>
         <div style={{ background: isDarkMode ? '#141414' : '#fff', padding: 24, borderRadius: 8, boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)' }}>
           <Tabs defaultActiveKey="daily" activeKey={activeTab} onChange={handleTabChange} items={tabItems} centered />

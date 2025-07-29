@@ -56,7 +56,7 @@ async function checkProjectAccess(supabase: any, userId: string, projectId: stri
 // GET /api/ai-pm/projects/[projectId] - Get specific project details
 export async function GET(
   request: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
     const supabase = createClient();
@@ -67,7 +67,7 @@ export async function GET(
     }
 
     const { user } = authResult;
-    const { projectId } = params;
+    const { projectId } = await params;
 
     // Validate UUID format
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -144,7 +144,7 @@ export async function GET(
 // PUT /api/ai-pm/projects/[projectId] - Update project (creator or admin only)
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
     const supabase = createClient();
@@ -155,7 +155,7 @@ export async function PUT(
     }
 
     const { user } = authResult;
-    const { projectId } = params;
+    const { projectId } = await params;
     const body: UpdateProjectRequest = await request.json();
 
     // Validate UUID format
@@ -259,7 +259,7 @@ export async function PUT(
 // DELETE /api/ai-pm/projects/[projectId] - Delete project (admin only)
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
     const supabase = createClient();
@@ -271,7 +271,7 @@ export async function DELETE(
       });
     }
 
-    const { projectId } = params;
+    const { projectId } = await params;
 
     // Validate UUID format
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

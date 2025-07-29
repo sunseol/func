@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { AIpmErrorType } from '@/types/ai-pm';
+
+type Params = {
+  projectId: string;
+};
 
 interface ProjectActivity {
   id: string;
@@ -38,7 +43,7 @@ interface MemberActivitySummary {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Params }
 ) {
   try {
     const supabase = createClient();
@@ -90,10 +95,10 @@ export async function GET(
       .from('project_activities')
       .select(`
         *,
-        user:user_id (
+        user:users (
           email,
           user_profiles (
-            name
+            full_name
           )
         )
       `)
@@ -126,7 +131,7 @@ export async function GET(
       metadata: activity.metadata || {},
       description: activity.description,
       created_at: activity.created_at,
-      user_name: activity.user?.user_profiles?.name || null,
+      user_name: activity.user?.user_profiles?.[0]?.full_name || null,
       user_email: activity.user?.email || null
     }));
 
@@ -170,10 +175,10 @@ export async function GET(
           documents_approved,
           ai_conversations,
           last_activity_at,
-          user:user_id (
+          user:users (
             email,
             user_profiles (
-              name
+              full_name
             )
           ),
           project_member:project_members!inner (
@@ -186,7 +191,7 @@ export async function GET(
       if (!memberSummaryError && memberSummaryData) {
         response.memberSummary = memberSummaryData.map((member: any) => ({
           user_id: member.user_id,
-          user_name: member.user?.user_profiles?.name || null,
+          user_name: member.user?.user_profiles?.[0]?.full_name || null,
           user_email: member.user?.email || 'Unknown',
           role: member.project_member?.role || 'Unknown',
           documents_created: member.documents_created,
@@ -212,11 +217,11 @@ export async function GET(
 // 새로운 활동 기록을 위한 POST 엔드포인트
 export async function POST(
   request: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId:string }> }
 ) {
   try {
     const supabase = createClient();
-    const { projectId } = params;
+    const { projectId } = await params;
     
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();

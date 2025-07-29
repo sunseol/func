@@ -46,30 +46,37 @@ export async function GET(request: NextRequest) {
       .eq('user_id', user.id)
       .single();
 
+    let userProfile = null;
     if (memberError || !projectMember) {
       // Check if user is admin
-      const { data: userProfile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('user_profiles')
         .select('role')
         .eq('id', user.id)
         .single();
+      
+      userProfile = profile;
 
-      if (!userProfile || userProfile.role !== 'admin') {
+      if (profileError || !userProfile || userProfile.role !== 'admin') {
         return NextResponse.json(
           { error: AIpmErrorType.FORBIDDEN, message: '프로젝트에 접근할 권한이 없습니다.' },
           { status: 403 }
         );
       }
+    } else {
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+      userProfile = profile;
     }
+
 
     // Build query
     let query = supabase
       .from('planning_documents')
-      .select(`
-        *,
-        creator:user_profiles!created_by(email, full_name),
-        approver:user_profiles!approved_by(email, full_name)
-      `)
+      .select(`*`) // Select all fields from planning_documents
       .eq('project_id', projectId);
 
     // Add filters
@@ -98,25 +105,46 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Manually fetch user details for creator and approver
+    const userIds = new Set<string>();
+    documents.forEach(doc => {
+      if (doc.created_by) userIds.add(doc.created_by);
+      if (doc.approved_by) userIds.add(doc.approved_by);
+    });
+
+    let userProfilesMap = new Map<string, { email: string; full_name: string | null }>();
+    if (userIds.size > 0) {
+      const { data: profiles, error: profilesError } = await supabase
+        .from('users')
+        .select('id, email, user_profiles(full_name)')
+        .in('id', Array.from(userIds));
+
+      if (profilesError) {
+        console.error('Error fetching user profiles:', profilesError);
+        // Continue without user details if this fails
+      } else {
+        profiles.forEach((p: any) => {
+          userProfilesMap.set(p.id, {
+            email: p.email,
+            full_name: p.user_profiles?.[0]?.full_name || null
+          });
+        });
+      }
+    }
+
     // Format response
     const documentsWithUsers = documents.map(doc => ({
       ...doc,
-      creator_email: doc.creator?.email || '',
-      creator_name: doc.creator?.full_name || null,
-      approver_email: doc.approver?.email || null,
-      approver_name: doc.approver?.full_name || null
+      creator_email: userProfilesMap.get(doc.created_by)?.email || '',
+      creator_name: userProfilesMap.get(doc.created_by)?.full_name || null,
+      approver_email: doc.approved_by ? userProfilesMap.get(doc.approved_by)?.email || null : null,
+      approver_name: doc.approved_by ? userProfilesMap.get(doc.approved_by)?.full_name || null : null,
     }));
-
-    // Remove nested objects
-    documentsWithUsers.forEach(doc => {
-      delete doc.creator;
-      delete doc.approver;
-    });
 
     const response: DocumentsResponse = { documents: documentsWithUsers };
     return NextResponse.json(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Documents API Error:', error);
     return NextResponse.json(
       { 
@@ -198,11 +226,7 @@ export async function POST(request: NextRequest) {
         version: 1,
         created_by: user.id
       }])
-      .select(`
-        *,
-        creator:user_profiles!created_by(email, full_name),
-        approver:user_profiles!approved_by(email, full_name)
-      `)
+      .select('*') // Select all fields from the new document
       .single();
 
     if (createError) {
@@ -213,23 +237,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Manually fetch creator details
+    const { data: creatorProfile, error: profileError } = await supabase
+      .from('users')
+      .select('email, user_profiles(full_name)')
+      .eq('id', document.created_by)
+      .single();
+
     // Format response
     const documentWithUsers = {
       ...document,
-      creator_email: document.creator?.email || '',
-      creator_name: document.creator?.full_name || null,
-      approver_email: document.approver?.email || null,
-      approver_name: document.approver?.full_name || null
+      creator_email: profileError ? '' : creatorProfile.email,
+      creator_name: profileError ? null : (creatorProfile.user_profiles as any)?.[0]?.full_name || null,
+      approver_email: null,
+      approver_name: null,
     };
-
-    // Remove nested objects
-    delete documentWithUsers.creator;
-    delete documentWithUsers.approver;
 
     const response: DocumentResponse = { document: documentWithUsers };
     return NextResponse.json(response, { status: 201 });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Create Document API Error:', error);
     return NextResponse.json(
       { 

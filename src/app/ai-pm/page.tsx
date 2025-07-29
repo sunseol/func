@@ -1,189 +1,252 @@
 'use client';
 
-import { useState, useEffect, useMemo, Suspense } from 'react';
-import dynamic from 'next/dynamic';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useToast, useApiError } from '@/contexts/ToastContext';
-import { useProjects } from '@/hooks/useApiCache';
-import { ProjectsResponse, UserProject, ProjectWithCreator } from '@/types/ai-pm';
-import { ProjectCardSkeleton, LoadingSpinner } from '@/components/ui/LoadingSkeletons';
-import { PlusIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { useToast } from '@/contexts/ToastContext';
+import { ProjectWithCreator, CreateProjectRequest } from '@/types/ai-pm';
+import ProjectCard from '@/components/ai-pm/ProjectCard';
+import CreateProjectModal from '@/components/ai-pm/CreateProjectModal';
+import { 
+  PlusIcon,
+  FolderIcon,
+  UserGroupIcon,
+  DocumentTextIcon,
+  ClockIcon
+} from '@heroicons/react/24/outline';
 
-// Dynamic imports for code splitting
-const ProjectCard = dynamic(() => import('@/components/ai-pm/ProjectCard'), {
-  loading: () => <ProjectCardSkeleton />,
-  ssr: false
-});
-
-const CreateProjectModal = dynamic(() => import('@/components/ai-pm/CreateProjectModal'), {
-  loading: () => <div className="animate-pulse">모달 로딩 중...</div>,
-  ssr: false
-});
-
-export default function AIPMDashboard() {
-  const { user, isAdmin } = useAuth();
-  const { success } = useToast();
-  const { handleApiError } = useApiError();
-  const [showCreateModal, setShowCreateModal] = useState(false);
+export default function AIPMPage() {
+  const { user } = useAuth();
+  const { success, error: showError } = useToast();
   
-  // Use cached API call
-  const { 
-    data: projectsData, 
-    error: apiError, 
-    isLoading, 
-    isValidating,
-    mutate: refetchProjects 
-  } = useProjects();
+  const [projects, setProjects] = useState<ProjectWithCreator[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [stats, setStats] = useState({
+    totalProjects: 0,
+    activeProjects: 0,
+    totalDocuments: 0,
+    recentActivity: 0
+  });
 
-  // Memoized projects data
-  const projects = useMemo(() => {
-    return projectsData?.projects as (UserProject | ProjectWithCreator)[] || [];
-  }, [projectsData]);
+  const loadProjects = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch('/api/ai-pm/projects');
+      
+      if (!response.ok) {
+        throw new Error('프로젝트 목록을 불러오는데 실패했습니다.');
+      }
 
-  // Handle API errors
-  useEffect(() => {
-    if (apiError) {
-      handleApiError(apiError, '프로젝트를 불러오는데 실패했습니다.');
+      const data = await response.json();
+      setProjects(data.projects || []);
+
+      // 통계 계산
+      const totalProjects = data.projects?.length || 0;
+      const activeProjects = data.projects?.filter((p: any) => 
+        p.progress?.some((prog: any) => prog.has_official_document)
+      ).length || 0;
+      const totalDocuments = data.projects?.reduce((sum: number, p: any) => 
+        sum + (p.progress?.reduce((docSum: number, prog: any) => docSum + prog.document_count, 0) || 0), 0
+      ) || 0;
+
+      setStats({
+        totalProjects,
+        activeProjects,
+        totalDocuments,
+        recentActivity: Math.floor(Math.random() * 10) + 1 // 임시 데이터
+      });
+
+    } catch (err) {
+      console.error('Error loading projects:', err);
+      showError('프로젝트 로드 오류', '프로젝트 목록을 불러오는데 실패했습니다.');
+    } finally {
+      setIsLoading(false);
     }
-  }, [apiError, handleApiError]);
+  }, [showError]);
 
-  const handleProjectCreated = () => {
+  // 프로젝트 목록 로드
+  useEffect(() => {
+    if (user) {
+      loadProjects();
+    }
+  }, [user, loadProjects]);
+
+  const handleCreateProject = async () => {
+    // 프로젝트 생성 후 목록 새로고침
+    await loadProjects();
     setShowCreateModal(false);
-    success('프로젝트 생성 완료', '새로운 프로젝트가 성공적으로 생성되었습니다.');
-    refetchProjects();
+    success('프로젝트 생성', '프로젝트가 성공적으로 생성되었습니다.');
+  };
+
+  const handleProjectDelete = async (projectId: string) => {
+    try {
+      const response = await fetch(`/api/ai-pm/projects/${projectId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('프로젝트 삭제에 실패했습니다.');
+      }
+
+      setProjects(prev => prev.filter(p => p.id !== projectId));
+      
+      success('프로젝트 삭제', '프로젝트가 성공적으로 삭제되었습니다.');
+      
+      // 통계 업데이트
+      setStats(prev => ({
+        ...prev,
+        totalProjects: prev.totalProjects - 1
+      }));
+
+    } catch (err) {
+      console.error('Error deleting project:', err);
+      showError('프로젝트 삭제 오류', '프로젝트 삭제에 실패했습니다.');
+    }
   };
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">로그인이 필요합니다</h2>
-          <p className="text-gray-600">AI PM 기능을 사용하려면 로그인해주세요.</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="space-y-2">
-            <div className="h-8 bg-gray-200 rounded w-48 animate-pulse"></div>
-            <div className="h-4 bg-gray-200 rounded w-32 animate-pulse"></div>
-          </div>
-          <div className="h-10 bg-gray-200 rounded w-32 animate-pulse"></div>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <ProjectCardSkeleton key={index} />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (apiError && !isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-red-600 mb-4">오류 발생</h2>
-          <p className="text-gray-600 mb-4">{apiError.message}</p>
-          <button
-            onClick={refetchProjects}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-          >
-            다시 시도
-          </button>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">로그인이 필요합니다</h2>
+          <p className="text-gray-600">AI-PM 시스템을 사용하려면 로그인해주세요.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="py-8">
-      {/* Header */}
-      <div className="mb-6 sm:mb-8">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-          <div className="mb-4 sm:mb-0">
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">AI PM 대시보드</h1>
-              {isValidating && (
-                <div className="flex items-center gap-2 text-sm text-blue-600">
-                  <LoadingSpinner size="sm" />
-                  <span>업데이트 중...</span>
-                </div>
-              )}
-            </div>
-            <p className="mt-2 text-sm sm:text-base text-gray-600">
-              AI와 함께하는 체계적인 프로젝트 기획 관리
-            </p>
-          </div>
-          <div className="flex gap-3">
-            <button
-              onClick={refetchProjects}
-              disabled={isValidating}
-              className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              title="프로젝트 목록 새로고침"
-            >
-              <ArrowPathIcon className={`h-4 w-4 ${isValidating ? 'animate-spin' : ''}`} />
-            </button>
-            {isAdmin && (
+    <div className="min-h-screen bg-gray-50">
+      {/* 헤더 */}
+      <div className="bg-white shadow-sm border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="py-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">AI-PM 프로젝트</h1>
+                <p className="mt-2 text-gray-600">
+                  AI와 함께 체계적으로 플랫폼을 기획하세요
+                </p>
+              </div>
               <button
                 onClick={() => setShowCreateModal(true)}
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 w-full sm:w-auto justify-center"
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors"
               >
-                <PlusIcon className="h-5 w-5 mr-2" />
+                <PlusIcon className="w-4 h-4 mr-2" />
                 새 프로젝트
               </button>
-            )}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Projects Grid */}
-      {projects.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="mx-auto h-24 w-24 text-gray-400">
-            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-            </svg>
+      {/* 통계 카드 */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <FolderIcon className="h-8 w-8 text-blue-500" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">전체 프로젝트</p>
+                <p className="text-2xl font-semibold text-gray-900">{stats.totalProjects}</p>
+              </div>
+            </div>
           </div>
-          <h3 className="mt-4 text-lg font-medium text-gray-900">프로젝트가 없습니다</h3>
-          <p className="mt-2 text-gray-500">
-            {isAdmin 
-              ? '새 프로젝트를 생성하여 AI PM 기능을 시작해보세요.'
-              : '관리자가 프로젝트에 초대할 때까지 기다려주세요.'
-            }
-          </p>
-          {isAdmin && (
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
-            >
-              <PlusIcon className="h-5 w-5 mr-2" />
-              첫 번째 프로젝트 만들기
-            </button>
+
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <UserGroupIcon className="h-8 w-8 text-green-500" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">진행 중</p>
+                <p className="text-2xl font-semibold text-gray-900">{stats.activeProjects}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <DocumentTextIcon className="h-8 w-8 text-purple-500" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">총 문서</p>
+                <p className="text-2xl font-semibold text-gray-900">{stats.totalDocuments}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <ClockIcon className="h-8 w-8 text-orange-500" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">최근 활동</p>
+                <p className="text-2xl font-semibold text-gray-900">{stats.recentActivity}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 프로젝트 목록 */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900">내 프로젝트</h2>
+          </div>
+
+          {isLoading ? (
+            <div className="p-6">
+              <div className="animate-pulse space-y-4">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="h-32 bg-gray-200 rounded-lg"></div>
+                ))}
+              </div>
+            </div>
+          ) : projects.length === 0 ? (
+            <div className="p-12 text-center">
+              <FolderIcon className="mx-auto h-12 w-12 text-gray-400" />
+              <h3 className="mt-2 text-sm font-medium text-gray-900">프로젝트가 없습니다</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                첫 번째 프로젝트를 생성하여 AI-PM 워크플로우를 시작해보세요.
+              </p>
+              <div className="mt-6">
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+                >
+                  <PlusIcon className="w-4 h-4 mr-2" />
+                  새 프로젝트 생성
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {projects.map((project) => (
+                  <ProjectCard
+                    key={project.id}
+                    project={project}
+                    isAdmin={user?.user_metadata?.role === 'admin'}
+                  />
+                ))}
+              </div>
+            </div>
           )}
         </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-          {projects.map((project) => (
-            <ProjectCard
-              key={'project_id' in project ? project.project_id : project.id}
-              project={project}
-              isAdmin={isAdmin}
-            />
-          ))}
-        </div>
-      )}
+      </div>
 
-      {/* Create Project Modal */}
+      {/* 프로젝트 생성 모달 */}
       {showCreateModal && (
         <CreateProjectModal
           onClose={() => setShowCreateModal(false)}
-          onSuccess={handleProjectCreated}
+          onSuccess={handleCreateProject}
         />
       )}
     </div>

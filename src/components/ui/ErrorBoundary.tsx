@@ -1,7 +1,7 @@
 'use client';
 
 import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { ExclamationTriangleIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { ExclamationTriangleIcon, ArrowPathIcon, HomeIcon } from '@heroicons/react/24/outline';
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -94,6 +94,10 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     window.location.reload();
   };
 
+  private handleGoHome = () => {
+    window.location.href = '/';
+  };
+
   render() {
     if (this.state.hasError) {
       // Use custom fallback if provided
@@ -124,6 +128,13 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
                   <ArrowPathIcon className="w-4 h-4" />
                   페이지 새로고침
                 </button>
+                <button
+                  onClick={this.handleGoHome}
+                  className="w-full bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <HomeIcon className="w-4 h-4" />
+                  홈으로 가기
+                </button>
                 <p className="text-sm text-red-600">오류 ID: {errorId}</p>
               </div>
             </div>
@@ -142,18 +153,27 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
               <p className="text-gray-600 mb-4">
                 이 페이지를 불러오는 중 오류가 발생했습니다.
               </p>
-              <div className="space-y-2">
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <button
+                    onClick={this.handleRetry}
+                    className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
+                  >
+                    다시 시도
+                  </button>
+                  <button
+                    onClick={this.handleReload}
+                    className="flex-1 bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 transition-colors"
+                  >
+                    새로고침
+                  </button>
+                </div>
                 <button
-                  onClick={this.handleRetry}
-                  className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors mr-2"
+                  onClick={this.handleGoHome}
+                  className="w-full bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
                 >
-                  다시 시도
-                </button>
-                <button
-                  onClick={this.handleReload}
-                  className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 transition-colors"
-                >
-                  새로고침
+                  <HomeIcon className="w-4 h-4" />
+                  홈으로 가기
                 </button>
               </div>
               {process.env.NODE_ENV === 'development' && (

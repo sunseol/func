@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { User, Session } from '@supabase/supabase-js';
 import { ProjectRole } from '@/types/ai-pm';
@@ -57,63 +57,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [projectMemberships, setProjectMemberships] = useState<ProjectMembership[]>([]);
   const [loading, setLoading] = useState(true);
   
-  const supabase = createClient();
+  const supabaseRef = useRef(createClient());
+  const supabase = supabaseRef.current;
 
   // Derived state
   const isAdmin = profile?.role === 'admin';
 
-  // Initialize authentication state
-  useEffect(() => {
-    const initializeAuth = async () => {
-      try {
-        // Get initial session
-        const { data: { session: initialSession } } = await supabase.auth.getSession();
-        
-        if (initialSession) {
-          setSession(initialSession);
-          setUser(initialSession.user);
-          await loadUserProfile(initialSession.user.id);
-          // Only load project memberships if user profile exists
-          if (initialSession.user) {
-            await loadProjectMemberships(initialSession.user.id);
-          }
-        }
-      } catch (error) {
-        console.error('Auth initialization error:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    initializeAuth();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        
-        if (session?.user) {
-          await loadUserProfile(session.user.id);
-          // Only load project memberships after profile is loaded
-          await loadProjectMemberships(session.user.id);
-        } else {
-          setProfile(null);
-          setProjectMemberships([]);
-        }
-        
-        setLoading(false);
-      }
-    );
-
-    return () => subscription.unsubscribe();
-  }, [supabase.auth]);
-
   // Load user profile
-  const loadUserProfile = async (userId: string) => {
+  const loadUserProfile = useCallback(async (userId: string) => {
     try {
       console.log('Loading user profile for user:', userId);
-      const { data, error } = await supabase
+      const { data, error } = await supabaseRef.current
         .from('user_profiles')
         .select('*')
         .eq('id', userId)
@@ -139,13 +93,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         stack: error instanceof Error ? error.stack : undefined
       });
     }
-  };
+  }, []);
 
   // Load project memberships
-  const loadProjectMemberships = async (userId: string) => {
+  const loadProjectMemberships = useCallback(async (userId: string) => {
     try {
       console.log('Loading project memberships for user:', userId);
-      const { data, error } = await supabase
+      const { data, error } = await supabaseRef.current
         .from('project_members')
         .select('project_id, role, added_at')
         .eq('user_id', userId);
@@ -174,12 +128,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Set empty array on any error
       setProjectMemberships([]);
     }
-  };
+  }, []);
+
+  // Initialize authentication state
+  useEffect(() => {
+    // This is a temporary diagnostic step to isolate the problem.
+    console.log('[DIAGNOSTIC] Setting up simplified auth listener.');
+
+    const { data: { subscription } } = supabaseRef.current.auth.onAuthStateChange(
+      (event, session) => {
+        console.log(`[DIAGNOSTIC] Auth event: ${event}. Session: ${session ? 'exists' : 'null'}`);
+        setSession(session);
+        setUser(session?.user ?? null);
+        
+        // Temporarily bypass profile loading for diagnosis.
+        if (event === 'SIGNED_OUT') {
+          setProfile(null);
+          setProjectMemberships([]);
+        }
+        
+        console.log('[DIAGNOSTIC] Forcing loading to false.');
+        setLoading(false);
+      }
+    );
+
+    return () => {
+      console.log('[DIAGNOSTIC] Cleaning up auth listener.');
+      subscription?.unsubscribe();
+    };
+  }, []); // Intentionally empty for this diagnostic step.
 
   // Sign in method
-  const signIn = async (email: string, password: string) => {
+  const signIn = useCallback(async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { error } = await supabaseRef.current.auth.signInWithPassword({
         email,
         password,
       });
@@ -192,86 +174,95 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       return { error: '로그인 중 오류가 발생했습니다.' };
     }
-  };
+  }, []);
 
   // Sign out method
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     try {
-      await supabase.auth.signOut();
+      await supabaseRef.current.auth.signOut();
       setProfile(null);
       setProjectMemberships([]);
     } catch (error) {
       console.error('Sign out error:', error);
     }
-  };
+  }, []);
 
   // Refresh profile
-  const refreshProfile = async () => {
+  const refreshProfile = useCallback(async () => {
     if (user) {
       await loadUserProfile(user.id);
     }
-  };
+  }, [user, loadUserProfile]);
 
   // Refresh project memberships
-  const refreshProjectMemberships = async () => {
+  const refreshProjectMemberships = useCallback(async () => {
     if (user) {
       await loadProjectMemberships(user.id);
     }
-  };
+  }, [user, loadProjectMemberships]);
 
   // Permission check methods
-  const canAccessProject = (projectId: string): boolean => {
+  const canAccessProject = useCallback((projectId: string): boolean => {
     if (isAdmin) return true;
     return projectMemberships.some(membership => membership.project_id === projectId);
-  };
+  }, [isAdmin, projectMemberships]);
 
-  const getProjectRole = (projectId: string): ProjectRole | null => {
+  const getProjectRole = useCallback((projectId: string): ProjectRole | null => {
     const membership = projectMemberships.find(m => m.project_id === projectId);
     return membership?.role || null;
-  };
+  }, [projectMemberships]);
 
-  const canManageProject = (projectId: string): boolean => {
+  const canManageProject = useCallback((projectId: string): boolean => {
     if (isAdmin) return true;
     // For now, only admins can manage projects
     // This can be extended to include project creators
     return false;
-  };
+  }, [isAdmin]);
 
-  const canCreateProject = (): boolean => {
+  const canCreateProject = useCallback(() => {
     return isAdmin;
-  };
+  }, [isAdmin]);
 
-  const canManageMembers = (): boolean => {
+  const canManageMembers = useCallback(() => {
     return isAdmin;
-  };
+  }, [isAdmin]);
 
-  const value: AuthContextType = {
-    // Core authentication
+  const contextValue = useMemo(() => ({
     user,
     session,
     profile,
     loading,
-    
-    // AI PM specific
     isAdmin,
     projectMemberships,
-    
-    // Methods
     signIn,
     signOut,
     refreshProfile,
     refreshProjectMemberships,
-    
-    // Permission checks
     canAccessProject,
     getProjectRole,
     canManageProject,
     canCreateProject,
     canManageMembers,
-  };
+  }), [
+    user,
+    session,
+    profile,
+    loading,
+    isAdmin,
+    projectMemberships,
+    signIn,
+    signOut,
+    refreshProfile,
+    refreshProjectMemberships,
+    canAccessProject,
+    getProjectRole,
+    canManageProject,
+    canCreateProject,
+    canManageMembers,
+  ]);
 
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );
