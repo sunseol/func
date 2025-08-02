@@ -1,0 +1,197 @@
+import { cookies } from 'next/headers';
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+import { getAIService } from '@/lib/ai-pm/ai-service';
+import { getConversationManager } from '@/lib/ai-pm/conversation-manager';
+import { 
+  SendMessageRequest, 
+  ConversationResponse, 
+  AIpmErrorType,
+  isValidWorkflowStep 
+} from '@/types/ai-pm';
+
+// This file handles non-streaming chat interactions
+
+export async function POST(request: NextRequest) {
+  try {
+    const cookieStore = cookies();
+    const supabase = await createClient();
+    
+    // Check authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: AIpmErrorType.UNAUTHORIZED, message: '인증이 필요합니다.' }, { status: 401 });
+    }
+
+    // Parse request body
+    const body: SendMessageRequest = await request.json();
+    const { message, workflow_step } = body;
+
+    // Get project ID from URL
+    const url = new URL(request.url);
+    const projectId = url.searchParams.get('projectId');
+
+    if (!projectId) {
+      return NextResponse.json({ error: AIpmErrorType.INVALID_PROJECT_ID, message: '프로젝트 ID가 필요합니다.' }, { status: 400 });
+    }
+    if (!isValidWorkflowStep(workflow_step)) {
+      return NextResponse.json({ error: AIpmErrorType.INVALID_WORKFLOW_STEP, message: '유효하지 않은 워크플로우 단계입니다.' }, { status: 400 });
+    }
+    if (!message || message.trim().length === 0) {
+      return NextResponse.json({ error: AIpmErrorType.VALIDATION_ERROR, message: '메시지 내용이 필요합니다.' }, { status: 400 });
+    }
+
+    // Get conversation manager and AI service
+    const conversationManager = getConversationManager(supabase);
+    const aiService = getAIService();
+
+    // Add user message
+    await conversationManager.addMessage(projectId, workflow_step, user.id, {
+      role: 'user',
+      content: message.trim()
+    });
+
+    const messages = await conversationManager.getCurrentMessages(projectId, workflow_step, user.id);
+
+    const { data: project } = await supabase
+      .from('projects')
+      .select('name, description')
+      .eq('id', projectId)
+      .single();
+
+    const projectContext = project 
+      ? `프로젝트명: ${project.name}\n프로젝트 설명: ${project.description || '없음'}`
+      : undefined;
+
+    const aiResponse = await aiService.generateResponse(messages, workflow_step, projectContext);
+
+    await conversationManager.addMessage(projectId, workflow_step, user.id, {
+      role: 'assistant',
+      content: aiResponse
+    });
+
+    await conversationManager.forceSave(projectId, workflow_step, user.id);
+    const conversation = await conversationManager.loadConversation(projectId, workflow_step, user.id);
+
+    if (!conversation) {
+      return NextResponse.json({ error: AIpmErrorType.INTERNAL_ERROR, message: '대화를 저장하는 중 오류가 발생했습니다.' }, { status: 500 });
+    }
+
+    return NextResponse.json({ conversation } as ConversationResponse);
+
+  } catch (error) {
+    console.error('Chat API Error:', error);
+    const typedError = error as any;
+    if (typedError.error && typedError.message) {
+      const statusCode = typedError.error === AIpmErrorType.UNAUTHORIZED ? 401 : 500;
+      return NextResponse.json(error, { status: statusCode });
+    }
+    return NextResponse.json({ error: AIpmErrorType.INTERNAL_ERROR, message: '서버 오류가 발생했습니다.'}, { status: 500 });
+  }
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const cookieStore = cookies();
+    const supabase = await createClient();
+    
+    // Check authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: AIpmErrorType.UNAUTHORIZED, message: '인증이 필요합니다.' }, { status: 401 });
+    }
+
+    // Get parameters from URL
+    const url = new URL(request.url);
+    const projectId = url.searchParams.get('projectId');
+    const workflowStepParam = url.searchParams.get('workflowStep');
+
+    if (!projectId || !workflowStepParam) {
+      return NextResponse.json({ error: AIpmErrorType.VALIDATION_ERROR, message: '프로젝트 ID와 워크플로우 단계가 필요합니다.' }, { status: 400 });
+    }
+
+    const workflowStep = parseInt(workflowStepParam);
+    if (!isValidWorkflowStep(workflowStep)) {
+      return NextResponse.json({ error: AIpmErrorType.INVALID_WORKFLOW_STEP, message: '유효하지 않은 워크플로우 단계입니다.' }, { status: 400 });
+    }
+
+    const { data: anyUserConversation, error: anyUserError } = await supabase
+      .from('ai_conversations')
+      .select('user_id')
+      .eq('project_id', projectId)
+      .eq('workflow_step', workflowStep)
+      .limit(1)
+      .single();
+
+    if (anyUserError || !anyUserConversation) {
+        const emptyConversation = {
+            id: '', project_id: projectId, workflow_step: workflowStep, user_id: user.id,
+            messages: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString()
+        };
+        return NextResponse.json({ conversation: emptyConversation } as ConversationResponse);
+    }
+    
+    const conversationManager = getConversationManager(supabase);
+    const conversation = await conversationManager.loadConversation(projectId, workflowStep, anyUserConversation.user_id);
+
+    if (!conversation) {
+        const emptyConversation = {
+            id: '', project_id: projectId, workflow_step: workflowStep, user_id: user.id,
+            messages: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString()
+        };
+        return NextResponse.json({ conversation: emptyConversation } as ConversationResponse);
+    }
+
+    return NextResponse.json({ conversation } as ConversationResponse);
+
+  } catch (error) {
+    console.error('Get Chat API Error:', error);
+    return NextResponse.json({ error: AIpmErrorType.INTERNAL_ERROR, message: '서버 오류가 발생했습니다.'}, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const cookieStore = cookies();
+    const supabase = await createClient();
+    
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: AIpmErrorType.UNAUTHORIZED, message: '인증이 필요합니다.' }, { status: 401 });
+    }
+
+    const url = new URL(request.url);
+    const projectId = url.searchParams.get('projectId');
+    const workflowStepParam = url.searchParams.get('workflowStep');
+
+    if (!projectId || !workflowStepParam) {
+        return NextResponse.json({ error: AIpmErrorType.VALIDATION_ERROR, message: '프로젝트 ID와 워크플로우 단계가 필요합니다.' }, { status: 400 });
+    }
+
+    const workflowStep = parseInt(workflowStepParam);
+    if (!isValidWorkflowStep(workflowStep)) {
+      return NextResponse.json({ error: AIpmErrorType.INVALID_WORKFLOW_STEP, message: '유효하지 않은 워크플로우 단계입니다.' }, { status: 400 });
+    }
+
+     const { data: anyUserConversation, error: anyUserError } = await supabase
+      .from('ai_conversations')
+      .select('user_id')
+      .eq('project_id', projectId)
+      .eq('workflow_step', workflowStep)
+      .limit(1)
+      .single();
+
+    if (anyUserError || !anyUserConversation) {
+        return NextResponse.json({ message: '삭제할 대화 기록이 없습니다.' });
+    }
+
+    const conversationManager = getConversationManager(supabase);
+    await conversationManager.clearConversation(projectId, workflowStep, anyUserConversation.user_id);
+
+    return NextResponse.json({ message: '대화 기록이 삭제되었습니다.' });
+
+  } catch (error) {
+    console.error('Delete Chat API Error:', error);
+    return NextResponse.json({ error: AIpmErrorType.INTERNAL_ERROR, message: '서버 오류가 발생했습니다.'}, { status: 500 });
+  }
+}

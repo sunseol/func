@@ -66,28 +66,18 @@ const nextConfig = {
     ];
   },
   
-  // Webpack 최적화
-  webpack: (config, { isServer }) => {
-    // Bundle analyzer
-    if (process.env.ANALYZE === 'true') {
-      const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
-      config.plugins.push(
-        new BundleAnalyzerPlugin({
-          analyzerMode: 'static',
-          openAnalyzer: false,
-        })
-      );
-    }
-    
-    // 트리 쉐이킹 최적화
-    config.optimization = {
-      ...config.optimization,
-      usedExports: true,
-      sideEffects: false,
-    };
-    
-    return config;
-  },
+  ...(!process.env.TURBOPACK && {
+    webpack: (config, { isServer }) => {
+      // 트리 쉐이킹 최적화
+      config.optimization = {
+        ...config.optimization,
+        usedExports: true,
+        sideEffects: false,
+      };
+      
+      return config;
+    },
+  }),
   
   // PoweredByHeader 비활성화 (보안)
   poweredByHeader: false,
@@ -104,8 +94,8 @@ const nextConfig = {
 
   // 개발 환경 설정
   ...(process.env.NODE_ENV === 'development' && {
-    reactStrictMode: true,
+    reactStrictMode: false,
   }),
 };
 
-export default nextConfig; 
+export default nextConfig;

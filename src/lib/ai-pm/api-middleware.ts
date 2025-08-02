@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
 import { 
-  createSupabaseClient, 
   checkAuth, 
   checkRateLimit, 
   getSecurityHeaders,
@@ -96,7 +96,7 @@ export function withApiMiddleware(
       }
 
       // Create Supabase client
-      const supabase = createSupabaseClient();
+      const supabase = await createClient();
       
       // Authentication check
       let auth: AuthResult | undefined;

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { XMarkIcon } from '@heroicons/react/24/outline';
+import { CloseOutlined } from '@ant-design/icons';
 import { CreateProjectRequest } from '@/types/ai-pm';
 
 interface CreateProjectModalProps {
@@ -84,7 +84,7 @@ export default function CreateProjectModal({ onClose, onSuccess }: CreateProject
               className="text-gray-400 hover:text-gray-600 transition-colors"
               disabled={loading}
             >
-              <XMarkIcon className="h-6 w-6" />
+              <CloseOutlined style={{ fontSize: 24 }} />
             </button>
           </div>
 

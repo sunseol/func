@@ -113,30 +113,36 @@ export class DocumentSyncService {
    */
   private async fetchDocumentWithUsers(documentId: string): Promise<PlanningDocumentWithUsers | null> {
     try {
-      const { data, error } = await this.supabase
-        .from('planning_documents')
-        .select(`
-          *,
-          creator:user_profiles!created_by(email, full_name),
-          approver:user_profiles!approved_by(email, full_name)
-        `)
-        .eq('id', documentId)
-        .single();
+          const { data, error } = await this.supabase
+      .from('planning_documents')
+      .select(`*`)
+      .eq('id', documentId)
+      .single();
 
-      if (error || !data) {
-        return null;
-      }
+    if (error || !data) {
+      return null;
+    }
+    
+    // Manually fetch user details
+    const userIds = [data.created_by, data.approved_by].filter(Boolean);
+    let userMap = new Map();
+    if(userIds.length > 0) {
+        const { data: profiles } = await this.supabase.from('user_profiles').select('id, full_name').in('id', userIds);
+        const { data: users } = await this.supabase.from('users').select('id, email').in('id', userIds);
+        if(profiles) profiles.forEach(p => userMap.set(p.id, { ...userMap.get(p.id), full_name: p.full_name }));
+        if(users) users.forEach(u => userMap.set(u.id, { ...userMap.get(u.id), email: u.email }));
+    }
 
-      // Format response
-      const documentWithUsers: PlanningDocumentWithUsers = {
-        ...data,
-        creator_email: data.creator?.email || '',
-        creator_name: data.creator?.full_name || null,
-        approver_email: data.approver?.email || null,
-        approver_name: data.approver?.full_name || null
-      };
+    // Format response
+    const documentWithUsers: PlanningDocumentWithUsers = {
+      ...data,
+      creator_email: userMap.get(data.created_by)?.email || '',
+      creator_name: userMap.get(data.created_by)?.full_name || null,
+      approver_email: userMap.get(data.approved_by)?.email || null,
+      approver_name: userMap.get(data.approved_by)?.full_name || null
+    };
 
-      return documentWithUsers;
+    return documentWithUsers;
     } catch (error) {
       console.error('Error fetching document with users:', error);
       return null;
@@ -202,24 +208,35 @@ export class DocumentVersionManager {
    */
   async getDocumentVersions(documentId: string) {
     try {
-      const { data, error } = await this.supabase
+      const { data: versions, error } = await this.supabase
         .from('document_versions')
-        .select(`
-          *,
-          creator:user_profiles!created_by(email, full_name)
-        `)
+        .select('*')
         .eq('document_id', documentId)
         .order('version', { ascending: false });
-
+        
       if (error) {
         throw new Error('문서 버전 조회에 실패했습니다.');
       }
 
-      return data?.map(version => ({
+      if (!versions || versions.length === 0) {
+        return [];
+      }
+
+      const userIds = [...new Set(versions.map(v => v.created_by).filter(Boolean))];
+      let userMap = new Map();
+
+      if (userIds.length > 0) {
+          const { data: profiles } = await this.supabase.from('user_profiles').select('id, full_name').in('id', userIds);
+          const { data: users } = await this.supabase.from('users').select('id, email').in('id', userIds);
+          if(profiles) profiles.forEach(p => userMap.set(p.id, { ...userMap.get(p.id), full_name: p.full_name }));
+          if(users) users.forEach(u => userMap.set(u.id, { ...userMap.get(u.id), email: u.email }));
+      }
+
+      return versions.map(version => ({
         ...version,
-        creator_email: version.creator?.email || '',
-        creator_name: version.creator?.full_name || null
-      })) || [];
+        creator_email: userMap.get(version.created_by)?.email || '',
+        creator_name: userMap.get(version.created_by)?.full_name || null
+      }));
     } catch (error) {
       console.error('Error fetching document versions:', error);
       throw error;

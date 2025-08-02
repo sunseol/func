@@ -1,0 +1,63 @@
+---
+description: "Key architectural decisions and fixes for the AI-PM feature, including permission removal, Supabase client patterns, API endpoint structure, and UI component logic for chat and conversation history."
+---
+
+# AI-PM Feature Architecture and Fixes
+
+This document outlines several key architectural patterns and important fixes applied to the AI-PM feature.
+
+### 1. Permission System Removed
+
+All user-level and role-based (e.g., admin) permission checks have been intentionally removed from the AI-PM feature. This includes:
+
+-   Row-Level Security (RLS) policies on Supabase tables like `projects`, `project_members`, and especially `ai_conversations`. New tables should have RLS disabled or a permissive `USING (true)` policy.
+-   Server-side permission checks in API routes (e.g., `checkProjectAccess`, `requireAdmin`). All project members are now treated as having full control over project resources they are a part of.
+-   Relevant files:
+    -   `[database/migrations/004_disable_rls.sql](mdc:database/migrations/004_disable_rls.sql)`
+    -   `[database/migrations/006_disable_rls_on_ai_conversations.sql](mdc:database/migrations/006_disable_rls_on_ai_conversations.sql)`
+    -   `[src/app/api/ai-pm/projects/[projectId]/members/route.ts](mdc:src/app/api/ai-pm/projects/[projectId]/members/route.ts)`
+
+### 2. Supabase Server Client and Cookies
+
+When creating a Supabase server client for use in Next.js API Routes or Server Components, the `cookies()` function from `next/headers` **must** be called *inside* each method (`get`, `set`, `remove`) of the cookie handler. Calling it once outside will cause runtime errors.
+
+**Correct Implementation:**
+File: `[src/lib/ai-pm/auth-middleware.ts](mdc:src/lib/ai-pm/auth-middleware.ts)`
+```typescript
+export function createSupabaseClient() {
+  return createServerClient(
+    // ... credentials
+    {
+      cookies: {
+        get(name: string) {
+          const cookieStore = cookies(); // Correct: Called inside get()
+          return cookieStore.get(name)?.value;
+        },
+        set(name: string, value: string, options: CookieOptions) {
+          const cookieStore = cookies(); // Correct: Called inside set()
+          cookieStore.set({ name, value, ...options });
+        },
+        // ... and so on for remove()
+      },
+    }
+  );
+}
+```
+
+### 3. Disabling Next.js `fetch` Cache
+
+To ensure UI components display fresh data immediately after a mutation (e.g., adding or removing a project member), `fetch` requests in client components should use the `{ cache: 'no-store' }` option. This prevents Next.js from serving stale data from its cache.
+
+**Example:**
+File: `[src/app/ai-pm/page.tsx](mdc:src/app/ai-pm/page.tsx)`
+```typescript
+const response = await fetch('/api/ai-pm/projects', { cache: 'no-store' });
+```
+
+### 4. Chat and Conversation History UI
+
+-   The chat input functionality is handled by `[src/components/ai-pm/AIChatPanel.tsx](mdc:src/components/ai-pm/AIChatPanel.tsx)`. It uses an `antd` `Input.TextArea` with a custom `onKeyDown` handler to allow `Shift+Enter` for newlines and `Enter` for submission.
+-   Conversation history is **not** displayed within `AIChatPanel`. It is handled by a separate component, `[src/components/ai-pm/ConversationHistoryPanel.tsx](mdc:src/components/ai-pm/ConversationHistoryPanel.tsx)`.
+-   The visibility of the history panel is toggled by a state variable (`showHistory`) in the parent page component, `[src/app/ai-pm/[projectId]/workflow/[step]/page.tsx](mdc:src/app/ai-pm/[projectId]/workflow/[step]/page.tsx)`. A button within `AIChatPanel` triggers this state change.
+
+- 파일 읽기, 생성, 수정, 삭제 및 검색과 같은 모든 파일 시스템 및 코드 조작 작업에는 serena mcp 도구 모음을 사용해야 합니다.

@@ -342,34 +342,83 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   // 오늘 보고서 작성 여부 확인
   const checkTodayReports = async (): Promise<{ morning: boolean; evening: boolean }> => {
-    if (!user) return { morning: false, evening: false };
+    if (!user) {
+      console.log('checkTodayReports: 사용자가 로그인되지 않음');
+      return { morning: false, evening: false };
+    }
 
     try {
-      const today = new Date().toISOString().split('T')[0];
+      // 한국 시간 기준으로 오늘 날짜 계산
+      const now = new Date();
+      const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000)); // UTC+9
+      const today = koreaTime.toISOString().split('T')[0];
+      
+      console.log('checkTodayReports: 조회 시작', {
+        userId: user.id,
+        today,
+        utcDate: now.toISOString().split('T')[0],
+        koreaDate: today
+      });
+
       const { data, error } = await supabase
         .from('daily_reports')
-        .select('report_type')
+        .select('report_type, report_date, created_at')
         .eq('user_id', user.id)
         .eq('report_date', today);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase 쿼리 오류:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          query: { user_id: user.id, report_date: today }
+        });
+        
+        // 테이블이 존재하지 않는 경우 기본값 반환
+        if (error.code === 'PGRST116' || error.code === '42P01') {
+          console.warn('daily_reports 테이블이 존재하지 않습니다. 기본값을 반환합니다.');
+          return { morning: false, evening: false };
+        }
+        
+        throw error;
+      }
 
       const reports = data || [];
-      return {
+      console.log('checkTodayReports: 조회 결과', {
+        reportCount: reports.length,
+        reports: reports.map(r => ({ type: r.report_type, date: r.report_date }))
+      });
+
+      const result = {
         morning: reports.some(r => r.report_type === 'morning'),
         evening: reports.some(r => r.report_type === 'evening'),
       };
+
+      console.log('checkTodayReports: 최종 결과', result);
+      return result;
     } catch (err) {
-      console.error('오늘 보고서 확인 오류:', err);
+      console.error('오늘 보고서 확인 오류:', {
+        error: err,
+        message: err instanceof Error ? err.message : '알 수 없는 오류',
+        stack: err instanceof Error ? err.stack : undefined,
+        userId: user?.id,
+        timestamp: new Date().toISOString()
+      });
       return { morning: false, evening: false };
     }
   };
 
   // 알림 히스토리에 추가
   const addNotificationHistory = async (type: string, title: string, message: string) => {
-    if (!user) return;
+    if (!user) {
+      console.log('addNotificationHistory: 사용자가 로그인되지 않음');
+      return;
+    }
 
     try {
+      console.log('addNotificationHistory: 히스토리 추가 시작', { type, title });
+      
       const { data, error } = await supabase
         .from('notification_history')
         .insert([{
@@ -382,9 +431,16 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         .single();
 
       if (error) {
-        console.error('알림 히스토리 추가 오류:', error);
+        console.error('알림 히스토리 추가 오류:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        });
+        
         // 테이블이 없거나 권한 문제인 경우 무시
         if (error.code === 'PGRST116' || error.code === '42P01') {
+          console.warn('notification_history 테이블이 존재하지 않거나 접근할 수 없습니다.');
           return;
         }
         throw error;
@@ -392,10 +448,18 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
       // 데이터가 유효한 경우에만 추가
       if (data && data.id) {
+        console.log('addNotificationHistory: 히스토리 추가 성공', data.id);
         setNotifications(prev => [data, ...prev]);
+      } else {
+        console.warn('addNotificationHistory: 유효하지 않은 데이터 반환', data);
       }
     } catch (err) {
-      console.error('알림 히스토리 추가 오류:', err);
+      console.error('알림 히스토리 추가 오류:', {
+        error: err,
+        message: err instanceof Error ? err.message : '알 수 없는 오류',
+        type,
+        title
+      });
     }
   };
 
@@ -404,21 +468,36 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     if (!user || !settings) return;
 
     const checkReminders = async () => {
-      const now = new Date();
-      const currentTime = now.toTimeString().slice(0, 5); // HH:MM 형식
-      const isWeekend = now.getDay() === 0 || now.getDay() === 6;
+      try {
+        const now = new Date();
+        const currentTime = now.toTimeString().slice(0, 5); // HH:MM 형식
+        const isWeekend = now.getDay() === 0 || now.getDay() === 6;
 
-      // 주말 알림이 비활성화되어 있고 주말이면 스킵
-      if (isWeekend && !settings.weekend_reminders) return;
+        console.log('checkReminders: 알림 체크 시작', {
+          currentTime,
+          isWeekend,
+          weekendReminders: settings.weekend_reminders,
+          morningEnabled: settings.morning_reminder_enabled,
+          eveningEnabled: settings.evening_reminder_enabled,
+          morningTime: settings.morning_reminder_time?.slice(0, 5),
+          eveningTime: settings.evening_reminder_time?.slice(0, 5)
+        });
 
-      const todayReports = await checkTodayReports();
+        // 주말 알림이 비활성화되어 있고 주말이면 스킵
+        if (isWeekend && !settings.weekend_reminders) {
+          console.log('checkReminders: 주말이고 주말 알림이 비활성화되어 있어 스킵');
+          return;
+        }
+
+        const todayReports = await checkTodayReports();
 
       // 아침 알림 체크
-      if (
-        settings.morning_reminder_enabled &&
+      const shouldSendMorningReminder = settings.morning_reminder_enabled &&
         currentTime === settings.morning_reminder_time.slice(0, 5) &&
-        !todayReports.morning
-      ) {
+        !todayReports.morning;
+
+      if (shouldSendMorningReminder) {
+        console.log('checkReminders: 아침 알림 전송');
         const title = '🌅 출근 보고서 작성 알림';
         const message = '오늘의 출근 보고서를 작성해주세요!';
         
@@ -427,16 +506,30 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       }
 
       // 저녁 알림 체크
-      if (
-        settings.evening_reminder_enabled &&
+      const shouldSendEveningReminder = settings.evening_reminder_enabled &&
         currentTime === settings.evening_reminder_time.slice(0, 5) &&
-        !todayReports.evening
-      ) {
+        !todayReports.evening;
+
+      if (shouldSendEveningReminder) {
+        console.log('checkReminders: 저녁 알림 전송');
         const title = '🌙 퇴근 보고서 작성 알림';
         const message = '오늘의 퇴근 보고서를 작성해주세요!';
         
         sendBrowserNotification(title, message, 'evening_reminder');
         await addNotificationHistory('evening_reminder', title, message);
+      }
+
+      console.log('checkReminders: 알림 체크 완료', {
+        shouldSendMorningReminder,
+        shouldSendEveningReminder,
+        todayReports
+      });
+      } catch (err) {
+        console.error('알림 체크 중 오류 발생:', {
+          error: err,
+          message: err instanceof Error ? err.message : '알 수 없는 오류',
+          timestamp: new Date().toISOString()
+        });
       }
     };
 

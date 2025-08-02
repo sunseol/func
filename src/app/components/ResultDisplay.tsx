@@ -1,34 +1,24 @@
 'use client';
 
 import React from 'react';
-import { App } from 'antd';
-import RichEditor from './RichEditor';
+import { App, Button } from 'antd';
 
 interface ResultDisplayProps {
   textToDisplay: string | null;
   isLoading: boolean;
-  onSave?: (content?: string) => Promise<void>;
-  isSaving?: boolean;
-  saveActionDisabled?: boolean;
 }
 
 export default function ResultDisplay({ 
   textToDisplay, 
-  isLoading, 
-  onSave,
-  isSaving,
-  saveActionDisabled 
+  isLoading
 }: ResultDisplayProps) {
   const { message: messageApi } = App.useApp();
 
-  const handleSave = async (content: string) => {
-    if (onSave) {
-      await onSave(content);
-    }
-  };
-
   const handleCopy = () => {
-    messageApi.success('클립보드에 복사되었습니다!');
+    if (textToDisplay) {
+      navigator.clipboard.writeText(textToDisplay);
+      messageApi.success('클립보드에 복사되었습니다!');
+    }
   };
 
   if (isLoading) {
@@ -66,13 +56,13 @@ export default function ResultDisplay({
   }
 
   return (
-    <RichEditor
-      initialContent={textToDisplay}
-      onSave={onSave ? handleSave : undefined}
-      onCopy={handleCopy}
-      isSaving={isSaving}
-      saveActionDisabled={saveActionDisabled}
-      title="보고서 편집"
-    />
+    <div className="border rounded-md p-4 bg-gray-50 h-[400px] overflow-y-auto">
+      <div className="flex justify-end mb-2">
+        <Button onClick={handleCopy} size="small">복사</Button>
+      </div>
+      <pre className="whitespace-pre-wrap break-words font-sans text-sm">
+        {textToDisplay}
+      </pre>
+    </div>
   );
 }

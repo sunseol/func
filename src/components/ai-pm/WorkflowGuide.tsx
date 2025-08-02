@@ -145,6 +145,19 @@ const WORKFLOW_GUIDES: Record<WorkflowStep, {
 
 export default function WorkflowGuide({ currentStep }: WorkflowGuideProps) {
   const guide = WORKFLOW_GUIDES[currentStep];
+
+  if (!guide) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 text-center">
+        <ExclamationTriangleIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+        <h3 className="text-lg font-semibold text-gray-900">가이드 정보 없음</h3>
+        <p className="text-sm text-gray-600 mt-1">
+          선택된 워크플로우 단계에 대한 가이드 정보가 없습니다.
+        </p>
+      </div>
+    );
+  }
+
   const Icon = guide.icon;
 
   return (

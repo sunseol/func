@@ -220,7 +220,7 @@ export function sanitizePromptInput(input: string): string {
 // AI PM 컨텍스트별 보안 검사
 export function validateAiPmPrompt(
   userInput: string,
-  context: 'document_generation' | 'chat' | 'analysis'
+  context: 'document_generation' | 'chat' | 'analysis' | 'report_generation'
 ): PromptSecurityResult {
   const baseResult = analyzePromptSecurity(userInput);
 
@@ -232,6 +232,8 @@ export function validateAiPmPrompt(
       return validateChatPrompt(userInput, baseResult);
     case 'analysis':
       return validateAnalysisPrompt(userInput, baseResult);
+    case 'report_generation':
+      return validateReportGenerationPrompt(userInput, baseResult);
     default:
       return baseResult;
   }
@@ -392,4 +394,42 @@ function hashInput(input: string): string {
   }
   
   return Math.abs(hash).toString(16);
+}
+
+// 리포트 생성 프롬프트 검증 (완화된 규칙)
+function validateReportGenerationPrompt(
+  input: string,
+  baseResult: PromptSecurityResult
+): PromptSecurityResult {
+  // 리포트 생성 컨텍스트에서는 특정 규칙을 완화합니다.
+  const allowedPatterns = [
+    /<!--.*-->/.source, // HTML 주석 허용
+    'excessive_length',      // 길이 제한 완화
+    'excessive_special_characters' // 특수 문자 제한 완화
+  ];
+
+  const filteredPatterns = baseResult.detectedPatterns.filter(
+    p => !allowedPatterns.includes(p)
+  );
+
+  let riskLevel = baseResult.riskLevel;
+  // 완화된 규칙을 제외하고도 여전히 위험한 패턴이 남아있는지 확인
+  if (filteredPatterns.length > 0) {
+     // 위험도가 critical이 아닌 경우, high로 설정
+    if (riskLevel !== 'critical') riskLevel = 'high';
+  } else if (baseResult.suspiciousKeywords.length > 0) {
+    riskLevel = 'medium';
+  } else {
+    riskLevel = 'low';
+  }
+  
+  // isSecure 재평가: 완화된 패턴을 제외하고 다른 문제가 없으면 안전한 것으로 간주
+  const isSecure = riskLevel === 'low';
+
+  return {
+    ...baseResult,
+    riskLevel,
+    detectedPatterns: filteredPatterns, // 완화된 패턴을 제외한 결과
+    isSecure,
+  };
 } 

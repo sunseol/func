@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import dynamic from 'next/dynamic';
+
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast, useApiError } from '@/contexts/ToastContext';
 import { 
@@ -11,22 +11,18 @@ import {
   UpdateDocumentRequest
 } from '@/types/ai-pm';
 import { 
-  CheckIcon,
-  XMarkIcon,
-  EyeIcon,
-  EyeSlashIcon,
-  DocumentTextIcon,
-  ClockIcon,
-  ExclamationTriangleIcon,
-  TrashIcon,
-  ArrowPathIcon
-} from '@heroicons/react/24/outline';
+  CheckOutlined,
+  CloseOutlined,
+  EyeOutlined,
+  EyeInvisibleOutlined,
+  FileTextOutlined,
+  ClockCircleOutlined,
+  ExclamationCircleOutlined,
+  ReloadOutlined,
+  DeleteOutlined
+} from '@ant-design/icons';
 
-// Dynamic import for markdown editor
-const RichEditor = dynamic(() => import('@/app/components/RichEditor'), {
-  loading: () => <div className="animate-pulse bg-gray-100 h-96 rounded-lg"></div>,
-  ssr: false
-});
+import { Input } from 'antd';
 
 interface DocumentEditorProps {
   projectId: string;
@@ -37,31 +33,32 @@ interface DocumentEditorProps {
   onStatusChange: (status: DocumentStatus) => Promise<void>;
   onDelete: () => Promise<void>;
   onShowVersionHistory?: () => void;
+  onDocumentUpdated?: (document: PlanningDocumentWithUsers) => void;
 }
 
 const STATUS_CONFIG = {
   private: {
     label: '개인 문서',
     color: 'bg-gray-100 text-gray-800',
-    icon: EyeSlashIcon,
+    icon: EyeInvisibleOutlined,
     description: '본인만 볼 수 있는 개인 문서입니다.'
   },
   pending_approval: {
     label: '승인 대기',
     color: 'bg-yellow-100 text-yellow-800',
-    icon: ClockIcon,
+    icon: ClockCircleOutlined,
     description: '관리자 승인을 기다리는 문서입니다.'
   },
   official: {
     label: '공식 문서',
     color: 'bg-green-100 text-green-800',
-    icon: CheckIcon,
+    icon: CheckOutlined,
     description: '승인된 공식 문서입니다.'
   },
   rejected: {
     label: '승인 반려',
     color: 'bg-red-100 text-red-800',
-    icon: XMarkIcon,
+    icon: CloseOutlined,
     description: '승인이 반려된 문서입니다.'
   }
 };
@@ -74,7 +71,8 @@ export default function DocumentEditor({
   onSave,
   onStatusChange,
   onDelete,
-  onShowVersionHistory
+  onShowVersionHistory,
+  onDocumentUpdated,
 }: DocumentEditorProps) {
   const { user, profile } = useAuth();
   const { success, error: showError, info } = useToast();
@@ -120,32 +118,30 @@ export default function DocumentEditor({
 
     setIsSaving(true);
     try {
-      await onSave(content, title);
+      const updatedDocument = await onSave(content, title);
       setHasUnsavedChanges(false);
       success('문서 저장 완료', '변경사항이 성공적으로 저장되었습니다.');
+      if (onDocumentUpdated) {
+        onDocumentUpdated(updatedDocument);
+      }
     } catch (error) {
       handleApiError(error, '문서 저장에 실패했습니다.');
     } finally {
       setIsSaving(false);
     }
-  }, [content, title, hasUnsavedChanges, onSave, success, handleApiError]);
+  }, [content, title, hasUnsavedChanges, onSave, success, handleApiError, onDocumentUpdated]);
 
   const handleStatusChange = useCallback(async (newStatus: DocumentStatus) => {
     try {
+      // The parent component is responsible for showing success/error messages.
+      // This component just triggers the action.
       await onStatusChange(newStatus);
-      
-      const statusMessages = {
-        pending_approval: '승인 요청이 완료되었습니다.',
-        official: '문서가 공식 문서로 승인되었습니다.',
-        private: '문서가 개인 문서로 변경되었습니다.',
-        rejected: '문서 승인이 반려되었습니다.'
-      };
-      
-      success('상태 변경 완료', statusMessages[newStatus]);
     } catch (error) {
-      handleApiError(error, '문서 상태 변경에 실패했습니다.');
+      // The parent's error handler will be called, but we catch here
+      // to prevent unhandled promise rejections if the parent doesn't handle it.
+      console.error("Error during status change, handled by parent:", error);
     }
-  }, [onStatusChange, success, handleApiError]);
+  }, [onStatusChange]);
 
   const handleDelete = useCallback(async () => {
     setIsDeleting(true);
@@ -177,7 +173,7 @@ export default function DocumentEditor({
         <div className="flex items-center justify-between">
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-2">
-              <DocumentTextIcon className="h-5 w-5 text-gray-400" />
+              <FileTextOutlined style={{ fontSize: 20, color: '#9ca3af' }} />
               <h2 className="text-lg font-semibold text-gray-900">
                 {isEditing ? '문서 편집' : '문서 보기'}
               </h2>
@@ -205,18 +201,16 @@ export default function DocumentEditor({
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Version History Button */}
             {onShowVersionHistory && (
               <button
                 onClick={onShowVersionHistory}
                 className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
-                <ArrowPathIcon className="h-4 w-4 mr-1" />
+                <ReloadOutlined style={{ marginRight: 4 }} />
                 버전 기록
               </button>
             )}
 
-            {/* Status Change Dropdown */}
             {canChangeStatus && !isReadOnly && (
               <select
                 value={document.status}
@@ -226,11 +220,9 @@ export default function DocumentEditor({
                 <option value="private">개인 문서</option>
                 <option value="pending_approval">승인 요청</option>
                 {isAdmin && <option value="official">공식 문서</option>}
-                {isAdmin && <option value="rejected">승인 반려</option>}
               </select>
             )}
 
-            {/* Edit/Save Button */}
             {canEdit && (
               <button
                 onClick={() => {
@@ -249,33 +241,31 @@ export default function DocumentEditor({
                   </>
                 ) : isEditing ? (
                   <>
-                    <CheckIcon className="h-4 w-4 mr-1" />
+                    <CheckOutlined style={{ marginRight: 4 }} />
                     저장
                   </>
                 ) : (
                   <>
-                    <DocumentTextIcon className="h-4 w-4 mr-1" />
+                    <FileTextOutlined style={{ marginRight: 4 }} />
                     편집
                   </>
                 )}
               </button>
             )}
 
-            {/* Delete Button */}
             {canDelete && (
               <button
                 onClick={() => setShowDeleteConfirm(true)}
                 disabled={isDeleting}
                 className="inline-flex items-center px-3 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <TrashIcon className="h-4 w-4 mr-1" />
+                <DeleteOutlined style={{ marginRight: 4 }} />
                 삭제
               </button>
             )}
           </div>
         </div>
 
-        {/* Document Info */}
         <div className="mt-4 flex items-center justify-between text-sm text-gray-500">
           <div className="flex items-center gap-4">
             <span>작성자: {document.creator_name || document.creator_email}</span>
@@ -287,7 +277,7 @@ export default function DocumentEditor({
           <div className="flex items-center gap-2">
             {hasUnsavedChanges && (
               <span className="inline-flex items-center text-orange-600">
-                <ExclamationTriangleIcon className="h-4 w-4 mr-1" />
+                <ExclamationCircleOutlined style={{ marginRight: 4 }} />
                 저장되지 않은 변경사항
               </span>
             )}
@@ -295,16 +285,17 @@ export default function DocumentEditor({
         </div>
       </div>
 
-      {/* Content Area */}
       <div className="p-6">
-                 {isEditing ? (
-           <RichEditor
-             initialContent={content}
-             onSave={(newContent) => setContent(newContent)}
-             title="문서 편집"
-           />
-         ) : (
-          <div className="prose max-w-none">
+        {isEditing ? (
+          <Input.TextArea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder="문서 내용을 입력하세요."
+            autoSize={{ minRows: 15 }}
+            className="w-full"
+          />
+        ) : (
+          <div className="prose max-w-none break-all">
             <div 
               className="markdown-content"
               dangerouslySetInnerHTML={{ 
@@ -320,7 +311,6 @@ export default function DocumentEditor({
         )}
       </div>
 
-      {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">

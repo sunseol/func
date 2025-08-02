@@ -1,52 +1,26 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { 
   PlanningDocumentWithUsers,
   DocumentStatus,
   WorkflowStep,
-  CreateDocumentRequest,
-  UpdateDocumentRequest
 } from '@/types/ai-pm';
 import { 
-  PlusIcon,
-  PencilIcon,
-  EyeIcon,
-  CheckIcon,
-  XMarkIcon,
-  DocumentTextIcon,
-  ClockIcon,
-  ExclamationTriangleIcon,
-  TrashIcon,
-  ArrowUpIcon,
-  DocumentDuplicateIcon
-} from '@heroicons/react/24/outline';
-
-interface DocumentManagerProps {
-  projectId: string;
-  workflowStep: WorkflowStep;
-  onDocumentCreated?: (document: PlanningDocumentWithUsers) => void;
-  onDocumentUpdated?: (document: PlanningDocumentWithUsers) => void;
-  className?: string;
-}
-
-interface DocumentFormData {
-  title: string;
-  content: string;
-}
+  PlusOutlined,
+  EllipsisOutlined,
+  ArrowUpOutlined,
+  CheckOutlined,
+  DeleteOutlined,
+  FileTextOutlined
+} from '@ant-design/icons';
+import { Button, Dropdown, MenuProps } from 'antd';
 
 const STEP_LABELS: Record<WorkflowStep, string> = {
-  1: '컨셉 정의',
-  2: '기능 기획',
-  3: '기술 설계',
-  4: '개발 계획',
-  5: '테스트 계획',
-  6: '배포 준비',
-  7: '운영 계획',
-  8: '마케팅 전략',
-  9: '사업화 계획'
+  1: '컨셉 정의', 2: '기능 기획', 3: '기술 설계', 4: '개발 계획', 5: '테스트 계획', 
+  6: '배포 준비', 7: '운영 계획', 8: '마케팅 전략', 9: '사업화 계획'
 };
 
 const STATUS_LABELS: Record<DocumentStatus, string> = {
@@ -61,463 +35,164 @@ const STATUS_COLORS: Record<DocumentStatus, string> = {
   official: 'bg-green-100 text-green-800'
 };
 
+interface DocumentManagerProps {
+  projectId: string;
+  workflowStep: WorkflowStep;
+  onDocumentSelect?: (document: PlanningDocumentWithUsers) => void;
+}
+
 export default function DocumentManager({
   projectId,
   workflowStep,
-  onDocumentCreated,
-  onDocumentUpdated,
-  className = ''
+  onDocumentSelect,
 }: DocumentManagerProps) {
-  const { user } = useAuth();
+  const { user, projectMemberships } = useAuth();
   const { success, error: showError } = useToast();
   const [documents, setDocuments] = useState<PlanningDocumentWithUsers[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [editingDocument, setEditingDocument] = useState<PlanningDocumentWithUsers | null>(null);
-  const [formData, setFormData] = useState<DocumentFormData>({
-    title: '',
-    content: ''
-  });
 
-  // 문서 목록 로드
-  useEffect(() => {
-    loadDocuments();
-  }, [projectId, workflowStep]);
-
-  const loadDocuments = async () => {
+  const loadDocuments = useCallback(async () => {
+    setIsLoading(true);
+    console.log('[DEBUG] Loading documents...');
     try {
-      setIsLoading(true);
-      const response = await fetch(`/api/ai-pm/documents?projectId=${projectId}&workflowStep=${workflowStep}`);
-      
-      if (!response.ok) {
-        throw new Error('문서 목록을 불러오는데 실패했습니다.');
-      }
-
+      const response = await fetch(`/api/ai-pm/documents?projectId=${projectId}&workflowStep=${workflowStep}`, {
+        cache: 'no-store' // Add cache-busting
+      });
+      if (!response.ok) throw new Error('문서 목록 로딩 실패');
       const data = await response.json();
+      console.log('[DEBUG] Loaded documents data:', data);
       setDocuments(data.documents || []);
+      console.log('[DEBUG] Updated documents state with new data.');
     } catch (err) {
-      console.error('Error loading documents:', err);
-      showError('문서 로드 오류', '문서 목록을 불러오는데 실패했습니다.');
+      console.error('[DEBUG] Load documents error:', err);
+      showError('문서 로드 오류', (err as Error).message);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [projectId, workflowStep, showError]);
 
-  const handleCreateDocument = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.title.trim() || !formData.content.trim()) {
-      showError('입력 오류', '제목과 내용을 모두 입력해주세요.');
-      return;
+  useEffect(() => {
+    if (user?.id) { // Ensure user is loaded before fetching documents
+        loadDocuments();
     }
+  }, [user, loadDocuments]);
+  
+  const handleAction = useCallback(async (action: 'request-approval' | 'approve' | 'delete', documentId: string) => {
+    console.log(`[ACTION] handleAction called! action: ${action}, documentId: ${documentId}`);
+
+    const urlMap = {
+      'request-approval': `/api/ai-pm/documents/${documentId}/request-approval`,
+      'approve': `/api/ai-pm/documents/${documentId}/approve`,
+      'delete': `/api/ai-pm/documents/${documentId}`,
+    };
+    const methodMap = {
+      'request-approval': 'POST', 'approve': 'POST', 'delete': 'DELETE',
+    };
+    
+    const url = urlMap[action as keyof typeof urlMap];
+    if (!url) {
+        console.error(`[ACTION] Invalid action type: ${action}`);
+        return;
+    }
+
+    if (action === 'delete' && !confirm('정말로 이 문서를 삭제하시겠습니까?')) return;
+
+    console.log(`[ACTION] Attempting to fetch: ${methodMap[action]} ${url}`);
 
     try {
-      const request: CreateDocumentRequest = {
-        workflow_step: workflowStep,
-        title: formData.title.trim(),
-        content: formData.content.trim()
-      };
-
-      const response = await fetch(`/api/ai-pm/documents?projectId=${projectId}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(request)
+      const response = await fetch(url, {
+        method: methodMap[action as keyof typeof methodMap],
+        headers: { 'Content-Type': 'application/json' },
       });
+      
+      const responseData = await response.json();
+      console.log('[ACTION] API response:', { status: response.status, data: responseData });
 
       if (!response.ok) {
-        throw new Error('문서 생성에 실패했습니다.');
+        throw new Error(responseData.message || `작업에 실패했습니다 (${response.status})`);
       }
-
-      const data = await response.json();
-      const newDocument = data.document;
       
-      setDocuments(prev => [newDocument, ...prev]);
-      setShowCreateForm(false);
-      setFormData({ title: '', content: '' });
-      
-      success('문서 생성', '문서가 성공적으로 생성되었습니다.');
-      onDocumentCreated?.(newDocument);
-    } catch (err) {
-      console.error('Error creating document:', err);
-      showError('문서 생성 오류', '문서 생성에 실패했습니다.');
-    }
-  };
-
-  const handleUpdateDocument = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingDocument || !formData.title.trim() || !formData.content.trim()) {
-      showError('입력 오류', '제목과 내용을 모두 입력해주세요.');
-      return;
-    }
-
-    try {
-      const request: UpdateDocumentRequest = {
-        title: formData.title.trim(),
-        content: formData.content.trim()
-      };
-
-      const response = await fetch(`/api/ai-pm/documents/${editingDocument.id}?projectId=${projectId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(request)
-      });
-
-      if (!response.ok) {
-        throw new Error('문서 수정에 실패했습니다.');
-      }
-
-      const data = await response.json();
-      const updatedDocument = data.document;
-      
-      setDocuments(prev => 
-        prev.map(doc => 
-          doc.id === editingDocument.id ? updatedDocument : doc
-        )
-      );
-      setEditingDocument(null);
-      setFormData({ title: '', content: '' });
-      
-      success('문서 수정', '문서가 성공적으로 수정되었습니다.');
-      onDocumentUpdated?.(updatedDocument);
-    } catch (err) {
-      console.error('Error updating document:', err);
-      showError('문서 수정 오류', '문서 수정에 실패했습니다.');
-    }
-  };
-
-  const handleRequestApproval = async (documentId: string) => {
-    try {
-      const response = await fetch(`/api/ai-pm/documents/${documentId}/request-approval?projectId=${projectId}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('승인 요청에 실패했습니다.');
-      }
-
+      success('성공', responseData.message || '작업이 성공적으로 완료되었습니다.');
+      console.log('[ACTION] Action successful, reloading documents...');
       await loadDocuments();
-      success('승인 요청', '승인 요청이 성공적으로 전송되었습니다.');
-    } catch (err) {
-      console.error('Error requesting approval:', err);
-      showError('승인 요청 오류', '승인 요청에 실패했습니다.');
-    }
-  };
+      console.log('[ACTION] Documents reloaded.');
 
-  const handleApproveDocument = async (documentId: string) => {
-    try {
-      const response = await fetch(`/api/ai-pm/documents/${documentId}/approve?projectId=${projectId}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        }
+    } catch (err) {
+      console.error('[ACTION] Action failed:', err);
+      showError('작업 실패', (err as Error).message);
+    }
+  }, [loadDocuments, success, showError]);
+
+  const getMenuItems = (doc: PlanningDocumentWithUsers): MenuProps['items'] => {
+    const items: MenuProps['items'] = [];
+    const userRole = projectMemberships.find(m => m.project_id === doc.project_id)?.role;
+    
+    if (doc.created_by === user?.id && doc.status === 'private') {
+      items.push({ 
+        key: 'request-approval', 
+        label: '승인 요청', 
+        icon: <ArrowUpOutlined />,
+        onClick: () => handleAction('request-approval', doc.id),
       });
-
-      if (!response.ok) {
-        throw new Error('문서 승인에 실패했습니다.');
-      }
-
-      await loadDocuments();
-      success('문서 승인', '문서가 성공적으로 승인되었습니다.');
-    } catch (err) {
-      console.error('Error approving document:', err);
-      showError('승인 오류', '문서 승인에 실패했습니다.');
-    }
-  };
-
-  const handleDeleteDocument = async (documentId: string) => {
-    if (!confirm('정말로 이 문서를 삭제하시겠습니까?')) {
-      return;
     }
 
-    try {
-      const response = await fetch(`/api/ai-pm/documents/${documentId}?projectId=${projectId}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        }
+    if (doc.status === 'pending_approval' && doc.created_by !== user?.id && userRole === '서비스기획') {
+        items.push({ 
+            key: 'approve', 
+            label: '승인', 
+            icon: <CheckOutlined />,
+            onClick: () => handleAction('approve', doc.id),
+        });
+    }
+
+    if (doc.created_by === user?.id && doc.status !== 'official') {
+      items.push({ 
+        key: 'delete', 
+        label: '삭제', 
+        icon: <DeleteOutlined />, 
+        danger: true,
+        onClick: () => handleAction('delete', doc.id),
       });
-
-      if (!response.ok) {
-        throw new Error('문서 삭제에 실패했습니다.');
-      }
-
-      setDocuments(prev => prev.filter(doc => doc.id !== documentId));
-      success('문서 삭제', '문서가 성공적으로 삭제되었습니다.');
-    } catch (err) {
-      console.error('Error deleting document:', err);
-      showError('삭제 오류', '문서 삭제에 실패했습니다.');
     }
+    
+    return items;
   };
-
-  const startEditing = (document: PlanningDocumentWithUsers) => {
-    setEditingDocument(document);
-    setFormData({
-      title: document.title,
-      content: document.content
-    });
-  };
-
-  const cancelEditing = () => {
-    setEditingDocument(null);
-    setFormData({ title: '', content: '' });
-  };
-
-  const canEdit = (document: PlanningDocumentWithUsers) => {
-    return document.created_by === user?.id && document.status === 'private';
-  };
-
-  const canRequestApproval = (document: PlanningDocumentWithUsers) => {
-    return document.created_by === user?.id && document.status === 'private';
-  };
-
-  const canApprove = (document: PlanningDocumentWithUsers) => {
-    return document.status === 'pending_approval' && document.created_by !== user?.id;
-  };
-
-  const canDelete = (document: PlanningDocumentWithUsers) => {
-    return document.created_by === user?.id && document.status !== 'official';
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('ko-KR', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  if (isLoading) {
-    return (
-      <div className={`bg-white rounded-lg shadow-sm border border-gray-200 p-6 ${className}`}>
-        <div className="animate-pulse space-y-4">
-          <div className="h-6 bg-gray-200 rounded w-1/4"></div>
-          <div className="space-y-3">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="h-20 bg-gray-200 rounded"></div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 ${className}`}>
-      {/* 헤더 */}
-      <div className="p-6 border-b border-gray-200">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">문서 관리</h3>
-            <p className="text-sm text-gray-600 mt-1">
-              {STEP_LABELS[workflowStep]} 단계 문서
-            </p>
-          </div>
-          <button
-            onClick={() => setShowCreateForm(true)}
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors"
-          >
-            <PlusIcon className="w-4 h-4 mr-2" />
-            새 문서
-          </button>
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      <div className="p-4 border-b flex justify-between items-center">
+        <div>
+          <h3 className="font-semibold">{STEP_LABELS[workflowStep]} 문서</h3>
+          <p className="text-sm text-gray-500">문서를 관리하고 공식화하세요.</p>
         </div>
+        <Button icon={<PlusOutlined />} type="primary" disabled>새 문서 (준비 중)</Button>
       </div>
 
-      {/* 문서 생성 폼 */}
-      {showCreateForm && (
-        <div className="p-6 border-b border-gray-200 bg-gray-50">
-          <h4 className="text-md font-medium text-gray-900 mb-4">새 문서 생성</h4>
-          <form onSubmit={handleCreateDocument} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                제목
-              </label>
-              <input
-                type="text"
-                value={formData.title}
-                onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="문서 제목을 입력하세요"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                내용
-              </label>
-              <textarea
-                value={formData.content}
-                onChange={(e) => setFormData(prev => ({ ...prev, content: e.target.value }))}
-                rows={6}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="문서 내용을 입력하세요"
-                required
-              />
-            </div>
-            <div className="flex space-x-3">
-              <button
-                type="submit"
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-              >
-                생성
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowCreateForm(false);
-                  setFormData({ title: '', content: '' });
-                }}
-                className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors"
-              >
-                취소
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* 문서 목록 */}
-      <div className="p-6">
-        {documents.length === 0 ? (
-          <div className="text-center py-8">
-            <DocumentTextIcon className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">문서가 없습니다</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              첫 번째 문서를 생성해보세요.
-            </p>
+      <div className="p-4">
+        {isLoading ? <p className="text-center py-8">로딩 중...</p> : documents.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <FileTextOutlined className="text-4xl" />
+            <p className="mt-2">문서가 없습니다.</p>
           </div>
         ) : (
-          <div className="space-y-4">
-            {documents.map((document) => (
-              <div
-                key={document.id}
-                className="border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow"
-              >
-                {/* 문서 편집 폼 */}
-                {editingDocument?.id === document.id ? (
-                  <form onSubmit={handleUpdateDocument} className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        제목
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.title}
-                        onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        required
-                      />
+          <div className="space-y-3">
+            {documents.map(doc => (
+              <div key={doc.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                <div className="flex justify-between items-start gap-4">
+                  <div className="cursor-pointer flex-1 min-w-0" onClick={() => onDocumentSelect?.(doc)}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h4 className="font-semibold text-lg truncate">{doc.title}</h4>
+                      <span className={`px-2 py-0.5 text-xs rounded-full flex-shrink-0 ${STATUS_COLORS[doc.status]}`}>{STATUS_LABELS[doc.status]}</span>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        내용
-                      </label>
-                      <textarea
-                        value={formData.content}
-                        onChange={(e) => setFormData(prev => ({ ...prev, content: e.target.value }))}
-                        rows={6}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        required
-                      />
-                    </div>
-                    <div className="flex space-x-3">
-                      <button
-                        type="submit"
-                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                      >
-                        저장
-                      </button>
-                      <button
-                        type="button"
-                        onClick={cancelEditing}
-                        className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors"
-                      >
-                        취소
-                      </button>
-                    </div>
-                  </form>
-                ) : (
-                  <>
-                    {/* 문서 정보 */}
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <h4 className="text-lg font-medium text-gray-900">
-                            {document.title}
-                          </h4>
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[document.status]}`}>
-                            {STATUS_LABELS[document.status]}
-                          </span>
-                          {document.version > 1 && (
-                            <span className="text-xs text-gray-500">
-                              v{document.version}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-gray-600 mb-3 line-clamp-3">
-                          {document.content}
-                        </p>
-                        <div className="flex items-center space-x-4 text-xs text-gray-500">
-                          <span>작성자: {document.creator_name || document.creator_email}</span>
-                          <span>작성일: {formatDate(document.created_at)}</span>
-                          {document.approved_by && (
-                            <span>승인자: {document.approver_name || document.approver_email}</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* 액션 버튼 */}
-                    <div className="mt-4 flex items-center space-x-2">
-                      {canEdit(document) && (
-                        <button
-                          onClick={() => startEditing(document)}
-                          className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 transition-colors"
-                        >
-                          <PencilIcon className="w-3 h-3 mr-1" />
-                          편집
-                        </button>
-                      )}
-                      
-                      {canRequestApproval(document) && (
-                        <button
-                          onClick={() => handleRequestApproval(document.id)}
-                          className="inline-flex items-center px-3 py-1.5 border border-blue-300 text-xs font-medium rounded text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
-                        >
-                          <ArrowUpIcon className="w-3 h-3 mr-1" />
-                          승인 요청
-                        </button>
-                      )}
-                      
-                      {canApprove(document) && (
-                        <button
-                          onClick={() => handleApproveDocument(document.id)}
-                          className="inline-flex items-center px-3 py-1.5 border border-green-300 text-xs font-medium rounded text-green-700 bg-green-50 hover:bg-green-100 transition-colors"
-                        >
-                          <CheckIcon className="w-3 h-3 mr-1" />
-                          승인
-                        </button>
-                      )}
-                      
-                      {canDelete(document) && (
-                        <button
-                          onClick={() => handleDeleteDocument(document.id)}
-                          className="inline-flex items-center px-3 py-1.5 border border-red-300 text-xs font-medium rounded text-red-700 bg-red-50 hover:bg-red-100 transition-colors"
-                        >
-                          <TrashIcon className="w-3 h-3 mr-1" />
-                          삭제
-                        </button>
-                      )}
-                    </div>
-                  </>
-                )}
+                    <p className="text-sm text-gray-600 line-clamp-2 break-words">{doc.content}</p>
+                    <p className="text-xs text-gray-400 mt-2 truncate">
+                      작성자: {doc.creator_name || '...'} | 최종 수정: {new Date(doc.updated_at).toLocaleDateString('ko-KR')}
+                    </p>
+                  </div>
+                  <Dropdown menu={{ items: getMenuItems(doc) }} trigger={['click']}>
+                    <Button type="text" icon={<EllipsisOutlined />} />
+                  </Dropdown>
+                </div>
               </div>
             ))}
           </div>

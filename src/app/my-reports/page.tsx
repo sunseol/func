@@ -9,7 +9,7 @@ import { useTheme } from '@/app/components/ThemeProvider';
 import { useNotification } from '@/context/NotificationContext';
 import { List, Spin, Typography, Button, Space, Layout, Switch, Avatar, Input, Select, DatePicker, Row, Col, Modal, App as AntApp, Form } from 'antd';
 import { LogoutOutlined, UserOutlined, EditOutlined, SunOutlined, MoonOutlined, DeleteOutlined, DownOutlined, UpOutlined, PlusOutlined, CopyOutlined, BellOutlined } from '@ant-design/icons';
-import RichEditor from '@/app/components/RichEditor';
+
 import type { Dayjs } from 'dayjs';
 
 const { Header, Content } = Layout;
@@ -654,15 +654,31 @@ export default function MyReportsPage() {
         destroyOnClose
       >
         {editingReport && (
-          <div style={{ minHeight: '500px' }}>
-            <RichEditor
-              initialContent={editingReport.report_content}
-              onSave={handleSaveEditedReport}
-              isSaving={isSavingEdit}
-              saveActionDisabled={false}
-              title={`${editingReport.report_date} - ${editingReport.report_type === 'morning' ? '☀️ 출근' : '🌙 퇴근'} 보고서 편집`}
-            />
-          </div>
+          <Form
+            layout="vertical"
+            initialValues={{ content: editingReport.report_content }}
+            onFinish={(values) => handleSaveEditedReport(values.content)}
+            style={{ minHeight: '500px', display: 'flex', flexDirection: 'column' }}
+          >
+            <Form.Item
+              name="content"
+              style={{ flex: 1 }}
+              rules={[{ required: true, message: '내용을 입력해주세요.' }]}
+            >
+              <Input.TextArea
+                style={{ height: '100%', minHeight: '400px', resize: 'none' }}
+              />
+            </Form.Item>
+            <Form.Item style={{ textAlign: 'right', marginTop: '16px' }}>
+              <Button
+                htmlType="submit"
+                type="primary"
+                loading={isSavingEdit}
+              >
+                저장
+              </Button>
+            </Form.Item>
+          </Form>
         )}
       </Modal>
 

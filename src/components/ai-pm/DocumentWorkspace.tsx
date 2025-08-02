@@ -1,141 +1,139 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import DocumentManager from './DocumentManager';
+import DocumentEditor from './DocumentEditor';
 import DocumentVersionHistory from './DocumentVersionHistory';
-import { PlanningDocumentWithUsers, WorkflowStep } from '@/types/ai-pm';
+import { PlanningDocumentWithUsers, WorkflowStep, DocumentStatus } from '@/types/ai-pm';
+import { useToast } from '@/contexts/ToastContext';
 
 interface DocumentWorkspaceProps {
   projectId: string;
   workflowStep: WorkflowStep;
-  userId: string;
   className?: string;
 }
 
 export default function DocumentWorkspace({
   projectId,
   workflowStep,
-  userId,
   className = ''
 }: DocumentWorkspaceProps) {
   const [currentDocument, setCurrentDocument] = useState<PlanningDocumentWithUsers | null>(null);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const { success, error: showError } = useToast();
 
-  const handleDocumentChange = (document: PlanningDocumentWithUsers | null) => {
+  // A key to force-remount the DocumentManager when a document is updated.
+  const [managerKey, setManagerKey] = useState(Date.now());
+
+  const handleDocumentSelect = (document: PlanningDocumentWithUsers | null) => {
     setCurrentDocument(document);
   };
 
-  const handleVersionPreview = (version: any) => {
-    // 버전 미리보기 처리 로직
-    console.log('Version preview:', version);
+  const handleDocumentUpdate = (updatedDocument: PlanningDocumentWithUsers) => {
+    setCurrentDocument(updatedDocument);
+    // Force DocumentManager to re-fetch documents to reflect changes
+    setManagerKey(Date.now()); 
+  };
+  
+  const handleStatusChange = async (documentId: string, newStatus: DocumentStatus) => {
+    const action = newStatus === 'pending_approval' ? 'request-approval' : newStatus === 'official' ? 'approve' : null;
+
+    if (!action && newStatus !== 'private' && newStatus !== 'rejected') {
+        showError('유효하지 않은 상태 값입니다.');
+        return;
+    }
+
+    // For simple status changes that have dedicated endpoints
+    if (action) {
+        const url = `/api/ai-pm/documents/${documentId}/${action}`;
+        try {
+            const response = await fetch(url, { method: 'POST' });
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || '상태 변경에 실패했습니다.');
+            }
+            const updatedDocument = await response.json();
+            success('상태 변경 완료', `문서가 ${newStatus} 상태로 변경되었습니다.`);
+            handleDocumentUpdate(updatedDocument.document);
+        } catch (err) {
+            showError('상태 변경 오류', (err as Error).message);
+        }
+    } else {
+         // Handle general status updates (e.g., to private, rejected) via a generic update endpoint
+         // This part needs a proper API endpoint like `PATCH /api/ai-pm/documents/{documentId}`
+         console.warn(`Status change to "${newStatus}" is not fully implemented yet.`);
+         // As a placeholder, we optimistically update the UI
+         if(currentDocument) {
+           const updatedDoc = { ...currentDocument, status: newStatus };
+           handleDocumentUpdate(updatedDoc);
+           success('상태 변경 완료 (임시)', `문서가 ${newStatus} 상태로 변경되었습니다.`);
+         }
+    }
   };
 
-  const handleVersionRestore = async (versionId: string) => {
-    // 버전 복원 처리 로직
-    console.log('Restore version:', versionId);
-    // 실제 구현 시에는 API 호출 및 문서 새로고침 필요
+  const handleSave = async (documentId: string, content: string, title?: string): Promise<PlanningDocumentWithUsers> => {
+    // Placeholder for save logic
+    console.log('Saving document...', { documentId, title, content });
+    if(currentDocument) {
+        const updatedDoc = { ...currentDocument, title: title || currentDocument.title, content };
+        handleDocumentUpdate(updatedDoc);
+        return updatedDoc;
+    }
+    throw new Error("No document selected");
+  };
+
+  const handleDelete = async (documentId: string) => {
+    // Placeholder for delete logic
+    console.log('Deleting document...', documentId);
+    setCurrentDocument(null);
+    setManagerKey(Date.now());
   };
 
   return (
-    <div className={`flex flex-col h-full ${className}`}>
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">
-            워크플로우 단계 {workflowStep}
-          </h2>
-          {currentDocument && (
-            <p className="text-sm text-gray-600">
-              {currentDocument.status === 'official' ? '공식 승인됨' :
-               currentDocument.status === 'pending_approval' ? '승인 대기 중' :
-               '개인 작업 중'}
-            </p>
-          )}
-        </div>
-
-        {/* Document actions */}
-        <div className="flex items-center gap-2">
-          {currentDocument && (
-            <>
-              <button
-                onClick={() => setShowVersionHistory(!showVersionHistory)}
-                className="px-3 py-1 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
-              >
-                버전 히스토리
-              </button>
-              
-              {currentDocument.status === 'official' && (
-                <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">
-                  v{currentDocument.version}
-                </span>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Main content */}
-      <div className="flex-1 overflow-hidden">
+    <div className={`flex h-full gap-4 ${className}`}>
+      {/* Left Panel: Document Manager */}
+      <div className="w-1/3 flex-shrink-0">
         <DocumentManager
+          key={managerKey}
           projectId={projectId}
           workflowStep={workflowStep}
-          userId={userId}
-          onDocumentChange={handleDocumentChange}
-          onShowVersionHistory={() => setShowVersionHistory(true)}
-          className="h-full"
+          onDocumentSelect={handleDocumentSelect}
         />
       </div>
 
-      {/* Version history modal */}
-      {currentDocument && (
+      {/* Right Panel: Document Editor or Placeholder */}
+      <div className="w-2/3 flex-grow">
+        {currentDocument ? (
+          <DocumentEditor
+            key={currentDocument.id}
+            projectId={projectId}
+            workflowStep={workflowStep}
+            document={currentDocument}
+            onSave={(content, title) => handleSave(currentDocument.id, content, title)}
+            onStatusChange={(status) => handleStatusChange(currentDocument.id, status)}
+            onDelete={() => handleDelete(currentDocument.id)}
+            onShowVersionHistory={() => setShowVersionHistory(true)}
+            onDocumentUpdated={handleDocumentUpdate}
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full bg-gray-50 rounded-lg">
+            <div className="text-center">
+              <p className="text-lg font-semibold text-gray-500">문서를 선택하여 편집하세요</p>
+              <p className="text-sm text-gray-400">왼쪽 목록에서 문서를 클릭하면 여기에 내용이 표시됩니다.</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Version History Modal (remains unchanged) */}
+      {currentDocument && showVersionHistory && (
         <DocumentVersionHistory
           projectId={projectId}
           documentId={currentDocument.id}
           currentVersion={currentDocument.version}
           isOpen={showVersionHistory}
           onClose={() => setShowVersionHistory(false)}
-          onPreviewVersion={handleVersionPreview}
-          onRestoreVersion={handleVersionRestore}
         />
-      )}
-
-      {/* Document info panel */}
-      {currentDocument && (
-        <div className="p-4 bg-gray-50 border-t border-gray-200">
-          <div className="flex items-center justify-between text-sm text-gray-600">
-            <div className="flex items-center gap-4">
-              <span>
-                작성자: {currentDocument.creator_name || currentDocument.creator_email}
-              </span>
-              <span>
-                생성일: {new Date(currentDocument.created_at).toLocaleDateString('ko-KR')}
-              </span>
-              {currentDocument.approved_by && (
-                <span>
-                  승인자: {currentDocument.approver_name || currentDocument.approver_email}
-                </span>
-              )}
-            </div>
-            
-            <div className="flex items-center gap-2">
-              {currentDocument.status === 'private' && (
-                <span className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded">
-                  비공개
-                </span>
-              )}
-              {currentDocument.status === 'pending_approval' && (
-                <span className="px-2 py-1 text-xs bg-yellow-100 text-yellow-700 rounded">
-                  승인 대기
-                </span>
-              )}
-              {currentDocument.status === 'official' && (
-                <span className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded">
-                  공식 문서
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

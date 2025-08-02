@@ -1,7 +1,7 @@
 import Groq from 'groq-sdk';
 import { AIChatMessage, WorkflowStep, AIpmError, AIpmErrorType } from '@/types/ai-pm';
 import { validateAiPmPrompt, logSecurityEvent, securePromptTemplate, PromptSecurityResult } from '@/lib/security/promptInjection';
-import { DataSanitizer } from '@/lib/security/secretsManager';
+// import { DataSanitizer } from '@/lib/security/secretsManager';
 
 // AIPM workflow prompts based on AIPM.md
 const WORKFLOW_PROMPTS: Record<WorkflowStep, string> = {
@@ -92,7 +92,7 @@ export class AIService {
   constructor(config: AIServiceConfig) {
     this.config = {
       apiKey: config.apiKey,
-      model: config.model || 'llama-3.1-70b-versatile',
+      model: config.model || 'meta-llama/llama-4-maverick-17b-128e-instruct',
       temperature: config.temperature || 0.7,
       maxTokens: config.maxTokens || 4096
     };
@@ -267,7 +267,7 @@ export class AIService {
 
       return response;
     } catch (error) {
-      console.error('Document Generation Error:', DataSanitizer.sanitizeForLogging(error));
+      console.error('Document Generation Error:', error);
       throw this.handleAIError(error);
     }
   }
@@ -318,6 +318,8 @@ ${officialDocuments.map(doc => `[${doc.step}단계 문서]\n${doc.content}`).joi
       throw this.handleAIError(error);
     }
   }
+
+
 
   /**
    * Build system prompt for specific workflow step
@@ -424,3 +426,5 @@ export function getAIService(): AIService {
 export function createAIService(config: AIServiceConfig): AIService {
   return new AIService(config);
 }
+
+

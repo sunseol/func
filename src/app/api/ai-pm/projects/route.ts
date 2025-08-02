@@ -1,188 +1,133 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { 
+  checkAuth, 
+  ValidationErrors,
+  DatabaseErrors,
+  checkRateLimit,
+  getSecurityHeaders,
+  sanitizeInput,
+  validateProjectData
+} from '@/lib/ai-pm/auth-middleware';
+import { 
   CreateProjectRequest, 
   ProjectsResponse,
   AIpmErrorType 
 } from '@/types/ai-pm';
 
+export const dynamic = 'force-dynamic';
+
 // GET /api/ai-pm/projects - Get all projects for the current user
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
+    const authResult = await checkAuth();
     
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: AIpmErrorType.UNAUTHORIZED, message: '인증이 필요합니다.' },
-        { status: 401 }
-      );
+    if ('error' in authResult) {
+      const status = authResult.error === AIpmErrorType.UNAUTHORIZED ? 401 : 403;
+      return NextResponse.json(authResult, { 
+        status,
+        headers: getSecurityHeaders()
+      });
     }
 
-    console.log('Authenticated user:', user.email);
+    const { user } = authResult;
 
-    // Check if user is admin (hardcoded for now)
-    const isAdmin = user.email === 'jakeseol99@keduall.com';
-    
-    console.log('Is admin:', isAdmin);
+    // Fetch projects using the new database function
+    const { data: projects, error } = await supabase
+      .rpc('get_projects_for_user', { p_user_id: user.id });
 
-    let projects = [];
-
-    if (isAdmin) {
-      // Admin can see all projects
-      const { data: projectsData, error } = await supabase
-        .from('projects')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Database error:', error);
-        return NextResponse.json(
-          { error: AIpmErrorType.DATABASE_ERROR, message: '프로젝트 조회 중 오류가 발생했습니다.' },
-          { status: 500 }
-        );
-      }
-
-      // Get creator information separately
-      const projectsWithCreators = await Promise.all(
-        (projectsData || []).map(async (project: any) => {
-          if (project.created_by) {
-            const { data: creator } = await supabase
-              .from('user_profiles')
-              .select('email, full_name')
-              .eq('id', project.created_by)
-              .single();
-            
-            return {
-              ...project,
-              creator_email: creator?.email || '',
-              creator_name: creator?.full_name || null
-            };
-          }
-          return {
-            ...project,
-            creator_email: '',
-            creator_name: null
-          };
-        })
-      );
-
-      projects = projectsWithCreators;
-    } else {
-      // Regular users can see projects they created or are members of (thanks to RLS)
-      const { data: userProjects, error } = await supabase
-        .from('projects')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Database error:', error);
-        return NextResponse.json(
-          { error: AIpmErrorType.DATABASE_ERROR, message: '프로젝트 조회 중 오류가 발생했습니다.' },
-          { status: 500 }
-        );
-      }
-
-      // For regular users, get their role in each project
-      const userProjectsWithRoles = await Promise.all(
-        (userProjects || []).map(async (project: any) => {
-          // Get user's role in this project
-          const { data: membership } = await supabase
-            .from('project_members')
-            .select('role')
-            .eq('project_id', project.id)
-            .eq('user_id', user.id)
-            .single();
-
-          return {
-            project_id: project.id,
-            project_name: project.name,
-            project_description: project.description,
-            user_role: membership?.role || null,
-            member_count: 1, // We'll calculate this later if needed
-            official_documents_count: 0, // We'll calculate this later if needed
-            last_activity: project.updated_at
-          };
-        })
-      );
-
-      projects = userProjectsWithRoles;
+    if (error) {
+      console.error('Database error fetching projects:', error);
+      return NextResponse.json(DatabaseErrors.QUERY_ERROR('프로젝트 조회'),{ status: 500 });
     }
 
-    console.log('Found projects:', projects.length);
+    return NextResponse.json({ projects } as ProjectsResponse, { headers: getSecurityHeaders() });
 
-    return NextResponse.json({ projects } as ProjectsResponse);
   } catch (error) {
     console.error('Unexpected error:', error);
     return NextResponse.json(
       { error: AIpmErrorType.INTERNAL_ERROR, message: '서버 내부 오류가 발생했습니다.' },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: getSecurityHeaders()
+      }
     );
   }
 }
 
-// POST /api/ai-pm/projects - Create a new project (admin only)
+// POST /api/ai-pm/projects - Create a new project
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
+    const authResult = await checkAuth();
     
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: AIpmErrorType.UNAUTHORIZED, message: '인증이 필요합니다.' },
-        { status: 401 }
-      );
+    if ('error' in authResult) {
+      const status = authResult.error === AIpmErrorType.UNAUTHORIZED ? 401 : 403;
+      return NextResponse.json(authResult, { 
+        status,
+        headers: getSecurityHeaders()
+      });
     }
 
-    // Check if user is admin (hardcoded for now)
-    const isAdmin = user.email === 'jakeseol99@keduall.com';
-    
-    if (!isAdmin) {
-      return NextResponse.json(
-        { error: AIpmErrorType.FORBIDDEN, message: '프로젝트 생성 권한이 없습니다.' },
-        { status: 403 }
-      );
-    }
+    const { user } = authResult;
 
     const body: CreateProjectRequest = await request.json();
 
-    // Validate input
-    if (!body.name || body.name.trim().length === 0) {
+    // Sanitize and validate
+    const sanitizedData = {
+      name: sanitizeInput(body.name || ''),
+      description: body.description ? sanitizeInput(body.description) : null,
+    };
+    const validation = validateProjectData(sanitizedData);
+    if (!validation.valid) {
       return NextResponse.json(
-        { error: AIpmErrorType.VALIDATION_ERROR, message: '프로젝트 이름은 필수입니다.' },
-        { status: 400 }
+        { error: AIpmErrorType.VALIDATION_ERROR, message: validation.errors.join(', ') },
+        { status: 400, headers: getSecurityHeaders() }
       );
     }
 
     // Create project
     const { data: project, error } = await supabase
       .from('projects')
-      .insert([
-        {
-          name: body.name.trim(),
-          description: body.description?.trim() || null,
+      .insert({
+          name: sanitizedData.name,
+          description: sanitizedData.description,
           created_by: user.id,
-        }
-      ])
+        })
       .select()
       .single();
 
     if (error) {
       console.error('Database error:', error);
       return NextResponse.json(
-        { error: AIpmErrorType.DATABASE_ERROR, message: '프로젝트 생성 중 오류가 발생했습니다.' },
-        { status: 500 }
+        DatabaseErrors.QUERY_ERROR('프로젝트 생성'),
+        { status: 500, headers: getSecurityHeaders() }
       );
     }
 
-    return NextResponse.json({ project }, { status: 201 });
+    // Also add the creator as the first member of the project
+    const { error: memberError } = await supabase
+      .from('project_members')
+      .insert({
+        project_id: project.id,
+        user_id: user.id,
+        role: '서비스기획', // Default role for creator
+        added_by: user.id,
+      });
+
+    if (memberError) {
+        console.error('Failed to add creator as project member:', memberError);
+        // Not returning an error here as the project creation was successful
+    }
+
+    return NextResponse.json({ project }, { status: 201, headers: getSecurityHeaders() });
+
   } catch (error) {
     console.error('Unexpected error:', error);
     return NextResponse.json(
       { error: AIpmErrorType.INTERNAL_ERROR, message: '서버 내부 오류가 발생했습니다.' },
-      { status: 500 }
+      { status: 500, headers: getSecurityHeaders() }
     );
   }
 }

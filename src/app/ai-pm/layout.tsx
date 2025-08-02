@@ -16,9 +16,11 @@ export default function AIPMLayout({
     <ErrorBoundary level="critical">
       <ToastProvider>
         <NavigationProvider>
-          <div className="min-h-screen bg-gray-50">
+          <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
             <MainHeader />
-            <main>{children}</main>
+            <div className="flex-1 flex overflow-hidden">
+              {children}
+            </div>
             {/* <PerformanceMonitor /> */}
           </div>
         </NavigationProvider>

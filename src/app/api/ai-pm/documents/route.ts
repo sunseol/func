@@ -1,31 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { checkAuth } from '@/lib/ai-pm/auth-middleware';
 import { 
-  CreateDocumentRequest,
-  UpdateDocumentRequest,
   DocumentsResponse,
   DocumentResponse,
   AIpmErrorType,
   isValidWorkflowStep,
   isValidDocumentStatus,
-  getWorkflowStepName
+  CreateDocumentRequest
 } from '@/types/ai-pm';
+
+export const dynamic = 'force-dynamic';
 
 // GET /api/ai-pm/documents - Get documents for a project
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createClient();
-    
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: AIpmErrorType.UNAUTHORIZED, message: '인증이 필요합니다.' },
-        { status: 401 }
-      );
-    }
+    const supabase = await createClient();
+    const authResult = await checkAuth();
 
-    // Get query parameters
+    if ('error' in authResult) {
+      return NextResponse.json(authResult, { status: 401 });
+    }
+    const { user } = authResult;
+
     const url = new URL(request.url);
     const projectId = url.searchParams.get('projectId');
     const workflowStep = url.searchParams.get('workflowStep');
@@ -46,51 +43,24 @@ export async function GET(request: NextRequest) {
       .eq('user_id', user.id)
       .single();
 
-    let userProfile = null;
     if (memberError || !projectMember) {
-      // Check if user is admin
-      const { data: profile, error: profileError } = await supabase
-        .from('user_profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-      
-      userProfile = profile;
-
-      if (profileError || !userProfile || userProfile.role !== 'admin') {
         return NextResponse.json(
           { error: AIpmErrorType.FORBIDDEN, message: '프로젝트에 접근할 권한이 없습니다.' },
           { status: 403 }
         );
-      }
-    } else {
-      const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-      userProfile = profile;
     }
-
-
-    // Build query
+    
     let query = supabase
       .from('planning_documents')
-      .select(`*`) // Select all fields from planning_documents
+      .select(`*`)
       .eq('project_id', projectId);
 
-    // Add filters
     if (workflowStep && isValidWorkflowStep(parseInt(workflowStep))) {
       query = query.eq('workflow_step', parseInt(workflowStep));
     }
 
     if (status && isValidDocumentStatus(status)) {
       query = query.eq('status', status);
-    }
-
-    // Apply RLS - users can only see official documents and their own private documents
-    if (userProfile?.role !== 'admin') {
-      query = query.or(`status.eq.official,created_by.eq.${user.id}`);
     }
 
     query = query.order('created_at', { ascending: false });
@@ -105,7 +75,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Manually fetch user details for creator and approver
     const userIds = new Set<string>();
     documents.forEach(doc => {
       if (doc.created_by) userIds.add(doc.created_by);
@@ -115,24 +84,20 @@ export async function GET(request: NextRequest) {
     let userProfilesMap = new Map<string, { email: string; full_name: string | null }>();
     if (userIds.size > 0) {
       const { data: profiles, error: profilesError } = await supabase
-        .from('users')
-        .select('id, email, user_profiles(full_name)')
+        .from('user_profiles')
+        .select('id, email, full_name')
         .in('id', Array.from(userIds));
 
-      if (profilesError) {
-        console.error('Error fetching user profiles:', profilesError);
-        // Continue without user details if this fails
-      } else {
+      if (!profilesError) {
         profiles.forEach((p: any) => {
           userProfilesMap.set(p.id, {
             email: p.email,
-            full_name: p.user_profiles?.[0]?.full_name || null
+            full_name: p.full_name || null
           });
         });
       }
     }
 
-    // Format response
     const documentsWithUsers = documents.map(doc => ({
       ...doc,
       creator_email: userProfilesMap.get(doc.created_by)?.email || '',
@@ -160,23 +125,21 @@ export async function GET(request: NextRequest) {
 // POST /api/ai-pm/documents - Create a new document
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient();
-    
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: AIpmErrorType.UNAUTHORIZED, message: '인증이 필요합니다.' },
-        { status: 401 }
-      );
+    const supabase = await createClient();
+    const authResult = await checkAuth();
+
+    if ('error' in authResult) {
+      return NextResponse.json(authResult, { status: 401 });
     }
+    const { user } = authResult;
 
-    // Parse request body
-    const body: CreateDocumentRequest & { project_id: string } = await request.json();
-    const { project_id, workflow_step, title, content } = body;
+    const url = new URL(request.url);
+    const projectId = url.searchParams.get('projectId');
+    
+    const body: CreateDocumentRequest = await request.json();
+    const { workflow_step, title, content } = body;
 
-    // Validate input
-    if (!project_id || !title || !content) {
+    if (!projectId || !title || !content) {
       return NextResponse.json(
         { error: AIpmErrorType.VALIDATION_ERROR, message: '필수 필드가 누락되었습니다.' },
         { status: 400 }
@@ -190,35 +153,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check project access
     const { data: projectMember, error: memberError } = await supabase
       .from('project_members')
       .select('id')
-      .eq('project_id', project_id)
+      .eq('project_id', projectId)
       .eq('user_id', user.id)
       .single();
 
     if (memberError || !projectMember) {
-      // Check if user is admin
-      const { data: userProfile } = await supabase
-        .from('user_profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-
-      if (!userProfile || userProfile.role !== 'admin') {
         return NextResponse.json(
           { error: AIpmErrorType.FORBIDDEN, message: '프로젝트에 접근할 권한이 없습니다.' },
           { status: 403 }
         );
-      }
     }
 
-    // Create document
     const { data: document, error: createError } = await supabase
       .from('planning_documents')
       .insert([{
-        project_id,
+        project_id: projectId,
         workflow_step,
         title,
         content,
@@ -226,7 +178,7 @@ export async function POST(request: NextRequest) {
         version: 1,
         created_by: user.id
       }])
-      .select('*') // Select all fields from the new document
+      .select('*')
       .single();
 
     if (createError) {
@@ -237,18 +189,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Manually fetch creator details
     const { data: creatorProfile, error: profileError } = await supabase
-      .from('users')
-      .select('email, user_profiles(full_name)')
+      .from('user_profiles')
+      .select('email, full_name')
       .eq('id', document.created_by)
       .single();
 
-    // Format response
     const documentWithUsers = {
       ...document,
       creator_email: profileError ? '' : creatorProfile.email,
-      creator_name: profileError ? null : (creatorProfile.user_profiles as any)?.[0]?.full_name || null,
+      creator_name: profileError ? null : creatorProfile.full_name || null,
       approver_email: null,
       approver_name: null,
     };

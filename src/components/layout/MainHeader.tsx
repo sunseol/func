@@ -46,6 +46,11 @@ export default function MainHeader() {
                 내 보고서
               </Button>
             </Link>
+            <Link href="/report-generator">
+              <Button type="link" size="small" style={{ padding: '0 8px', color: 'white' }}>
+                리포트 요약
+              </Button>
+            </Link>
             <Link href="/notifications">
               <Button 
                 type="link" 

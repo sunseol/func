@@ -18,6 +18,8 @@ export interface Project {
 export interface ProjectWithCreator extends Project {
   creator_email: string;
   creator_name: string | null;
+  member_count: number;
+  official_documents_count: number;
   progress?: ProjectProgress[];
 }
 

@@ -2,6 +2,21 @@
 -- 생성일: 2025-01-28
 -- 설명: 문서 승인 히스토리 추적 및 워크플로우 관리
 
+-- RLS (Row Level Security) Policies for user_profiles
+
+-- Enable RLS for user_profiles if not already enabled
+ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
+
+-- Policy: Authenticated users can view all user profiles.
+-- This is necessary for features like adding members to a project,
+-- where an admin needs to be able to see a list of all users.
+-- A more restrictive policy could be implemented if needed, e.g.,
+-- allowing only users who share a project to see each other's profiles.
+DROP POLICY IF EXISTS "Authenticated users can view all profiles" ON user_profiles;
+CREATE POLICY "Authenticated users can view all profiles" ON user_profiles
+  FOR SELECT
+  USING (auth.role() = 'authenticated');
+
 -- 1. document_approval_history 테이블 생성
 CREATE TABLE IF NOT EXISTS document_approval_history (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,

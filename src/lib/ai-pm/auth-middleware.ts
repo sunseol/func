@@ -1,34 +1,5 @@
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import { createClient } from '@/lib/supabase/server';
 import { AIpmErrorType, ProjectRole } from '@/types/ai-pm';
-
-// Create Supabase client for server-side operations
-export function createSupabaseClient() {
-  const cookieStore = cookies();
-  
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            );
-          } catch {
-            // The `setAll` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
-          }
-        },
-      },
-    }
-  );
-}
 
 // Authentication result types
 export interface AuthSuccess {
@@ -71,11 +42,9 @@ export interface EnhancedAuthSuccess extends AuthSuccess {
 export type EnhancedAuthResult = EnhancedAuthSuccess | AuthError;
 
 // Check authentication and optionally require admin permissions
-export async function checkAuth(
-  supabase: any, 
-  requireAdmin = false
-): Promise<AuthResult> {
+export async function checkAuth(): Promise<AuthResult> {
   try {
+    const supabase = await createClient();
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     
@@ -112,13 +81,7 @@ export async function checkAuth(
       };
     }
 
-    // Check admin requirement
-    if (requireAdmin && profile.role !== 'admin') {
-      return { 
-        error: AIpmErrorType.FORBIDDEN, 
-        message: '관리자 권한이 필요합니다.' 
-      };
-    }
+    
 
     return { 
       user: {
@@ -138,11 +101,10 @@ export async function checkAuth(
 
 // Enhanced authentication check with project memberships
 export async function checkAuthWithMemberships(
-  supabase: any, 
-  requireAdmin = false
+  supabase: any
 ): Promise<EnhancedAuthResult> {
   try {
-    const authResult = await checkAuth(supabase, requireAdmin);
+    const authResult = await checkAuth();
     
     if ('error' in authResult) {
       return authResult;
@@ -172,195 +134,8 @@ export async function checkAuthWithMemberships(
   }
 }
 
-// Check if user has access to a specific project
-export async function checkProjectAccess(
-  supabase: any, 
-  userId: string, 
-  projectId: string
-): Promise<boolean> {
-  try {
-    // Check if user is admin
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('role')
-      .eq('id', userId)
-      .single();
 
-    if (profile?.role === 'admin') {
-      return true;
-    }
 
-    // Check if user is project member
-    const { data: membership } = await supabase
-      .from('project_members')
-      .select('id')
-      .eq('project_id', projectId)
-      .eq('user_id', userId)
-      .single();
-
-    return !!membership;
-  } catch (error) {
-    console.error('Project access check error:', error);
-    return false;
-  }
-}
-
-// Get user's role in a specific project
-export async function getUserProjectRole(
-  supabase: any, 
-  userId: string, 
-  projectId: string
-): Promise<ProjectRole | null> {
-  try {
-    const { data: membership } = await supabase
-      .from('project_members')
-      .select('role')
-      .eq('project_id', projectId)
-      .eq('user_id', userId)
-      .single();
-
-    return membership?.role || null;
-  } catch (error) {
-    console.error('Project role check error:', error);
-    return null;
-  }
-}
-
-// Check if user can manage a specific project (admin or project creator)
-export async function checkProjectManagementAccess(
-  supabase: any, 
-  userId: string, 
-  projectId: string
-): Promise<boolean> {
-  try {
-    // Check if user is admin
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('role')
-      .eq('id', userId)
-      .single();
-
-    if (profile?.role === 'admin') {
-      return true;
-    }
-
-    // Check if user is project creator
-    const { data: project } = await supabase
-      .from('projects')
-      .select('created_by')
-      .eq('id', projectId)
-      .single();
-
-    return project?.created_by === userId;
-  } catch (error) {
-    console.error('Project management access check error:', error);
-    return false;
-  }
-}
-
-// Check if user can approve documents for a specific workflow step
-export async function checkDocumentApprovalAccess(
-  supabase: any, 
-  userId: string, 
-  projectId: string, 
-  workflowStep: number
-): Promise<boolean> {
-  try {
-    // Check if user is admin
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('role')
-      .eq('id', userId)
-      .single();
-
-    if (profile?.role === 'admin') {
-      return true;
-    }
-
-    // Check if user is project creator
-    const { data: project } = await supabase
-      .from('projects')
-      .select('created_by')
-      .eq('id', projectId)
-      .single();
-
-    if (project?.created_by === userId) {
-      return true;
-    }
-
-    // For now, any project member can approve documents
-    // This can be extended to role-based approval in the future
-    const hasAccess = await checkProjectAccess(supabase, userId, projectId);
-    return hasAccess;
-  } catch (error) {
-    console.error('Document approval access check error:', error);
-    return false;
-  }
-}
-
-// Check if user can modify a specific document
-export async function checkDocumentAccess(
-  supabase: any, 
-  userId: string, 
-  documentId: string,
-  requireOwnership = false
-): Promise<{ canAccess: boolean; canModify: boolean; document?: any }> {
-  try {
-    // Get document with project info
-    const { data: document, error: docError } = await supabase
-      .from('planning_documents')
-      .select(`
-        *,
-        projects!inner(id, created_by)
-      `)
-      .eq('id', documentId)
-      .single();
-
-    if (docError || !document) {
-      return { canAccess: false, canModify: false };
-    }
-
-    // Check if user is admin
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('role')
-      .eq('id', userId)
-      .single();
-
-    const isAdmin = profile?.role === 'admin';
-    const isDocumentCreator = document.created_by === userId;
-    const isProjectCreator = document.projects.created_by === userId;
-
-    // Check if user is project member
-    const { data: membership } = await supabase
-      .from('project_members')
-      .select('id')
-      .eq('project_id', document.project_id)
-      .eq('user_id', userId)
-      .single();
-
-    const isProjectMember = !!membership;
-
-    // Determine access levels
-    const canAccess = isAdmin || isProjectMember;
-    let canModify = false;
-
-    if (requireOwnership) {
-      canModify = isAdmin || isDocumentCreator;
-    } else {
-      canModify = isAdmin || isDocumentCreator || isProjectCreator;
-    }
-
-    return { 
-      canAccess, 
-      canModify, 
-      document 
-    };
-  } catch (error) {
-    console.error('Document access check error:', error);
-    return { canAccess: false, canModify: false };
-  }
-}
 
 // Validate UUID format
 export function isValidUUID(uuid: string): boolean {
@@ -495,7 +270,6 @@ export function getSecurityHeaders() {
     'X-Frame-Options': 'DENY',
     'X-XSS-Protection': '1; mode=block',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
-    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   };
 }
 

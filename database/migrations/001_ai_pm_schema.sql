@@ -2,6 +2,42 @@
 -- 생성일: 2025-01-28
 -- 설명: 프로젝트 관리, 문서 관리, AI 대화 기능을 위한 테이블 생성
 
+-- 0. user_profiles 테이블 생성 (auth.users와 1:1 관계)
+CREATE TABLE IF NOT EXISTS user_profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  full_name VARCHAR(255),
+  email VARCHAR(255) UNIQUE,
+  role VARCHAR(50) DEFAULT 'user' CHECK (role IN ('user', 'admin')),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- RLS 활성화
+ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
+
+-- 정책: 본인 프로필만 보거나 수정할 수 있음
+CREATE POLICY "Users can view their own profile" ON user_profiles
+  FOR SELECT USING (auth.uid() = id);
+
+CREATE POLICY "Users can update their own profile" ON user_profiles
+  FOR UPDATE USING (auth.uid() = id);
+
+-- auth.users 테이블의 새 사용자를 user_profiles에 복제하는 함수
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.user_profiles (id, email, full_name)
+  VALUES (new.id, new.email, new.raw_user_meta_data->>'full_name');
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 위 함수를 트리거로 설정
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
+
 -- 1. projects 테이블 생성
 CREATE TABLE IF NOT EXISTS projects (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -390,11 +426,12 @@ SELECT
     pm.role,
     pm.added_by,
     pm.added_at,
-    up.email,
-    up.full_name,
+    u.email,
+    u.raw_user_meta_data->>'full_name' as full_name,
     up.role as user_role
 FROM project_members pm
-JOIN user_profiles up ON pm.user_id = up.id;
+JOIN auth.users u ON pm.user_id = u.id
+LEFT JOIN user_profiles up ON pm.user_id = up.id;
 
 -- 프로젝트 상세 정보 뷰 (생성자 정보 포함)
 CREATE OR REPLACE VIEW projects_with_creator AS

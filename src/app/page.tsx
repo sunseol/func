@@ -292,10 +292,18 @@ export default function Home() {
                 <ResultDisplay
                   isLoading={isLoadingAI}
                   textToDisplay={getTextForDailyDisplay()}
-                  onSave={handleSaveReport}
-                  isSaving={isSavingReport}
-                  saveActionDisabled={activeTab !== 'daily' || !user}
                 />
+                <Button
+                  type="primary"
+                  onClick={() => handleSaveReport()}
+                  loading={isSavingReport}
+                  disabled={!user || !getTextForDailyDisplay()}
+                  block
+                  size="large"
+                  style={{ marginTop: 16 }}
+                >
+                  보고서 저장
+                </Button>
               </Space>
             </Col>
           </Row>

@@ -31,7 +31,7 @@ export default function AIPMPage() {
   const loadProjects = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('/api/ai-pm/projects');
+      const response = await fetch('/api/ai-pm/projects', { cache: 'no-store' });
       
       if (!response.ok) {
         throw new Error('프로젝트 목록을 불러오는데 실패했습니다.');
@@ -119,7 +119,7 @@ export default function AIPMPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="flex-1 overflow-y-auto">
       {/* 헤더 */}
       <div className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
