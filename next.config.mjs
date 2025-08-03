@@ -7,7 +7,6 @@ const nextConfig = {
   
   // 성능 최적화 설정
   experimental: {
-    optimizeCss: true,
     optimizePackageImports: ['@heroicons/react'],
   },
   
