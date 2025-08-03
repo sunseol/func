@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>케듀올 한국어 교육 커리큘럼 - 인포그래픽 보고서</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #f0f2f5; /* Changed background for better visibility of the page */
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 40px 20px;
+            word-break: keep-all; /* Prevent awkward word breaks */
+        }
+
+        .page-container {
+            width: 210mm;
+            min-height: 297mm;
+            padding: 10mm;
+            background: white;
+            box-shadow: 0 0 15px rgba(0,0,0,0.1);
+            position: relative;
+        }
+        
+        .container {
+            max-width: 100%;
+            height: 100%;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            font-size: 11px; /* Re-adjusted for single-page fit */
+            line-height: 1.7; /* Adjusted line height */
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 10px 15px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 1.7em;
+            margin-bottom: 3px;
+            font-weight: 700;
+        }
+        
+        .header .subtitle {
+            font-size: 0.85em;
+            opacity: 0.9;
+        }
+        
+        .section {
+            padding: 10px 12px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .section:last-child {
+            border-bottom: none;
+        }
+
+        .section-title {
+            color: #667eea;
+            font-size: 1.25em;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .section-number {
+            background: #667eea;
+            color: white;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            flex-shrink: 0;
+            font-size: 0.9em;
+        }
+        
+        .main-proposal-box {
+            background: #e9eefa;
+            border: 2px solid #667eea;
+            padding: 10px 12px;
+            margin: 6px 0;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .main-proposal-box h2 {
+            color: #667eea;
+            font-size: 1.4em;
+            margin-bottom: 5px;
+        }
+
+        .highlight-box {
+            background: #f5f7ff;
+            border-left: 3px solid #667eea;
+            padding: 7px 10px;
+            margin: 6px 0;
+            border-radius: 5px;
+        }
+        .highlight-box h3 { font-size: 1.05em; margin-bottom: 3px; }
+
+        .key-point {
+            background: #fff3cd;
+            border-left: 3px solid #ffc107;
+            padding: 7px 10px;
+            margin: 6px 0;
+            border-radius: 5px;
+        }
+        .key-point h3 { font-size: 1.05em; margin-bottom: 3px; }
+
+        .flow-diagram {
+            display: flex;
+            justify-content: space-around;
+            align-items: stretch;
+            margin: 6px 0;
+            gap: 6px;
+        }
+        
+        .flow-item {
+            background: #f8f9ff;
+            border: 1px solid #dcdff3;
+            border-radius: 6px;
+            padding: 7px;
+            text-align: center;
+            flex: 1;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        
+        .flow-item::after {
+            content: '→';
+            position: absolute;
+            right: -10px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 14px;
+            color: #667eea;
+        }
+        
+        .flow-item:last-child::after { display: none; }
+        
+        .flow-item h4 {
+            color: #667eea;
+            margin-bottom: 4px;
+            font-size: 1em;
+        }
+        
+        .curriculum-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 6px 0;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.05);
+            border-radius: 6px;
+            overflow: hidden;
+            font-size: 0.85em;
+        }
+        
+        .curriculum-table th, .curriculum-table td {
+            padding: 4px 6px;
+            border-bottom: 1px solid #e8e8e8;
+            text-align: left;
+        }
+
+        .curriculum-table th {
+            background: #667eea;
+            color: white;
+            font-weight: 600;
+        }
+        
+        .curriculum-table tr:last-child td { border-bottom: none; }
+        .curriculum-table tr:nth-child(even) { background: #f8f9ff; }
+        
+        .level-badge {
+            display: inline-block;
+            background: #764ba2;
+            color: white;
+            padding: 2px 7px;
+            border-radius: 10px;
+            font-size: 0.8em;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        
+        .ecosystem-container {
+            display: flex;
+            gap: 8px;
+            margin: 6px 0;
+            align-items: stretch;
+        }
+        
+        .ecosystem-box {
+            flex: 1;
+            background: #f8f9ff;
+            border-radius: 6px;
+            padding: 8px;
+            border: 1px solid #dcdff3;
+        }
+        
+        .ecosystem-box h4 {
+            color: #667eea;
+            margin-bottom: 6px;
+            font-size: 1.05em;
+        }
+        
+        .ecosystem-box ul { list-style: none; padding-left: 0; }
+        .ecosystem-box li {
+            padding: 1px 0 1px 16px;
+            position: relative;
+        }
+        
+        .ecosystem-box li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #667eea;
+            font-weight: bold;
+        }
+        
+        .benefits-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin: 6px 0;
+        }
+        
+        .benefit-card {
+            background: linear-gradient(135deg, #7a8fee 0%, #8b61b3 100%);
+            color: white;
+            padding: 8px;
+            border-radius: 8px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        
+        .benefit-card h5 {
+            font-size: 1em;
+            margin-bottom: 4px;
+        }
+        
+        .icon {
+            font-size: 1.4em;
+            margin-bottom: 4px;
+        }
+
+        strong {
+            color: #d93025; /* Google's red */
+            font-weight: 700;
+            font-size: 1.1em;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 10px;
+            font-size: 0.9em;
+        }
+
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: bold;
+        }
+       
+        p, div, span, td, th { line-height: 1.45; }
+        
+        h3 {
+            margin: 8px 0 4px 0;
+            color: #667eea;
+        }
+
+        .highlight-box[style*="line-height:1.8"] {
+            line-height: 1.4 !important;
+            margin: 6px auto !important;
+            width: 100% !important;
+            padding: 6px !important;
+        }
+
+        .highlight-box[style*="line-height:1.8"] p { margin-top: 4px !important; }
+        
+        #download-btn {
+            position: absolute;
+            top: 25px;
+            right: 25px;
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            box-shadow: 0 4px 10px rgba(0, 123, 255, 0.3);
+            transition: background-color 0.3s;
+            z-index: 100;
+        }
+        #download-btn:hover {
+            background: #0056b3;
+        }
+
+        /* Print-specific styles */
+        @media print {
+            @page {
+                size: A4;
+                margin: 0;
+            }
+            body {
+                padding: 0;
+                background: #fff;
+            }
+            .page-container {
+                width: 100%;
+                min-height: initial;
+                padding: 10mm;
+                box-shadow: none;
+                border: none;
+                overflow: visible; /* Allow content to flow */
+                height: auto; /* Let content determine height */
+            }
+            #download-btn {
+                display: none;
+            }
+            html, body, .page-container, .container {
+                height: auto; /* Adjust height for content */
+                overflow: visible; /* Prevent clipping */
+            }
+        }
+    </style>
+</head>
+<body>
+    <button id="download-btn">PDF로 다운로드</button>
+    <div class="page-container">
+        <div class="container">
+            <div class="header">
+                <h1>케듀올 한국어 교육 커리큘럼</h1>
+                <p class="subtitle">K-콘텐츠 연계 통합 성장 생태계 | 1-Page Report</p>
+            </div>
+            
+            <!-- What: 핵심 제안 -->
+            <div class="section">
+                <div class="main-proposal-box">
+                    <h2>What: 핵심 교육 모델</h2>
+                    <p><strong>K-콘텐츠</strong>를 중심으로 학습자의 흥미를 유발하고, 과제 중심 학습과 AI 기술을 결합하여 학습 몰입도와 동기를 극대화하는 <strong>'<strong>K-콘텐츠</strong> 연계 통합 성장 생태계'</strong>를 제안합니다.</p>
+                </div>
+                <div class="flow-diagram">
+                    <div class="flow-item">
+                        <h4>흥미 유발</h4>
+                        <p>최신 <strong>K-콘텐츠</strong> 클립</p>
+                    </div>
+                    <div class="flow-item">
+                        <h4>몰입 경험</h4>
+                        <p>과제 중심 학습 (TBL)</p>
+                    </div>
+                    <div class="flow-item">
+                        <h4>동기 유지</h4>
+                        <p>게이미피케이션 + AI 코칭</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Why: 제안 이유 -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="section-number">?</span>
+                    Why: 제안 배경
+                </h2>
+                <div class="highlight-box">
+                    <h3>시장 분석: 기존 교육의 한계</h3>
+                    <p>기존 4대 교육 기관(서울대, 연세대 등)은 각각 강점이 있으나, <strong>학문적 경직성, 학습 단편화, 기능 불균형, 비몰입 환경</strong> 등 명확한 한계를 보임.</p>
+                </div>
+                <div class="key-point">
+                    <h3>기회 포착: 새로운 교육 모델의 필요성</h3>
+                    <p><strong>K-콘텐츠</strong>의 세계적 인기와 자사 플랫폼을 활용하여, 기존의 틀을 넘어서는 새로운 교육 모델을 구축할 최적의 시기.</p>
+                </div>
+            </div>
+
+            <!-- How: 실행 방안 -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="section-number">→</span>
+                    How: 실행 전략
+                </h2>
+
+                <h3>1. 전체 커리큘럼 구성 (1급 ~ 6급)</h3>
+                <p style="margin-bottom: 5px;">학습자의 성장에 맞춰 <strong>K-콘텐츠</strong>를 활용한 목표 지향적 과제를 수행하며, 단계적으로 언어 능력을 완성합니다.</p>
+                <table class="curriculum-table">
+                    <thead>
+                        <tr>
+                            <th>레벨</th>
+                            <th>학습 목표</th>
+                            <th>주요 K-콘텐츠 연계 활동</th>
+                            <th>최종 과제 (예시)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><span class="level-badge">초급 (1-2급)</span></td>
+                            <td>일상 속 <strong>K-콘텐츠</strong>로 한국어와 친해지고, 자신의 생각 표현하기</td>
+                            <td>아이돌 프로필 읽기, 먹방 대사 따라하기, 드라마 추천하기</td>
+                            <td>'나의 최애' 소개 영상 만들기</td>
+                        </tr>
+                        <tr>
+                            <td><span class="level-badge">중급 (3-4급)</span></td>
+                            <td>친숙한 사회적 주제에 대해 논리적으로 표현하고 비판적 사고 기르기</td>
+                            <td>예능 속 인물 관계도 토론, 시사 프로그램 통계 분석, 뉴스 토론</td>
+                            <td>'한국 OO 문화' 비교 분석 발표</td>
+                        </tr>
+                        <tr>
+                            <td><span class="level-badge">고급 (5-6급)</span></td>
+                            <td>전문 분야 담화를 이해하고, 학문/직무 수행을 위한 전문 한국어 완성</td>
+                            <td>시사 토론 주장 분석, 경제 유튜브로 시장 현황 학습, 학술 논문 구조 분석</td>
+                            <td>'가짜뉴스' 판별 가이드라인 제작</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3 style="margin-top: 10px;">2. 디지털 생태계 설계</h3>
+                <p style="margin-bottom: 5px;">'코어(핵심)-스포크(확장)' 모델을 기반으로 한 통합 디지털 학습 플랫폼을 구축합니다.</p>
+                <div class="ecosystem-container">
+                    <div class="ecosystem-box">
+                        <h4>코어 (Core): 인터랙티브 <strong>디지털 교재</strong></h4>
+                        <ul>
+                            <li>PC/모바일 앱에서 <strong>K-콘텐츠</strong> 영상, 스크립트, 단어장, AI 발음 연습, 과제 제출까지 한 번에 해결</li>
+                            <li>학습자 커뮤니티를 통해 과제물을 공유하고 소통하며 학습 동기 강화</li>
+                        </ul>
+                    </div>
+                    <div class="ecosystem-box">
+                        <h4>스포크 (Spokes): 맞춤형 심화 학습 모듈</h4>
+                        <ul>
+                            <li><strong>TOPIK 대비:</strong> 기출문제은행, 실전 모의고사 제공</li>
+                            <li><strong>AI 발음 클리닉:</strong> 학습자가 자주 틀리는 발음 집중 훈련</li>
+                            <li><strong>비즈니스 한국어:</strong> 상황별 템플릿, 모의 면접 시뮬레이션</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <h3 style="margin-top: 10px;">3. 평가 계획 및 기대 효과</h3>
+                <div class="highlight-box">
+                    <h3>평가</h3>
+                    <p>지필고사 위주를 탈피, 과정 중심의 다면 평가 (온라인 퀴즈, 주간 과제, 팀 프로젝트, 포트폴리오) 도입으로 학습 성장을 지속적으로 측정하고 피드백 제공.</p>
+                </div>
+                <div class="benefits-grid">
+                    <div class="benefit-card">
+                        <div class="icon">🎯</div>
+                        <h5>독점적 포지셔닝</h5>
+                    </div>
+                    <div class="benefit-card">
+                        <div class="icon">💡</div>
+                        <h5>자원 효율성</h5>
+                    </div>
+                    <div class="benefit-card">
+                        <div class="icon">🚀</div>
+                        <h5>핵심 타겟 공략</h5>
+                    </div>
+                </div>
+            </div>
+
+            <div class="footer">
+                <p>더 자세한 내용은 아래 링크에서 확인하세요.</p>
+                <a href="https://docs.google.com/document/d/1xImPJ79ZNBqN4B3ykOjPBtUbLvtYElbM/edit?usp=drive_link&ouid=112889042525468040187&rtpof=true&sd=true" target="_blank">전체 커리큘럼 문서 바로가기</a>
+            </div>
+        </div>
+    </div>
+    <script>
+        document.getElementById('download-btn').addEventListener('click', function() {
+            window.print();
+        });
+    </script>
+</body>
+</html>

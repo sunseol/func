@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: 'NotoSansKR';
+  src: url('/fonts/NotoSansKR-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+
 /* :root 변수는 유지해도 괜찮지만, 클래스 기반 다크모드에서는
    Tailwind의 색상 팔레트를 직접 사용하는 것이 일반적입니다. */
 /*
