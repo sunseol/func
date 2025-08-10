@@ -34,6 +34,7 @@
     "@supabase/supabase-js": "^2.53.0",
     "@uiw/react-md-editor": "^4.0.8",
     "antd": "^5.24.8",
+    "clsx": "^2.1.1",
     "cookie": "^1.0.2",
     "date-fns": "^4.1.0",
     "dayjs": "^1.11.13",
@@ -45,7 +46,8 @@
     "next": "15.2.4",
     "pdfreader": "^3.0.7",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
@@ -58,6 +60,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "critters": "^0.0.23",
     "eslint": "^9",
     "eslint-config-next": "15.2.4",
     "jest": "^30.0.5",

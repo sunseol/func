@@ -1,5 +1,5 @@
 
-import MainHeader from '@/components/layout/MainHeader';
+// 전역 레이아웃에서 헤더를 포함하므로 개별 레이아웃에서는 중복 렌더 방지
 import React from 'react';
 
 export default function ReportGeneratorLayout({
@@ -9,7 +9,6 @@ export default function ReportGeneratorLayout({
 }) {
   return (
     <div className="flex h-screen flex-col">
-      <MainHeader />
       <main className="flex-1 overflow-y-auto">{children}</main>
     </div>
   );

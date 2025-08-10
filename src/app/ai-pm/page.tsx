@@ -1,11 +1,17 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
+import { useViewport } from '@/contexts/ViewportContext';
 import { ProjectWithCreator, CreateProjectRequest } from '@/types/ai-pm';
+import { MobileLazy } from '@/lib/lazy-loading';
+import LoadingSkeletons from '@/components/ui/LoadingSkeletons';
+
+// 지연 로딩 컴포넌트들
+// ProjectCard는 모바일에서 즉시 렌더되도록 정적 임포트로 전환
 import ProjectCard from '@/components/ai-pm/ProjectCard';
-import CreateProjectModal from '@/components/ai-pm/CreateProjectModal';
+const CreateProjectModal = React.lazy(() => import('@/components/ai-pm/CreateProjectModal'));
 import { 
   PlusIcon,
   FolderIcon,
@@ -17,6 +23,7 @@ import {
 export default function AIPMPage() {
   const { user } = useAuth();
   const { success, error: showError } = useToast();
+  const { isMobile } = useViewport();
   
   const [projects, setProjects] = useState<ProjectWithCreator[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -121,13 +128,13 @@ export default function AIPMPage() {
   return (
     <div className="flex-1 overflow-y-auto">
       {/* 헤더 */}
-      <div className="bg-white shadow-sm border-b border-gray-200">
+      <div className="bg-white dark:bg-neutral-900 shadow-sm border-b border-gray-200 dark:border-neutral-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="py-6">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-3xl font-bold text-gray-900">AI-PM 프로젝트</h1>
-                <p className="mt-2 text-gray-600">
+                <h1 className="text-3xl font-bold text-gray-900 dark:text-white">AI-PM 프로젝트</h1>
+                <p className="mt-2 text-gray-600 dark:text-gray-300">
                   AI와 함께 체계적으로 플랫폼을 기획하세요
                 </p>
               </div>
@@ -144,65 +151,65 @@ export default function AIPMPage() {
       </div>
 
       {/* 통계 카드 */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
+          <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-sm border border-gray-200 dark:border-neutral-800 p-4 sm:p-6">
             <div className="flex items-center">
               <div className="flex-shrink-0">
-                <FolderIcon className="h-8 w-8 text-blue-500" />
+                <FolderIcon className="h-6 w-6 sm:h-8 sm:w-8 text-blue-500" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">전체 프로젝트</p>
-                <p className="text-2xl font-semibold text-gray-900">{stats.totalProjects}</p>
+              <div className="ml-3 sm:ml-4">
+                <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-300">전체 프로젝트</p>
+                <p className="text-lg sm:text-2xl font-semibold text-gray-900 dark:text-white">{stats.totalProjects}</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-sm border border-gray-200 dark:border-neutral-800 p-4 sm:p-6">
             <div className="flex items-center">
               <div className="flex-shrink-0">
-                <UserGroupIcon className="h-8 w-8 text-green-500" />
+                <UserGroupIcon className="h-6 w-6 sm:h-8 sm:w-8 text-green-500" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">진행 중</p>
-                <p className="text-2xl font-semibold text-gray-900">{stats.activeProjects}</p>
+              <div className="ml-3 sm:ml-4">
+                <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-300">진행 중</p>
+                <p className="text-lg sm:text-2xl font-semibold text-gray-900 dark:text-white">{stats.activeProjects}</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-sm border border-gray-200 dark:border-neutral-800 p-4 sm:p-6">
             <div className="flex items-center">
               <div className="flex-shrink-0">
-                <DocumentTextIcon className="h-8 w-8 text-purple-500" />
+                <DocumentTextIcon className="h-6 w-6 sm:h-8 sm:w-8 text-purple-500" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">총 문서</p>
-                <p className="text-2xl font-semibold text-gray-900">{stats.totalDocuments}</p>
+              <div className="ml-3 sm:ml-4">
+                <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-300">총 문서</p>
+                <p className="text-lg sm:text-2xl font-semibold text-gray-900 dark:text-white">{stats.totalDocuments}</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-sm border border-gray-200 dark:border-neutral-800 p-4 sm:p-6">
             <div className="flex items-center">
               <div className="flex-shrink-0">
-                <ClockIcon className="h-8 w-8 text-orange-500" />
+                <ClockIcon className="h-6 w-6 sm:h-8 sm:w-8 text-orange-500" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">최근 활동</p>
-                <p className="text-2xl font-semibold text-gray-900">{stats.recentActivity}</p>
+              <div className="ml-3 sm:ml-4">
+                <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-300">최근 활동</p>
+                <p className="text-lg sm:text-2xl font-semibold text-gray-900 dark:text-white">{stats.recentActivity}</p>
               </div>
             </div>
           </div>
         </div>
 
         {/* 프로젝트 목록 */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">내 프로젝트</h2>
+        <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-sm border border-gray-200 dark:border-neutral-800 overflow-visible pb-4 sm:pb-6">
+          <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-neutral-800">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">내 프로젝트</h2>
           </div>
 
           {isLoading ? (
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               <div className="animate-pulse space-y-4">
                 {[1, 2, 3].map(i => (
                   <div key={i} className="h-32 bg-gray-200 rounded-lg"></div>
@@ -210,10 +217,10 @@ export default function AIPMPage() {
               </div>
             </div>
           ) : projects.length === 0 ? (
-            <div className="p-12 text-center">
+            <div className="p-8 sm:p-12 text-center">
               <FolderIcon className="mx-auto h-12 w-12 text-gray-400" />
-              <h3 className="mt-2 text-sm font-medium text-gray-900">프로젝트가 없습니다</h3>
-              <p className="mt-1 text-sm text-gray-500">
+              <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">프로젝트가 없습니다</h3>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-300">
                 첫 번째 프로젝트를 생성하여 AI-PM 워크플로우를 시작해보세요.
               </p>
               <div className="mt-6">
@@ -227,14 +234,15 @@ export default function AIPMPage() {
               </div>
             </div>
           ) : (
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="p-4 sm:p-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 relative z-0">
                 {projects.map((project) => (
-                  <ProjectCard
-                    key={project.id}
-                    project={project}
-                    isAdmin={user?.user_metadata?.role === 'admin'}
-                  />
+                  <div key={project.id} className="relative z-0">
+                    <ProjectCard
+                      project={project}
+                      isAdmin={user?.user_metadata?.role === 'admin'}
+                    />
+                  </div>
                 ))}
               </div>
             </div>
@@ -244,10 +252,14 @@ export default function AIPMPage() {
 
       {/* 프로젝트 생성 모달 */}
       {showCreateModal && (
-        <CreateProjectModal
-          onClose={() => setShowCreateModal(false)}
-          onSuccess={handleCreateProject}
-        />
+        <Suspense fallback={
+          isMobile ? <LoadingSkeletons.MobileModal /> : <LoadingSkeletons.Modal />
+        }>
+          <CreateProjectModal
+            onClose={() => setShowCreateModal(false)}
+            onSuccess={handleCreateProject}
+          />
+        </Suspense>
       )}
     </div>
   );

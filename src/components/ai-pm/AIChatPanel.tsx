@@ -3,6 +3,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
+import { useViewport } from '@/contexts/ViewportContext';
+import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
 import { WorkflowStep, AIChatMessage, SendMessageRequest } from '@/types/ai-pm';
 import { Input, Button } from 'antd';
 import { 
@@ -15,7 +17,11 @@ import {
   DownloadOutlined,
   DeleteOutlined,
   StopOutlined,
-  SaveOutlined
+  SaveOutlined,
+  FullscreenOutlined,
+  FullscreenExitOutlined,
+  CloseOutlined,
+  ArrowLeftOutlined
 } from '@ant-design/icons';
 
 interface AIChatPanelProps {
@@ -24,6 +30,7 @@ interface AIChatPanelProps {
   onMessageSent?: (message: AIChatMessage) => void;
   onShowHistory?: () => void;
   className?: string;
+  onFullscreenToggle?: (isFullscreen: boolean) => void;
 }
 
 interface ChatMessage extends AIChatMessage {
@@ -39,19 +46,26 @@ export default function AIChatPanel({
   workflowStep,
   onMessageSent,
   onShowHistory,
+  onFullscreenToggle,
   className = ''
 }: AIChatPanelProps) {
   const { user } = useAuth();
   const { success, error: showError } = useToast();
+  const { isMobile, isTablet } = useViewport();
+  const { keyboardState, getSafeAreaStyles } = useKeyboardAvoidance();
+  
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>('saved');
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -60,6 +74,36 @@ export default function AIChatPanel({
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Mobile fullscreen toggle
+  const handleFullscreenToggle = useCallback(() => {
+    const newFullscreenState = !isFullscreen;
+    setIsFullscreen(newFullscreenState);
+    onFullscreenToggle?.(newFullscreenState);
+
+    // On mobile, try to use native fullscreen API
+    if (isMobile && newFullscreenState && chatContainerRef.current) {
+      if (chatContainerRef.current.requestFullscreen) {
+        chatContainerRef.current.requestFullscreen().catch(console.error);
+      }
+    } else if (isMobile && !newFullscreenState && document.fullscreenElement) {
+      document.exitFullscreen().catch(console.error);
+    }
+  }, [isFullscreen, isMobile, onFullscreenToggle]);
+
+  // Handle native fullscreen changes
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isNativeFullscreen = !!document.fullscreenElement;
+      if (isMobile && isNativeFullscreen !== isFullscreen) {
+        setIsFullscreen(isNativeFullscreen);
+        onFullscreenToggle?.(isNativeFullscreen);
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, [isMobile, isFullscreen, onFullscreenToggle]);
   
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -268,21 +312,141 @@ export default function AIChatPanel({
   }
 
   return (
-    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col h-full ${className}`}>
+    <div 
+      ref={chatContainerRef}
+      className={`bg-white dark:bg-neutral-900 flex flex-col h-full ${
+        isFullscreen 
+          ? 'fixed inset-0 z-50 rounded-none' 
+          : 'rounded-lg shadow-sm border border-gray-200 dark:border-neutral-800'
+      } ${className}`}
+      style={keyboardState.isVisible ? getSafeAreaStyles() : {}}
+    >
+      {/* Mobile Header */}
+      {(isMobile || isFullscreen) && (
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 sticky top-0 z-10">
+          <div className="flex items-center gap-3">
+            {isFullscreen && (
+              <button
+                onClick={handleFullscreenToggle}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <ArrowLeftOutlined style={{ fontSize: 18 }} />
+              </button>
+            )}
+            <MessageOutlined style={{ fontSize: 20, color: '#3b82f6' }} />
+            <div>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100">AI 어시스턴트</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{getWorkflowStepName(workflowStep)}</p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            {!isFullscreen && isMobile && (
+              <button
+                onClick={handleFullscreenToggle}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <FullscreenOutlined style={{ fontSize: 18 }} />
+              </button>
+            )}
+            
+            <div className="relative" ref={menuRef}>
+              <button
+                onClick={() => setShowMenu(!showMenu)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <MoreOutlined style={{ fontSize: 18 }} />
+              </button>
+              
+              {showMenu && (
+                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20">
+                  {onShowHistory && (
+                    <button
+                      onClick={() => {
+                        onShowHistory();
+                        setShowMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                    >
+                      <ClockCircleOutlined />
+                      대화 기록
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      handleSave();
+                      setShowMenu(false);
+                    }}
+                    disabled={saveState === 'saved' || saveState === 'saving'}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 disabled:opacity-50"
+                  >
+                    <SaveOutlined />
+                    대화 저장
+                  </button>
+                  <button
+                    onClick={() => {
+                      clearCurrentConversation();
+                      setShowMenu(false);
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                  >
+                    <DeleteOutlined />
+                    대화 삭제
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
         
-        
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      {/* Messages Area */}
+      <div className={`flex-1 overflow-y-auto space-y-4 ${
+        isMobile || isFullscreen ? 'p-4' : 'p-4'
+      }`}>
             {messages.map(message => (
                 <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${message.role === 'user' ? 'bg-blue-500 text-white' : message.error ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-gray-100 text-gray-900'}`}>
+                    <div className={`px-4 py-3 rounded-lg ${
+                      isMobile || isFullscreen 
+                        ? 'max-w-[85%]' 
+                        : 'max-w-xs lg:max-w-md'
+                    } ${
+                      message.role === 'user' 
+                        ? 'bg-blue-500 text-white' 
+                        : message.error 
+                          ? 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900' 
+                          : 'bg-gray-100 text-gray-900 dark:bg-neutral-800 dark:text-gray-100'
+                    }`}>
                         <div className="flex items-start space-x-2">
-                            {message.role === 'assistant' && <div className="flex-shrink-0 mt-1">{message.error ? <ExclamationCircleOutlined style={{ color: '#ef4444' }} /> : <BulbOutlined style={{ color: '#3b82f6' }} />}</div>}
+                            {message.role === 'assistant' && (
+                              <div className="flex-shrink-0 mt-1">
+                                {message.error ? (
+                                  <ExclamationCircleOutlined style={{ color: '#ef4444', fontSize: isMobile ? 16 : 14 }} />
+                                ) : (
+                                  <BulbOutlined style={{ color: '#3b82f6', fontSize: isMobile ? 16 : 14 }} />
+                                )}
+                              </div>
+                            )}
                             <div className="flex-1">
-                                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                                {message.isLoading && <div className="mt-2 flex space-x-1"><div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div><div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div><div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div></div>}
+                                <p className={`whitespace-pre-wrap ${
+                                  isMobile || isFullscreen ? 'text-base leading-relaxed' : 'text-sm'
+                                }`}>
+                                  {message.content}
+                                </p>
+                                {message.isLoading && (
+                                  <div className="mt-2 flex space-x-1">
+                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                                  </div>
+                                )}
                             </div>
                         </div>
-                        <div className={`text-xs mt-1 ${message.role === 'user' ? 'text-blue-100' : 'text-gray-500'}`}>{formatTime(message.timestamp)}</div>
+                        <div className={`mt-2 ${
+                          message.role === 'user' ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'
+                        } ${isMobile || isFullscreen ? 'text-xs' : 'text-xs'}`}>
+                          {formatTime(message.timestamp)}
+                        </div>
                     </div>
                 </div>
             ))}
@@ -290,18 +454,37 @@ export default function AIChatPanel({
         </div>
 
         {messages.length <= 1 && (
-            <div className="px-4 pb-4">
-                <h4 className="text-sm font-medium text-gray-900 mb-3">추천 질문</h4>
-                <div className="space-y-2">
+            <div className={`px-4 pb-4 ${isMobile || isFullscreen ? 'px-4' : 'px-4'}`}>
+                <h4 className={`font-medium text-gray-900 mb-3 ${
+                  isMobile || isFullscreen ? 'text-base' : 'text-sm'
+                }`}>
+                  추천 질문
+                </h4>
+                <div className="space-y-3">
                     {getSuggestions().map((suggestion, index) => (
-                    <button key={index} onClick={() => sendMessage(suggestion)} className="w-full text-left p-3 text-sm text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors">{suggestion}</button>
+                      <button 
+                        key={index} 
+                        onClick={() => sendMessage(suggestion)} 
+                        className={`w-full text-left p-3 text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors ${
+                          isMobile || isFullscreen 
+                            ? 'text-base min-h-[48px] leading-relaxed' 
+                            : 'text-sm'
+                        }`}
+                      >
+                        {suggestion}
+                      </button>
                     ))}
                 </div>
             </div>
         )}
 
-        <div className="p-4 border-t border-gray-200">
-            <div className="flex space-x-2 items-end">
+        {/* Input Area */}
+        <div className={`p-4 border-t border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 ${
+          isMobile || isFullscreen ? 'sticky bottom-0' : ''
+        }`}>
+            <div className={`flex items-end gap-2 ${
+              isMobile || isFullscreen ? 'gap-3' : 'gap-2'
+            }`}>
               <Input.TextArea
                 value={inputMessage}
                 onChange={(e) => {
@@ -309,28 +492,71 @@ export default function AIChatPanel({
                     if (saveState === 'saved') setSaveState('unsaved');
                 }}
                 onKeyDown={handleKeyDown}
-                placeholder="메시지를 입력하세요 (Shift+Enter로 줄바꿈)"
+                placeholder={isMobile ? "메시지 입력..." : "메시지를 입력하세요 (Shift+Enter로 줄바꿈)"}
                 disabled={isLoading}
-                autoSize={{ minRows: 1, maxRows: 5 }}
+                autoSize={{ 
+                  minRows: 1, 
+                  maxRows: isMobile || isFullscreen ? 4 : 5 
+                }}
                 className="flex-1"
+                style={{
+                  fontSize: isMobile ? '16px' : '14px',
+                  minHeight: isMobile ? '48px' : '32px'
+                }}
               />
               {isStreaming ? (
-                <Button type="primary" danger icon={<StopOutlined />} onClick={stopStreaming} />
+                <Button 
+                  type="primary" 
+                  danger 
+                  icon={<StopOutlined />} 
+                  onClick={stopStreaming}
+                  size={isMobile ? 'large' : 'middle'}
+                  className={isMobile ? 'min-h-[48px] min-w-[48px]' : ''}
+                />
               ) : (
-                <Button type="primary" icon={<SendOutlined />} onClick={() => sendMessage(inputMessage)} disabled={!inputMessage.trim() || isLoading} />
+                <Button 
+                  type="primary" 
+                  icon={<SendOutlined />} 
+                  onClick={() => sendMessage(inputMessage)} 
+                  disabled={!inputMessage.trim() || isLoading}
+                  size={isMobile ? 'large' : 'middle'}
+                  className={isMobile ? 'min-h-[48px] min-w-[48px]' : ''}
+                />
               )}
             </div>
-            <div className="flex justify-between items-center mt-2">
-                {renderSaveStatus()}
-                <Button 
-                    type="link" 
-                    size="small" 
-                    icon={<SaveOutlined />} 
-                    onClick={() => handleSave()}
-                    disabled={saveState === 'saved' || saveState === 'saving'}
-                >
-                    지금 저장
-                </Button>
+            
+            {/* Status and Actions */}
+            <div className={`flex justify-between items-center mt-3 ${
+              isMobile || isFullscreen ? 'flex-col gap-2 items-stretch' : ''
+            }`}>
+                <div className={`${isMobile || isFullscreen ? 'text-center' : ''}`}>
+                  {renderSaveStatus()}
+                </div>
+                
+                {!(isMobile || isFullscreen) && (
+                  <Button 
+                      type="link" 
+                      size="small" 
+                      icon={<SaveOutlined />} 
+                      onClick={() => handleSave()}
+                      disabled={saveState === 'saved' || saveState === 'saving'}
+                  >
+                      지금 저장
+                  </Button>
+                )}
+                
+                {(isMobile || isFullscreen) && (
+                  <div className="flex justify-center gap-4 text-xs text-gray-500">
+                    <span>글자 수: {inputMessage.length}</span>
+                    <button
+                      onClick={() => handleSave()}
+                      disabled={saveState === 'saved' || saveState === 'saving'}
+                      className="text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                    >
+                      저장
+                    </button>
+                  </div>
+                )}
             </div>
         </div>
     </div>

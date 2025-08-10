@@ -90,9 +90,9 @@ export default function ProjectDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex flex-1 w-full h-full items-center justify-center p-4">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-500 border-t-transparent mx-auto mb-4" />
           <p className="text-gray-600">프로젝트 정보를 불러오는 중...</p>
         </div>
       </div>
@@ -143,7 +143,11 @@ export default function ProjectDetailPage() {
     <>
       {showWorkflowSidebar && project && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="fixed inset-0 bg-black bg-opacity-50" onClick={() => setShowWorkflowSidebar(false)} />
+          <button
+            aria-label="뒤로"
+            className="fixed inset-0 bg-black/30 backdrop-blur-sm"
+            onClick={() => setShowWorkflowSidebar(false)}
+          />
           <div className="relative w-80 h-full">
             <WorkflowSidebar 
               projectId={projectId}
@@ -152,6 +156,9 @@ export default function ProjectDetailPage() {
               completedSteps={completedSteps}
               memberCount={members.length}
               documentCount={progress.reduce((sum, p) => sum + p.document_count, 0)}
+              isOpen={true}
+              onClose={() => setShowWorkflowSidebar(false)}
+              displayMode={'mobile-fullscreen'}
             />
           </div>
         </div>
@@ -171,7 +178,7 @@ export default function ProjectDetailPage() {
       )}
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <button
@@ -197,8 +204,8 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6">
-            <div className="border-b border-gray-200 mb-8">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-6">
+            <div className="border-b border-gray-200 mb-6">
               <nav className="-mb-px flex space-x-8">
                 {tabs.map((tab) => {
                   const Icon = tab.icon;

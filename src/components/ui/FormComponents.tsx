@@ -3,6 +3,9 @@
 import React, { forwardRef, useState, useEffect } from 'react';
 import { ExclamationCircleIcon, CheckCircleIcon, EyeIcon, EyeSlashIcon, ShieldCheckIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { securityValidation, sanitizeHtml } from '@/lib/security/validation';
+import { cn } from '@/lib/responsive-utils';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
 
 // Form field validation types
 export interface ValidationRule {
@@ -61,6 +64,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(({
   const [touched, setTouched] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [securityThreats, setSecurityThreats] = useState<string[]>([]);
+  const { isMobile } = useBreakpoint();
+  const { scrollToFocusedElement } = useKeyboardAvoidance({ enabled: isMobile });
 
   const currentError = error || localError;
   const hasError = showValidation && touched && currentError;
@@ -166,6 +171,16 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(({
     }
   };
 
+  // Handle focus
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    // Trigger keyboard avoidance after a short delay to allow keyboard to appear
+    if (isMobile) {
+      setTimeout(() => {
+        scrollToFocusedElement();
+      }, 300);
+    }
+  };
+
   // Handle blur
   const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
     setTouched(true);
@@ -182,28 +197,35 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(({
     }
   };
 
-  // Input styles based on state
+  // Input styles based on state - mobile optimized
   const getInputStyles = () => {
-    const baseStyles = 'w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-1 transition-colors';
+    const baseStyles = cn(
+      'w-full border rounded-md shadow-sm focus:outline-none focus:ring-2 transition-colors',
+      // Mobile-optimized sizing: minimum 48px height, larger padding, 16px font size to prevent zoom
+      isMobile ? 'px-4 py-3 text-base min-h-[48px] text-[16px]' : 'px-3 py-2 text-sm min-h-[40px]'
+    );
     
     if (hasError) {
-      return `${baseStyles} border-red-300 focus:border-red-500 focus:ring-red-500`;
+      return cn(baseStyles, 'border-red-300 focus:border-red-500 focus:ring-red-500');
     }
     
     if (hasSuccess) {
-      return `${baseStyles} border-green-300 focus:border-green-500 focus:ring-green-500`;
+      return cn(baseStyles, 'border-green-300 focus:border-green-500 focus:ring-green-500');
     }
     
-    return `${baseStyles} border-gray-300 focus:border-blue-500 focus:ring-blue-500`;
+    return cn(baseStyles, 'border-gray-300 focus:border-blue-500 focus:ring-blue-500');
   };
 
   const isPasswordField = type === 'password' || (validation?.password && type !== 'text');
   const inputType = isPasswordField && showPassword ? 'text' : isPasswordField ? 'password' : type;
 
   return (
-    <div className={`space-y-1 ${containerClassName}`}>
+    <div className={cn('space-y-2', containerClassName)}>
       {label && (
-        <label className="block text-sm font-medium text-gray-700">
+        <label className={cn(
+          'block font-medium text-gray-700',
+          isMobile ? 'text-base' : 'text-sm'
+        )}>
           {label}
           {validation?.required && <span className="text-red-500 ml-1">*</span>}
         </label>
@@ -215,23 +237,44 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(({
           type={inputType}
           value={value}
           onChange={handleChange}
+          onFocus={handleFocus}
           onBlur={handleBlur}
-          className={`${getInputStyles()} ${hasError ? 'pr-10' : ''} ${isPasswordField ? 'pr-10' : ''} ${className}`}
+          className={cn(
+            getInputStyles(),
+            hasError ? (isMobile ? 'pr-12' : 'pr-10') : '',
+            isPasswordField ? (isMobile ? 'pr-12' : 'pr-10') : '',
+            className
+          )}
           {...props}
         />
         
         {/* Validation icon */}
         {showValidation && touched && (
-          <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+          <div className={cn(
+            'absolute inset-y-0 right-0 flex items-center',
+            isMobile ? 'pr-4' : 'pr-3'
+          )}>
             {hasError ? (
-              <ExclamationCircleIcon className="w-5 h-5 text-red-500" />
+              <ExclamationCircleIcon className={cn(
+                'text-red-500',
+                isMobile ? 'w-6 h-6' : 'w-5 h-5'
+              )} />
             ) : securityThreats.length > 0 ? (
-              <ExclamationTriangleIcon className="w-5 h-5 text-orange-500" title="보안 위험 감지" />
+              <ExclamationTriangleIcon className={cn(
+                'text-orange-500',
+                isMobile ? 'w-6 h-6' : 'w-5 h-5'
+              )} title="보안 위험 감지" />
             ) : hasSuccess ? (
               enableSecurityCheck ? (
-                <ShieldCheckIcon className="w-5 h-5 text-green-500" title="보안 검증 완료" />
+                <ShieldCheckIcon className={cn(
+                  'text-green-500',
+                  isMobile ? 'w-6 h-6' : 'w-5 h-5'
+                )} title="보안 검증 완료" />
               ) : (
-                <CheckCircleIcon className="w-5 h-5 text-green-500" />
+                <CheckCircleIcon className={cn(
+                  'text-green-500',
+                  isMobile ? 'w-6 h-6' : 'w-5 h-5'
+                )} />
               )
             ) : null}
           </div>
@@ -242,12 +285,23 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(({
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
-            className={`absolute inset-y-0 right-0 flex items-center ${hasError || hasSuccess ? 'pr-8' : 'pr-3'}`}
+            className={cn(
+              'absolute inset-y-0 right-0 flex items-center',
+              // Touch-friendly button size on mobile
+              isMobile ? 'w-12 h-12' : 'w-10 h-10',
+              hasError || hasSuccess ? (isMobile ? 'mr-8' : 'mr-6') : (isMobile ? 'mr-2' : 'mr-1')
+            )}
           >
             {showPassword ? (
-              <EyeSlashIcon className="w-5 h-5 text-gray-400 hover:text-gray-600" />
+              <EyeSlashIcon className={cn(
+                'text-gray-400 hover:text-gray-600 mx-auto',
+                isMobile ? 'w-6 h-6' : 'w-5 h-5'
+              )} />
             ) : (
-              <EyeIcon className="w-5 h-5 text-gray-400 hover:text-gray-600" />
+              <EyeIcon className={cn(
+                'text-gray-400 hover:text-gray-600 mx-auto',
+                isMobile ? 'w-6 h-6' : 'w-5 h-5'
+              )} />
             )}
           </button>
         )}
@@ -255,16 +309,26 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(({
       
       {/* Error message */}
       {hasError && (
-        <p className="text-sm text-red-600 flex items-center gap-1">
-          <ExclamationCircleIcon className="w-4 h-4" />
+        <p className={cn(
+          'text-red-600 flex items-center gap-2',
+          isMobile ? 'text-base' : 'text-sm'
+        )}>
+          <ExclamationCircleIcon className={cn(
+            isMobile ? 'w-5 h-5' : 'w-4 h-4'
+          )} />
           {currentError.message}
         </p>
       )}
       
       {/* Security threats warning */}
       {!hasError && securityThreats.length > 0 && (
-        <div className="text-sm text-orange-600 flex items-center gap-1">
-          <ExclamationTriangleIcon className="w-4 h-4" />
+        <div className={cn(
+          'text-orange-600 flex items-center gap-2',
+          isMobile ? 'text-base' : 'text-sm'
+        )}>
+          <ExclamationTriangleIcon className={cn(
+            isMobile ? 'w-5 h-5' : 'w-4 h-4'
+          )} />
           <span>보안 위험이 감지되었습니다:</span>
           <span className="font-medium">{securityThreats.join(', ')}</span>
         </div>
@@ -272,7 +336,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(({
       
       {/* Helper text */}
       {helperText && !hasError && securityThreats.length === 0 && (
-        <p className="text-sm text-gray-500">{helperText}</p>
+        <p className={cn(
+          'text-gray-500',
+          isMobile ? 'text-base' : 'text-sm'
+        )}>{helperText}</p>
       )}
     </div>
   );
@@ -311,6 +378,8 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(({
 }, ref) => {
   const [localError, setLocalError] = useState<FieldError | null>(null);
   const [touched, setTouched] = useState(false);
+  const { isMobile } = useBreakpoint();
+  const { scrollToFocusedElement } = useKeyboardAvoidance({ enabled: isMobile });
 
   const currentError = error || localError;
   const hasError = showValidation && touched && currentError;
@@ -365,6 +434,15 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(({
     }
   };
 
+  const handleFocus = (e: React.FocusEvent<HTMLTextAreaElement>) => {
+    // Trigger keyboard avoidance after a short delay to allow keyboard to appear
+    if (isMobile) {
+      setTimeout(() => {
+        scrollToFocusedElement();
+      }, 300);
+    }
+  };
+
   const handleBlur = (e: React.FocusEvent<HTMLTextAreaElement>) => {
     setTouched(true);
     
@@ -381,25 +459,31 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(({
   };
 
   const getTextareaStyles = () => {
-    const baseStyles = `w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-1 transition-colors ${
+    const baseStyles = cn(
+      'w-full border rounded-md shadow-sm focus:outline-none focus:ring-2 transition-colors',
+      // Mobile-optimized sizing and text size to prevent zoom
+      isMobile ? 'px-4 py-3 text-base text-[16px]' : 'px-3 py-2 text-sm',
       !resize ? 'resize-none' : ''
-    }`;
+    );
     
     if (hasError) {
-      return `${baseStyles} border-red-300 focus:border-red-500 focus:ring-red-500`;
+      return cn(baseStyles, 'border-red-300 focus:border-red-500 focus:ring-red-500');
     }
     
     if (hasSuccess) {
-      return `${baseStyles} border-green-300 focus:border-green-500 focus:ring-green-500`;
+      return cn(baseStyles, 'border-green-300 focus:border-green-500 focus:ring-green-500');
     }
     
-    return `${baseStyles} border-gray-300 focus:border-blue-500 focus:ring-blue-500`;
+    return cn(baseStyles, 'border-gray-300 focus:border-blue-500 focus:ring-blue-500');
   };
 
   return (
-    <div className={`space-y-1 ${containerClassName}`}>
+    <div className={cn('space-y-2', containerClassName)}>
       {label && (
-        <label className="block text-sm font-medium text-gray-700">
+        <label className={cn(
+          'block font-medium text-gray-700',
+          isMobile ? 'text-base' : 'text-sm'
+        )}>
           {label}
           {validation?.required && <span className="text-red-500 ml-1">*</span>}
         </label>
@@ -410,17 +494,24 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(({
           ref={ref}
           value={value}
           onChange={handleChange}
+          onFocus={handleFocus}
           onBlur={handleBlur}
-          className={`${getTextareaStyles()} ${className}`}
+          className={cn(getTextareaStyles(), className)}
           {...props}
         />
         
         {showValidation && touched && (
-          <div className="absolute top-2 right-2">
+          <div className="absolute top-3 right-3">
             {hasError ? (
-              <ExclamationCircleIcon className="w-5 h-5 text-red-500" />
+              <ExclamationCircleIcon className={cn(
+                'text-red-500',
+                isMobile ? 'w-6 h-6' : 'w-5 h-5'
+              )} />
             ) : hasSuccess ? (
-              <CheckCircleIcon className="w-5 h-5 text-green-500" />
+              <CheckCircleIcon className={cn(
+                'text-green-500',
+                isMobile ? 'w-6 h-6' : 'w-5 h-5'
+              )} />
             ) : null}
           </div>
         )}
@@ -428,20 +519,31 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(({
       
       {/* Character count */}
       {validation?.maxLength && (
-        <p className="text-xs text-gray-500 text-right">
+        <p className={cn(
+          'text-gray-500 text-right',
+          isMobile ? 'text-sm' : 'text-xs'
+        )}>
           {typeof value === 'string' ? value.length : 0} / {validation.maxLength}
         </p>
       )}
       
       {hasError && (
-        <p className="text-sm text-red-600 flex items-center gap-1">
-          <ExclamationCircleIcon className="w-4 h-4" />
+        <p className={cn(
+          'text-red-600 flex items-center gap-2',
+          isMobile ? 'text-base' : 'text-sm'
+        )}>
+          <ExclamationCircleIcon className={cn(
+            isMobile ? 'w-5 h-5' : 'w-4 h-4'
+          )} />
           {currentError.message}
         </p>
       )}
       
       {helperText && !hasError && (
-        <p className="text-sm text-gray-500">{helperText}</p>
+        <p className={cn(
+          'text-gray-500',
+          isMobile ? 'text-base' : 'text-sm'
+        )}>{helperText}</p>
       )}
     </div>
   );

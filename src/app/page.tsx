@@ -349,10 +349,9 @@ export default function Home() {
   ];
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <MainHeader />
-      <Content style={{ padding: '24px 48px' }}>
-        <div style={{ background: isDarkMode ? '#141414' : '#fff', padding: 24, borderRadius: 8, boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)' }}>
+    <Layout className="min-h-screen bg-white dark:bg-neutral-950" style={{ minHeight: '100vh' }}>
+      <Content className="px-3 sm:px-6 md:px-12 py-6">
+        <div className="rounded-lg shadow" style={{ background: isDarkMode ? '#141414' : '#fff', padding: 12 }}>
           <Tabs defaultActiveKey="daily" activeKey={activeTab} onChange={handleTabChange} items={tabItems} centered />
         </div>
       </Content>

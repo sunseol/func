@@ -24,7 +24,7 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
     setIsDarkMode(initialMode);
   }, []);
 
-  // 테마 변경 시 localStorage 업데이트
+  // 테마 변경 시 localStorage 업데이트 + html class + data-color-mode 동기화
   useEffect(() => {
     localStorage.setItem('darkMode', JSON.stringify(isDarkMode));
     // 필요하다면 <html> 태그 클래스 변경 로직 추가
@@ -33,32 +33,50 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
     } else {
       document.documentElement.classList.remove('dark');
     }
+    // 에디터 등에서 참조하는 data-color-mode 동기화
+    document.documentElement.setAttribute('data-color-mode', isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
   // 테마 설정 객체
   const antdTheme = {
     algorithm: isDarkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
     token: {
-      colorPrimary: '#00b96b', // 기본 브랜드 색상
-      // 전역 비활성화 토큰 제거 (컴포넌트 레벨에서 설정)
-      // colorTextDisabled: ...,
-      // colorBgContainerDisabled: ...,
+      colorPrimary: '#00b96b',
+      colorBgLayout: isDarkMode ? '#0a0a0a' : '#ffffff',
+      colorBgBase: isDarkMode ? '#0a0a0a' : '#ffffff',
+      colorBgContainer: isDarkMode ? '#111827' : '#ffffff',
+      colorTextBase: isDarkMode ? '#e5e7eb' : '#111827',
+      colorBorder: isDarkMode ? '#374151' : '#e5e7eb',
     },
     components: {
       Tabs: {
-        // 비활성 탭 텍스트 색상 밝기 증가 (0.9 -> 0.95)
         colorText: isDarkMode ? 'rgba(255, 255, 255, 0.95)' : undefined,
-        // 활성 탭 색상은 기본 colorPrimary를 따르도록 설정
         colorPrimary: '#00b96b', 
       },
       Button: {
-         // 비활성화 시 텍스트 색상 직접 지정 (더 밝게)
          colorTextDisabled: isDarkMode ? 'rgba(255, 255, 255, 0.6)' : undefined,
-         // 비활성화 시 배경색 직접 지정 (대비 높이기)
          colorBgContainerDisabled: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : undefined,
-      }
+      },
+      Layout: {
+        bodyBg: isDarkMode ? '#0a0a0a' : '#ffffff',
+        headerBg: isDarkMode ? '#0b1420' : '#001529',
+        siderBg: isDarkMode ? '#0f172a' : '#ffffff',
+      },
+      Card: {
+        colorBgContainer: isDarkMode ? '#111827' : '#ffffff',
+        colorBorderSecondary: isDarkMode ? '#374151' : '#e5e7eb',
+      },
+      Drawer: {
+        colorBgElevated: isDarkMode ? '#111827' : '#ffffff',
+      },
+      Modal: {
+        colorBgElevated: isDarkMode ? '#111827' : '#ffffff',
+      },
+      Table: {
+        colorBgContainer: isDarkMode ? '#0f172a' : '#ffffff',
+      },
     },
-  };
+  } as const;
 
   return (
     <ThemeContext.Provider value={{ isDarkMode, setIsDarkMode }}>

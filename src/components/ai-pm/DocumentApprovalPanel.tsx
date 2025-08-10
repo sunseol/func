@@ -246,8 +246,8 @@ export function DocumentApprovalPanel({
                 id="reject-reason"
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                rows={4}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base text-[16px] sm:px-3 sm:py-2 sm:text-sm sm:rows-3"
                 placeholder="반려 사유를 입력하세요..."
               />
             </div>

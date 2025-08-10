@@ -2,8 +2,7 @@
 module.exports = {
   darkMode: 'class', // 클래스 기반 다크 모드 활성화
   content: [
-    "./src/app/**/*.{js,ts,jsx,tsx}", // app 디렉토리 내 모든 관련 파일
-    // components 디렉토리가 src/app 아래에 있으므로 위 경로에 포함됨
+    "./src/**/*.{js,ts,jsx,tsx}", // 전체 src 스캔으로 컴포넌트/훅/페이지 모두 포함
   ],
   theme: {
     extend: {

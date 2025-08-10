@@ -29,6 +29,7 @@ interface AuthContextType {
   session: Session | null;
   profile: UserProfile | null;
   loading: boolean;
+  initialized: boolean;
   
   // AI PM specific
   isAdmin: boolean;
@@ -50,7 +51,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [projectMemberships, setProjectMemberships] = useState<ProjectMembership[]>([]);
+  // loading은 초기 부트스트랩 때만 true. 이후 토큰 갱신 등 재검증은 UI를 막지 않음
   const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
+  const hasBootstrappedRef = useRef(false);
   
   const supabaseRef = useRef(createClient());
   const supabase = supabaseRef.current;
@@ -91,28 +95,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Initialize authentication state
+  // 초기 세션 부트스트랩: 최초 한 번만 로딩 표시
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setLoading(true);
-        setSession(session);
-        const currentUser = session?.user ?? null;
+    let isMounted = true;
+    (async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (!isMounted) return;
+        setSession(data.session ?? null);
+        const currentUser = data.session?.user ?? null;
         setUser(currentUser);
-
         if (currentUser) {
           await Promise.all([
             loadUserProfile(currentUser.id),
             loadProjectMemberships(currentUser.id),
           ]);
-        } else {
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+          hasBootstrappedRef.current = true;
+          setInitialized(true);
+        }
+      }
+    })();
+    return () => { isMounted = false; };
+  }, [loadUserProfile, loadProjectMemberships, supabase]);
+
+  // 이후 인증 이벤트: UI를 막지 않고 백그라운드로 재검증
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        setSession(session);
+        const currentUser = session?.user ?? null;
+        setUser(currentUser);
+
+        // 초기 부트스트랩 이전 이벤트는 초기 효과에서 처리됨
+        if (!hasBootstrappedRef.current) return;
+
+        if (!currentUser) {
           setProfile(null);
           setProjectMemberships([]);
+          return;
         }
-        setLoading(false);
+
+        // SIGNED_IN이나 사용자 변경 시에만 무거운 재조회 수행
+        try {
+          await Promise.all([
+            loadUserProfile(currentUser.id),
+            loadProjectMemberships(currentUser.id),
+          ]);
+        } catch (e) {
+          // 에러는 조용히 로그만 남김 (UI 차단 없음)
+          console.error('Auth revalidation error:', e);
+        }
       }
     );
-
     return () => {
       subscription?.unsubscribe();
     };
@@ -168,6 +206,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     session,
     profile,
     loading,
+    initialized,
     isAdmin,
     projectMemberships,
     signIn,

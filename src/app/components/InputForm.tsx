@@ -88,7 +88,15 @@ export default function InputForm({ onDataChange, initialData }: InputFormProps)
           miscTasks: [],
       }}
     >
-      <Card title="기본 정보" style={{ marginBottom: 24 }}>
+      <Card 
+        title="기본 정보" 
+        className="dark:!bg-neutral-900 dark:!text-gray-100" 
+        style={{ marginBottom: 24 }}
+        styles={{
+          header: { padding: '10px 12px' },
+          body: { padding: 12 }
+        }}
+      >
         <Form.Item
           label="이름"
           name="userName"
@@ -105,7 +113,15 @@ export default function InputForm({ onDataChange, initialData }: InputFormProps)
         </Form.Item>
       </Card>
 
-      <Card title="프로젝트별 업무" style={{ marginBottom: 24 }}>
+      <Card 
+        title="프로젝트별 업무" 
+        className="dark:!bg-neutral-900 dark:!text-gray-100" 
+        style={{ marginBottom: 24 }}
+        styles={{
+          header: { padding: '10px 12px' },
+          body: { padding: 12 }
+        }}
+      >
         <Form.List name="projects">
           {(fields, { add, remove }) => (
             <Space direction="vertical" style={{ width: '100%' }}>
@@ -114,6 +130,11 @@ export default function InputForm({ onDataChange, initialData }: InputFormProps)
                   key={key} 
                   size="small" 
                   title={`프로젝트 ${name + 1}`}
+                  className="dark:!bg-neutral-900 dark:!text-gray-100"
+                  styles={{
+                    header: { padding: '8px 10px' },
+                    body: { padding: 10 }
+                  }}
                   extra={
                     <Popconfirm title="이 프로젝트를 삭제할까요?" onConfirm={() => remove(name)} okText="예" cancelText="아니오">
                         <Button icon={<DeleteOutlined />} type="text" danger />
@@ -169,7 +190,14 @@ export default function InputForm({ onDataChange, initialData }: InputFormProps)
         </Form.List>
       </Card>
 
-       <Card title="기타 업무">
+       <Card 
+         title="기타 업무" 
+         className="dark:!bg-neutral-900 dark:!text-gray-100"
+         styles={{
+           header: { padding: '10px 12px' },
+           body: { padding: 12 }
+         }}
+       >
          <Form.List name="miscTasks">
           {(fields, { add, remove }) => (
             <Space direction="vertical" style={{ width: '100%' }}>

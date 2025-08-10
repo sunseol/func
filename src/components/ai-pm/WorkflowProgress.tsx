@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useViewport } from '@/contexts/ViewportContext';
 import { WorkflowStep } from '@/types/ai-pm';
 import { 
   CheckCircleIcon,
@@ -46,6 +47,7 @@ export default function WorkflowProgress({
   totalSteps,
   onStepClick
 }: WorkflowProgressProps) {
+  const { isMobile, isTablet } = useViewport();
   const steps = Array.from({ length: totalSteps }, (_, i) => (i + 1) as WorkflowStep);
   const progressPercentage = (completedSteps.length / totalSteps) * 100;
 
@@ -78,43 +80,63 @@ export default function WorkflowProgress({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+    <div className={`bg-white dark:bg-neutral-900 rounded-lg shadow-sm border border-gray-200 dark:border-neutral-800 ${
+      isMobile ? 'p-4' : 'p-6'
+    }`}>
       {/* 전체 진행률 */}
-      <div className="mb-6">
-        <div className="flex justify-between items-center mb-2">
-          <h3 className="text-lg font-semibold text-gray-900">워크플로우 진행률</h3>
-          <span className="text-sm font-medium text-gray-600">
+      <div className={isMobile ? 'mb-4' : 'mb-6'}>
+        <div className={`flex justify-between items-center mb-2 ${
+          isMobile ? 'flex-col gap-1 text-center' : ''
+        }`}>
+          <h3 className={`font-semibold text-gray-900 ${
+            isMobile ? 'text-base' : 'text-lg'
+          }`}>
+            워크플로우 진행률
+          </h3>
+          <span className={`font-medium text-gray-600 ${
+            isMobile ? 'text-sm' : 'text-sm'
+          }`}>
             {completedSteps.length} / {totalSteps} 완료
           </span>
         </div>
-        <div className="w-full bg-gray-200 rounded-full h-2">
+        <div className={`w-full bg-gray-200 dark:bg-neutral-700 rounded-full ${
+          isMobile ? 'h-3' : 'h-2'
+        }`}>
           <div 
-            className="bg-gradient-to-r from-blue-500 to-green-500 h-2 rounded-full transition-all duration-300"
+            className={`bg-gradient-to-r from-blue-500 to-green-500 rounded-full transition-all duration-300 ${
+              isMobile ? 'h-3' : 'h-2'
+            }`}
             style={{ width: `${progressPercentage}%` }}
           ></div>
         </div>
-        <div className="mt-2 text-sm text-gray-600">
+        <div className={`mt-2 text-gray-600 ${
+          isMobile ? 'text-sm text-center' : 'text-sm'
+        }`}>
           {Math.round(progressPercentage)}% 완료
         </div>
       </div>
 
       {/* 단계별 진행 상황 */}
-      <div className="space-y-4">
+      <div className={isMobile ? 'space-y-3' : 'space-y-4'}>
         {steps.map((step, index) => {
           const status = getStepStatus(step);
           const isClickable = onStepClick && (status === 'completed' || status === 'current');
           
           return (
             <div key={step} className="relative">
-              {/* 연결선 */}
-              {index < steps.length - 1 && (
+              {/* 연결선 - 모바일에서는 숨김 */}
+              {!isMobile && index < steps.length - 1 && (
                 <div className="absolute left-3 top-6 w-0.5 h-8 bg-gray-200"></div>
               )}
               
               <div 
-                className={`flex items-start space-x-4 p-4 rounded-lg border transition-all duration-200 ${
+                className={`flex items-start rounded-lg border transition-all duration-200 ${
                   getStepColor(status)
-                } ${isClickable ? 'cursor-pointer hover:shadow-md' : ''}`}
+                } ${isClickable ? 'cursor-pointer hover:shadow-md' : ''} ${
+                  isMobile 
+                    ? 'p-3 space-x-3 min-h-[60px]' 
+                    : 'p-4 space-x-4'
+                }`}
                 onClick={() => isClickable && onStepClick?.(step)}
               >
                 {/* 아이콘 */}
@@ -124,28 +146,38 @@ export default function WorkflowProgress({
 
                 {/* 내용 */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center space-x-2">
-                    <h4 className="text-sm font-medium">
+                  <div className={`flex items-center ${
+                    isMobile ? 'flex-col items-start gap-1' : 'space-x-2'
+                  }`}>
+                    <h4 className={`font-medium ${
+                      isMobile ? 'text-sm' : 'text-sm'
+                    }`}>
                       {step}. {STEP_LABELS[step]}
                     </h4>
-                    {status === 'current' && (
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        진행 중
-                      </span>
-                    )}
-                    {status === 'completed' && (
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                        완료
-                      </span>
-                    )}
+                    <div className={`flex gap-2 ${
+                      isMobile ? 'mt-1' : ''
+                    }`}>
+                      {status === 'current' && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          진행 중
+                        </span>
+                      )}
+                      {status === 'completed' && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          완료
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-sm text-gray-600 mt-1">
-                    {STEP_DESCRIPTIONS[step]}
-                  </p>
+                  {!isMobile && (
+                   <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                      {STEP_DESCRIPTIONS[step]}
+                    </p>
+                  )}
                 </div>
 
-                {/* 화살표 */}
-                {index < steps.length - 1 && (
+                {/* 화살표 - 모바일에서는 숨김 */}
+                {!isMobile && index < steps.length - 1 && (
                   <div className="flex-shrink-0 mt-1">
                     <ArrowRightIcon className="w-4 h-4 text-gray-400" />
                   </div>
@@ -157,14 +189,28 @@ export default function WorkflowProgress({
       </div>
 
       {/* 현재 단계 정보 */}
-      <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-        <div className="flex items-center space-x-2">
-          <ClockIcon className="w-5 h-5 text-blue-500" />
-          <h4 className="font-medium text-blue-900">
-            현재 단계: {STEP_LABELS[currentStep]}
-          </h4>
+      <div className={`p-4 bg-blue-50 rounded-lg border border-blue-200 ${
+        isMobile ? 'mt-4' : 'mt-6'
+      }`}>
+        <div className={`flex items-center ${
+          isMobile ? 'flex-col gap-2 text-center' : 'space-x-2'
+        }`}>
+          <div className={`flex items-center gap-2 ${
+            isMobile ? 'justify-center' : ''
+          }`}>
+            <ClockIcon className={`text-blue-500 ${
+              isMobile ? 'w-4 h-4' : 'w-5 h-5'
+            }`} />
+            <h4 className={`font-medium text-blue-900 ${
+              isMobile ? 'text-sm' : 'text-base'
+            }`}>
+              현재 단계: {STEP_LABELS[currentStep]}
+            </h4>
+          </div>
         </div>
-        <p className="text-sm text-blue-700 mt-1">
+        <p className={`text-blue-700 mt-1 ${
+          isMobile ? 'text-xs text-center' : 'text-sm'
+        }`}>
           {STEP_DESCRIPTIONS[currentStep]}
         </p>
       </div>

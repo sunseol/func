@@ -12,7 +12,7 @@ import { LogoutOutlined, UserOutlined, EditOutlined, SunOutlined, MoonOutlined, 
 
 import type { Dayjs } from 'dayjs';
 
-const { Header, Content } = Layout;
+const { Content } = Layout;
 const { Title, Text, Paragraph } = Typography;
 const { Option } = Select;
 
@@ -35,7 +35,7 @@ interface ManualReportFormValues {
 }
 
 export default function MyReportsPage() {
-  const { user, loading: authLoading, handleLogout } = useAuth();
+  const { user, loading: authLoading, initialized, signOut } = useAuth();
   const { isDarkMode, setIsDarkMode } = useTheme();
   const { unreadCount } = useNotification();
   const router = useRouter();
@@ -96,10 +96,10 @@ export default function MyReportsPage() {
   }, [user, supabase]);
 
   useEffect(() => {
-    if (!authLoading && !user) {
+    if (initialized && !authLoading && !user) {
       router.push('/login');
     }
-  }, [user, authLoading, router]);
+  }, [user, authLoading, initialized, router]);
 
   useEffect(() => {
     if (user) {
@@ -267,7 +267,7 @@ export default function MyReportsPage() {
     );
   };
 
-  if (authLoading || (loading && !reports.length && !error)) {
+  if ((authLoading && !initialized) || (loading && !reports.length && !error)) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 200px)', textAlign: 'center' }}>
         <Spin size="large">
@@ -277,89 +277,7 @@ export default function MyReportsPage() {
     );
   }
 
-  const PageHeader = () => (
-    <Header
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        position: 'sticky',
-        top: 0,
-        zIndex: 1,
-        width: '100%',
-        backgroundColor: isDarkMode ? '#001529' : '#fff',
-        borderBottom: `1px solid ${isDarkMode ? '#303030' : '#f0f0f0'}`,
-        padding: '0 24px',
-        transition: 'background-color 0.3s, border-color 0.3s',
-      }}
-    >
-      <Link href="/" passHref>
-        <Title level={3} style={{ margin: 0, color: isDarkMode ? '#fff' : '#000' }}>
-          FunCommute
-        </Title>
-      </Link>
-      <Space align="center" size="middle">
-        <Switch
-          checkedChildren={<MoonOutlined />}
-          unCheckedChildren={<SunOutlined />}
-          checked={isDarkMode}
-          onChange={setIsDarkMode}
-        />
-        {user ? (
-          <>
-            <Link href="/ai-pm" passHref>
-              <Button icon={<EditOutlined />}>🤖 AI PM</Button>
-            </Link>
-            <Link href="/" passHref>
-              <Button icon={<EditOutlined />}>새 보고서 작성</Button>
-            </Link>
-            <Link href="/notifications">
-              <Button 
-                type="text" 
-                style={{ color: isDarkMode ? 'rgba(255,255,255,0.85)' : '#000', position: 'relative' }}
-                icon={<BellOutlined />}
-              >
-                알림
-                {unreadCount > 0 && (
-                  <span
-                    style={{
-                      position: 'absolute',
-                      top: -2,
-                      right: -2,
-                      backgroundColor: '#ff4d4f',
-                      color: 'white',
-                      borderRadius: '50%',
-                      width: 16,
-                      height: 16,
-                      fontSize: 10,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      lineHeight: 1,
-                    }}
-                  >
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
-                )}
-              </Button>
-            </Link>
-            <Avatar icon={<UserOutlined />} style={{ marginRight: 8 }} />
-            <Text style={{ color: isDarkMode ? 'rgba(255,255,255,0.85)' : '#000' }}>
-              {user.user_metadata?.full_name || user.email?.split('@')[0]}
-            </Text>
-            <Button icon={<LogoutOutlined />} onClick={handleLogout} ghost={!isDarkMode}>
-              로그아웃
-            </Button>
-          </>
-        ) : (
-          <Space>
-            <Link href="/login" passHref><Button>로그인</Button></Link>
-            <Link href="/signup" passHref><Button type="primary">회원가입</Button></Link>
-          </Space>
-        )}
-      </Space>
-    </Header>
-  );
+  // 전역 헤더 사용으로 페이지 로컬 헤더 제거
 
   const handleEditReport = (report: DailyReport) => {
     setEditingReport(report);
@@ -510,16 +428,8 @@ export default function MyReportsPage() {
 
   return (
     <Layout style={{ minHeight: '100vh', backgroundColor: isDarkMode ? '#001529' : '#f0f2f5' }}>
-      <PageHeader />
-      <Content style={{ padding: '24px 48px', transition: 'background-color 0.3s' }}>
-        <div 
-          style={{
-            background: isDarkMode ? '#141414' : '#fff',
-            padding: 24,
-            borderRadius: 8,
-            transition: 'background-color 0.3s'
-          }}
-        >
+      <Content className="px-3 sm:px-6 md:px-12 py-6" style={{ transition: 'background-color 0.3s' }}>
+        <div className="rounded-lg" style={{ background: isDarkMode ? '#141414' : '#fff', padding: 12, transition: 'background-color 0.3s' }}>
           <Space direction="vertical" size="large" style={{ width: '100%' }}>
             <Title level={2} style={{color: isDarkMode ? 'white' : 'black'}}>내 보고서 목록</Title>
             <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>

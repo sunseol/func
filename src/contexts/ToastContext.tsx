@@ -8,8 +8,13 @@ import {
   XCircleIcon,
   XMarkIcon
 } from '@heroicons/react/24/outline';
+import { useViewport } from './ViewportContext';
+import { NotificationManager } from '@/components/ui/NotificationManager';
+import { GestureTutorial } from '@/components/ui/GestureTutorial';
+import { useGestureTutorial } from '@/hooks/useGestureTutorial';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
+export type ToastPriority = 'high' | 'medium' | 'low';
 
 export interface Toast {
   id: string;
@@ -22,6 +27,10 @@ export interface Toast {
     onClick: () => void;
   };
   persistent?: boolean;
+  priority?: ToastPriority;
+  // Mobile-specific options
+  allowSwipeDismiss?: boolean;
+  hapticFeedback?: boolean;
 }
 
 interface ToastContextType {
@@ -35,6 +44,11 @@ interface ToastContextType {
   error: (title: string, message?: string, options?: Partial<Toast>) => string;
   warning: (title: string, message?: string, options?: Partial<Toast>) => string;
   info: (title: string, message?: string, options?: Partial<Toast>) => string;
+  
+  // Priority notification methods
+  urgent: (title: string, message?: string, options?: Partial<Toast>) => string;
+  important: (title: string, message?: string, options?: Partial<Toast>) => string;
+  critical: (title: string, message?: string, options?: Partial<Toast>) => string;
 }
 
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
@@ -42,9 +56,10 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
 interface ToastProviderProps {
   children: ReactNode;
   maxToasts?: number;
+  position?: 'top' | 'bottom';
 }
 
-export function ToastProvider({ children, maxToasts = 5 }: ToastProviderProps) {
+export function ToastProvider({ children, maxToasts = 5, position = 'top' }: ToastProviderProps) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const generateId = useCallback(() => {
@@ -53,9 +68,18 @@ export function ToastProvider({ children, maxToasts = 5 }: ToastProviderProps) {
 
   const addToast = useCallback((toastData: Omit<Toast, 'id'>) => {
     const id = generateId();
+    
+    // Set default priority based on type
+    const defaultPriority: ToastPriority = 
+      toastData.type === 'error' ? 'high' :
+      toastData.type === 'warning' ? 'medium' : 'low';
+    
     const toast: Toast = {
       id,
       duration: 5000, // Default 5 seconds
+      priority: defaultPriority,
+      allowSwipeDismiss: true,
+      hapticFeedback: true,
       ...toastData
     };
 
@@ -64,6 +88,12 @@ export function ToastProvider({ children, maxToasts = 5 }: ToastProviderProps) {
       // Limit number of toasts
       return newToasts.slice(0, maxToasts);
     });
+
+    // Haptic feedback for mobile devices
+    if (toast.hapticFeedback && 'vibrate' in navigator) {
+      const vibrationPattern = toast.type === 'error' ? [100, 50, 100] : [50];
+      navigator.vibrate(vibrationPattern);
+    }
 
     // Auto-remove toast after duration (unless persistent)
     if (!toast.persistent && toast.duration && toast.duration > 0) {
@@ -106,6 +136,47 @@ export function ToastProvider({ children, maxToasts = 5 }: ToastProviderProps) {
     return addToast({ type: 'info', title, message, ...options });
   }, [addToast]);
 
+  // Priority notification methods
+  const urgent = useCallback((title: string, message?: string, options?: Partial<Toast>) => {
+    return addToast({ 
+      type: 'error', 
+      title, 
+      message, 
+      priority: 'high',
+      persistent: true,
+      duration: 0, // No auto-dismiss
+      hapticFeedback: true,
+      ...options 
+    });
+  }, [addToast]);
+
+  const important = useCallback((title: string, message?: string, options?: Partial<Toast>) => {
+    return addToast({ 
+      type: 'warning', 
+      title, 
+      message, 
+      priority: 'medium',
+      persistent: true,
+      duration: 10000, // Longer duration
+      hapticFeedback: true,
+      ...options 
+    });
+  }, [addToast]);
+
+  const critical = useCallback((title: string, message?: string, options?: Partial<Toast>) => {
+    return addToast({ 
+      type: 'error', 
+      title, 
+      message, 
+      priority: 'high',
+      persistent: true,
+      duration: 0, // No auto-dismiss
+      hapticFeedback: true,
+      allowSwipeDismiss: false, // Prevent accidental dismissal
+      ...options 
+    });
+  }, [addToast]);
+
   const contextValue: ToastContextType = {
     toasts,
     addToast,
@@ -114,13 +185,16 @@ export function ToastProvider({ children, maxToasts = 5 }: ToastProviderProps) {
     success,
     error,
     warning,
-    info
+    info,
+    urgent,
+    important,
+    critical
   };
 
   return (
     <ToastContext.Provider value={contextValue}>
       {children}
-      <ToastContainer />
+      <ResponsiveToastContainer position={position} maxToasts={maxToasts} />
     </ToastContext.Provider>
   );
 }
@@ -133,14 +207,45 @@ export function useToast() {
   return context;
 }
 
-// Toast Container Component
-function ToastContainer() {
-  const { toasts, removeToast } = useToast();
+// Responsive Toast Container Component
+interface ResponsiveToastContainerProps {
+  position: 'top' | 'bottom';
+  maxToasts: number;
+}
 
-  if (toasts.length === 0) return null;
+function ResponsiveToastContainer({ position, maxToasts }: ResponsiveToastContainerProps) {
+  const { 
+    showTutorial, 
+    completeTutorial, 
+    hideTutorial 
+  } = useGestureTutorial();
 
   return (
-    <div className="fixed top-4 right-4 z-50 space-y-2 max-w-sm w-full">
+    <>
+      <NotificationManager position={position} maxToasts={maxToasts} />
+      <GestureTutorial 
+        show={showTutorial}
+        onClose={hideTutorial}
+        onComplete={completeTutorial}
+      />
+    </>
+  );
+}
+
+// Desktop Toast Container Component
+interface DesktopToastContainerProps {
+  position: 'top' | 'bottom';
+}
+
+function DesktopToastContainer({ position }: DesktopToastContainerProps) {
+  const { toasts, removeToast } = useToast();
+
+  const positionClasses = position === 'top' 
+    ? 'top-4 right-4' 
+    : 'bottom-4 right-4';
+
+  return (
+    <div className={`fixed ${positionClasses} z-50 space-y-2 max-w-sm w-full`}>
       {toasts.map((toast) => (
         <ToastItem key={toast.id} toast={toast} onRemove={removeToast} />
       ))}

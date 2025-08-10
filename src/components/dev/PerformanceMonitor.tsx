@@ -2,6 +2,12 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { ApiCache } from '@/hooks/useApiCache';
+import { useMobilePerformanceMonitor } from '@/hooks/useMobilePerformanceMonitor';
+import { useBatteryOptimization } from '@/hooks/useBatteryOptimization';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
+import MobilePerformanceMonitor from './MobilePerformanceMonitor';
+import BatteryOptimizationIndicator from './BatteryOptimizationIndicator';
+import PerformanceDashboard from './PerformanceDashboard';
 
 interface MemoryInfo {
   usedJSHeapSize: number;
@@ -17,6 +23,7 @@ interface PerformanceMetrics {
 }
 
 export default function PerformanceMonitor() {
+  const { isMobile } = useBreakpoint();
   const [isVisible, setIsVisible] = useState(false);
   const [metrics, setMetrics] = useState<PerformanceMetrics>({
     renderCount: 0,
@@ -24,6 +31,10 @@ export default function PerformanceMonitor() {
     averageRenderTime: 0
   });
   const [cacheStats, setCacheStats] = useState<ReturnType<typeof ApiCache.getStats> | null>(null);
+
+  // 모바일 성능 모니터링
+  const mobileMonitor = useMobilePerformanceMonitor(isMobile && process.env.NODE_ENV === 'development');
+  const batteryOptimization = useBatteryOptimization();
 
   // Performance tracking - 컴포넌트 마운트 시에만 측정
   useEffect(() => {
@@ -95,6 +106,12 @@ export default function PerformanceMonitor() {
     return null;
   }
 
+  // 모바일에서는 통합 성능 대시보드 사용
+  if (isMobile) {
+    // 모바일 성능 대시보드 비활성화
+    return null;
+  }
+
   return (
     <>
       {/* Toggle button */}
@@ -157,6 +174,84 @@ export default function PerformanceMonitor() {
                   <span>제한:</span>
                   <span className="font-mono">{formatBytes(metrics.memoryUsage.jsHeapSizeLimit)}</span>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Mobile Performance Metrics (if available) */}
+          {mobileMonitor.metrics && (
+            <div className="mb-4">
+              <h4 className="text-sm font-medium text-gray-700 mb-2">모바일 성능</h4>
+              <div className="space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span>FPS:</span>
+                  <span className="font-mono">{Math.round(mobileMonitor.metrics.fps)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>터치 응답:</span>
+                  <span className="font-mono">{formatTime(mobileMonitor.metrics.touchResponseTime)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>스크롤 성능:</span>
+                  <span className="font-mono">{formatTime(mobileMonitor.metrics.scrollPerformance)}</span>
+                </div>
+                {mobileMonitor.metrics.batteryLevel !== undefined && (
+                  <div className="flex justify-between">
+                    <span>배터리:</span>
+                    <span className="font-mono">{Math.round(mobileMonitor.metrics.batteryLevel)}%</span>
+                  </div>
+                )}
+              </div>
+              {mobileMonitor.alerts.length > 0 && (
+                <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
+                  <div className="text-xs text-yellow-800">
+                    성능 알림: {mobileMonitor.alerts.length}개
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Battery Optimization Status */}
+          {batteryOptimization.isSupported && batteryOptimization.batteryInfo && (
+            <div className="mb-4">
+              <h4 className="text-sm font-medium text-gray-700 mb-2">배터리 최적화</h4>
+              <div className="space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span>배터리 레벨:</span>
+                  <span className="font-mono">
+                    {Math.round(batteryOptimization.batteryInfo.level * 100)}%
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>충전 상태:</span>
+                  <span className="font-mono">
+                    {batteryOptimization.batteryInfo.charging ? '충전 중' : '방전 중'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>최적화 상태:</span>
+                  <span className={`font-mono ${
+                    batteryOptimization.optimizationState.isOptimized ? 'text-green-600' : 'text-gray-600'
+                  }`}>
+                    {batteryOptimization.optimizationState.isOptimized ? '활성' : '비활성'}
+                  </span>
+                </div>
+                {batteryOptimization.optimizationState.optimizationsApplied.length > 0 && (
+                  <div className="mt-1">
+                    <span className="text-gray-600">적용된 최적화:</span>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {batteryOptimization.optimizationState.optimizationsApplied.map((opt) => (
+                        <span
+                          key={opt}
+                          className="px-1 py-0.5 bg-blue-100 text-blue-800 rounded text-xs"
+                        >
+                          {opt}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

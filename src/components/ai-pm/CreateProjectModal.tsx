@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { CloseOutlined } from '@ant-design/icons';
 import { CreateProjectRequest } from '@/types/ai-pm';
+import { KeyboardAwareForm } from '@/components/ui/KeyboardAwareForm';
 
 interface CreateProjectModalProps {
   onClose: () => void;
@@ -89,7 +90,7 @@ export default function CreateProjectModal({ onClose, onSuccess }: CreateProject
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <KeyboardAwareForm onSubmit={handleSubmit} className="space-y-4">
             {/* Project Name */}
             <div>
               <label htmlFor="project-name" className="block text-sm font-medium text-gray-700 mb-1">
@@ -101,7 +102,7 @@ export default function CreateProjectModal({ onClose, onSuccess }: CreateProject
                 value={formData.name}
                 onChange={(e) => handleInputChange('name', e.target.value)}
                 placeholder="예: 전자책 플랫폼 기획"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[48px] text-base text-[16px] sm:px-3 sm:py-2 sm:text-sm sm:min-h-[40px]"
                 disabled={loading}
                 maxLength={255}
               />
@@ -117,8 +118,8 @@ export default function CreateProjectModal({ onClose, onSuccess }: CreateProject
                 value={formData.description}
                 onChange={(e) => handleInputChange('description', e.target.value)}
                 placeholder="프로젝트에 대한 간단한 설명을 입력해주세요..."
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                rows={4}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none text-base text-[16px] sm:px-3 sm:py-2 sm:text-sm sm:rows-3"
                 disabled={loading}
                 maxLength={1000}
               />
@@ -139,14 +140,14 @@ export default function CreateProjectModal({ onClose, onSuccess }: CreateProject
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                className="px-6 py-3 text-base font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 min-h-[48px] sm:px-4 sm:py-2 sm:text-sm sm:min-h-[40px]"
                 disabled={loading}
               >
                 취소
               </button>
               <button
                 type="submit"
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-6 py-3 text-base font-medium text-white bg-blue-600 border border-transparent rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px] sm:px-4 sm:py-2 sm:text-sm sm:min-h-[40px]"
                 disabled={loading || !formData.name.trim()}
               >
                 {loading ? (
@@ -159,7 +160,7 @@ export default function CreateProjectModal({ onClose, onSuccess }: CreateProject
                 )}
               </button>
             </div>
-          </form>
+          </KeyboardAwareForm>
         </div>
       </div>
     </div>
