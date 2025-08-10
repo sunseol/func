@@ -55,17 +55,6 @@ export async function checkAuth(): Promise<AuthResult> {
       };
     }
 
-    // Validate session freshness (optional security check)
-    const sessionAge = Date.now() - new Date(user.last_sign_in_at || 0).getTime();
-    const maxSessionAge = 24 * 60 * 60 * 1000; // 24 hours
-    
-    if (sessionAge > maxSessionAge) {
-      return { 
-        error: AIpmErrorType.UNAUTHORIZED, 
-        message: '세션이 만료되었습니다. 다시 로그인해주세요.' 
-      };
-    }
-
     // Get user profile
     const { data: profile, error: profileError } = await supabase
       .from('user_profiles')
@@ -73,22 +62,28 @@ export async function checkAuth(): Promise<AuthResult> {
       .eq('id', user.id)
       .single();
 
-    if (profileError) {
-      console.error('Profile fetch error:', profileError);
-      return { 
-        error: AIpmErrorType.UNAUTHORIZED, 
-        message: '사용자 프로필을 찾을 수 없습니다.' 
+    // 프로필이 없더라도 인증 자체는 통과시키고 기본 프로필로 대체
+    if (profileError || !profile) {
+      if (profileError) {
+        console.warn('Profile fetch error, using fallback profile:', profileError);
+      }
+      const fallbackProfile = {
+        id: user.id,
+        email: user.email || '',
+        full_name: null,
+        role: 'user' as const,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      return {
+        user: { id: user.id, email: user.email || '' },
+        profile: fallbackProfile,
       };
     }
 
-    
-
-    return { 
-      user: {
-        id: user.id,
-        email: user.email
-      },
-      profile 
+    return {
+      user: { id: user.id, email: user.email },
+      profile
     };
   } catch (error) {
     console.error('Auth check error:', error);
