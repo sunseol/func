@@ -27,7 +27,7 @@ export default function MainHeader() {
       }}
     >
       <div className="flex items-center justify-between w-full gap-2">
-        <Link href="/" className="flex items-center gap-2 min-w-0 max-w-full" aria-label="FunCommute Home">
+        <Link href="/landing" className="flex items-center gap-2 min-w-0 max-w-full" aria-label="FunCommute Home">
           <Image
             src="/logo-funcommute.svg"
             alt="FunCommute"
@@ -69,6 +69,11 @@ export default function MainHeader() {
             <Typography.Text className="hidden sm:inline" style={{ color: 'white', marginRight: 8 }}>
               {user.user_metadata?.full_name || user.email?.split('@')[0]}
             </Typography.Text>
+            <Link href="/">
+                 <Button type="link" size="small" className="px-2 text-white hidden sm:inline-block">
+                📝 보고서 작성
+              </Button>
+            </Link>
             <Link href="/ai-pm">
                  <Button type="link" size="small" className="px-2 text-white hidden sm:inline-block">
                 🤖 AI PM
@@ -136,6 +141,7 @@ export default function MainHeader() {
         ) : user ? (
           <div className="flex flex-col gap-2">
             <Typography.Text className="mb-2">{user.user_metadata?.full_name || user.email?.split('@')[0]}</Typography.Text>
+            <Link href="/"><Button block type="text">📝 보고서 작성</Button></Link>
             <Link href="/ai-pm"><Button block type="text">🤖 AI PM</Button></Link>
             <Link href="/my-reports"><Button block type="text">내 보고서</Button></Link>
             <Link href="/report-generator"><Button block type="text">리포트 요약</Button></Link>

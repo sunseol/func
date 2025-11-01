@@ -473,19 +473,19 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         const currentTime = now.toTimeString().slice(0, 5); // HH:MM 형식
         const isWeekend = now.getDay() === 0 || now.getDay() === 6;
 
-        console.log('checkReminders: 알림 체크 시작', {
-          currentTime,
-          isWeekend,
-          weekendReminders: settings.weekend_reminders,
-          morningEnabled: settings.morning_reminder_enabled,
-          eveningEnabled: settings.evening_reminder_enabled,
-          morningTime: settings.morning_reminder_time?.slice(0, 5),
-          eveningTime: settings.evening_reminder_time?.slice(0, 5)
-        });
+        // console.log('checkReminders: 알림 체크 시작', {
+        //   currentTime,
+        //   isWeekend,
+        //   weekendReminders: settings.weekend_reminders,
+        //   morningEnabled: settings.morning_reminder_enabled,
+        //   eveningEnabled: settings.evening_reminder_enabled,
+        //   morningTime: settings.morning_reminder_time?.slice(0, 5),
+        //   eveningTime: settings.evening_reminder_time?.slice(0, 5)
+        // });
 
         // 주말 알림이 비활성화되어 있고 주말이면 스킵
         if (isWeekend && !settings.weekend_reminders) {
-          console.log('checkReminders: 주말이고 주말 알림이 비활성화되어 있어 스킵');
+          // console.log('checkReminders: 주말이고 주말 알림이 비활성화되어 있어 스킵');
           return;
         }
 
@@ -497,7 +497,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         !todayReports.morning;
 
       if (shouldSendMorningReminder) {
-        console.log('checkReminders: 아침 알림 전송');
+        // console.log('checkReminders: 아침 알림 전송');
         const title = '🌅 출근 보고서 작성 알림';
         const message = '오늘의 출근 보고서를 작성해주세요!';
         
@@ -511,7 +511,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         !todayReports.evening;
 
       if (shouldSendEveningReminder) {
-        console.log('checkReminders: 저녁 알림 전송');
+        // console.log('checkReminders: 저녁 알림 전송');
         const title = '🌙 퇴근 보고서 작성 알림';
         const message = '오늘의 퇴근 보고서를 작성해주세요!';
         
@@ -519,11 +519,11 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         await addNotificationHistory('evening_reminder', title, message);
       }
 
-      console.log('checkReminders: 알림 체크 완료', {
-        shouldSendMorningReminder,
-        shouldSendEveningReminder,
-        todayReports
-      });
+      // console.log('checkReminders: 알림 체크 완료', {
+      //   shouldSendMorningReminder,
+      //   shouldSendEveningReminder,
+      //   todayReports
+      // });
       } catch (err) {
         console.error('알림 체크 중 오류 발생:', {
           error: err,

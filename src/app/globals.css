@@ -150,3 +150,10 @@ body {
   background-color: #ffffff !important;
   color: #000000 !important;
 }
+
+/* 모바일에서 input 클릭 시 자동 확대 방지 (iOS Safari) */
+input,
+textarea,
+select {
+  font-size: 16px !important;
+}

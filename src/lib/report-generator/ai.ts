@@ -13,9 +13,15 @@ export async function summarizeContent(rawContent: string): Promise<string> {
   try {
     const summarizationPrompt = `
       다음 텍스트를 전문적인 인포그래픽 보고서에 들어갈 핵심 내용만 담아 간결하게 요약해줘.
-      - 전체 내용은 한 페이지 분량을 넘지 않도록 해줘.
-      - 각 항목은 명확하고 이해하기 쉽게 정리해줘.
-      - 원본의 핵심 데이터와 인사이트는 유지해줘.
+
+      **중요 규칙**:
+      - 문서의 실제 내용만 추출하고 요약할 것
+      - 호스트명(localhost), 생성 날짜/시간, 파일 경로, URL, 페이지 번호 등 메타데이터는 절대 포함하지 말것
+      - 3-5개의 주요 섹션으로 구조화
+      - 각 섹션은 핵심 포인트를 충분히 포함 (너무 압축하지 말것)
+      - 원본 문서의 핵심 메시지, 주요 기능, 중요 데이터를 모두 유지
+      - 표나 목록으로 표현할 수 있는 내용은 구조화해서 정리
+      - A4 한 페이지 분량을 목표로 하되, 내용의 완성도를 우선시
 
       --- 원본 내용 ---
       ${rawContent}
@@ -33,7 +39,7 @@ export async function summarizeContent(rawContent: string): Promise<string> {
       messages: [{ role: 'user', content: summarizationPrompt }],
       model: 'meta-llama/llama-4-scout-17b-16e-instruct', // 빠르고 경제적인 모델 사용
       temperature: 0.2, // 창의성보다는 정확성에 초점
-      max_tokens: 4071, // 요약이므로 토큰 제한
+      max_tokens: 3500, // 충분한 요약 분량 확보
     });
 
     const summary = completion.choices[0]?.message?.content;
@@ -66,9 +72,9 @@ export async function generateReport(summary: string, reportPrompt: string): Pro
 
     const completion = await groq.chat.completions.create({
       messages: [{ role: 'user', content: fullPrompt }],
-      model: 'moonshotai/kimi-k2-instruct', // 강력한 모델로 HTML 생성
-      temperature: 0.5,
-      max_tokens: 4096,
+      model: 'openai/gpt-oss-120b', // 강력한 모델로 HTML 생성
+      temperature: 0.3, // 더 일관된 레이아웃을 위해 낮춤
+      max_tokens: 4500, // 충분한 HTML 생성 분량
     });
 
     const response = completion.choices[0]?.message?.content;

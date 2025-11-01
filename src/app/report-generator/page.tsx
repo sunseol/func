@@ -179,7 +179,7 @@ const ReportGeneratorPageInternal: React.FC = () => {
             </div>
           )}
 
-          <style jsx global>{`
+          <style dangerouslySetInnerHTML={{__html: `
             .page-container {
               width: 100%;
               max-width: 210mm;
@@ -189,11 +189,20 @@ const ReportGeneratorPageInternal: React.FC = () => {
               background: white;
               box-shadow: 0 0 15px rgba(0,0,0,0.1);
               position: relative;
+              overflow: hidden;
+              box-sizing: border-box;
             }
             .report-content-wrapper {
               font-family: 'NotoSansKR', sans-serif;
               width: 100%;
               height: 100%;
+              max-width: 100%;
+              overflow-wrap: break-word;
+              word-wrap: break-word;
+            }
+            .report-content-wrapper * {
+              max-width: 100%;
+              box-sizing: border-box;
             }
             @media print {
               @page {
@@ -245,7 +254,7 @@ const ReportGeneratorPageInternal: React.FC = () => {
               0% { background-position: 200% 0; }
               100% { background-position: -200% 0; }
             }
-          `}</style>
+          `}} />
 
           {generatedReport && (
             <Card 
