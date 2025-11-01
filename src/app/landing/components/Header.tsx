@@ -165,11 +165,19 @@ const Header = () => {
               {item.label}
             </NavLink>
           ))}
-          <NextLink href="/" passHref legacyBehavior>
-            <a style={{ textDecoration: 'none' }}>
-              <ReportButton>보고서 작성</ReportButton>
-            </a>
-          </NextLink>
+          {user ? (
+            <NextLink href="/" passHref legacyBehavior>
+              <a style={{ textDecoration: 'none' }}>
+                <ReportButton>보고서 작성</ReportButton>
+              </a>
+            </NextLink>
+          ) : (
+            <NextLink href="/login" passHref legacyBehavior>
+              <a style={{ textDecoration: 'none' }}>
+                <ReportButton>보고서 작성</ReportButton>
+              </a>
+            </NextLink>
+          )}
           {user ? (
             <LoginButton onClick={signOut}>로그아웃</LoginButton>
           ) : (
@@ -199,11 +207,19 @@ const Header = () => {
             {item.label}
           </MobileNavLink>
         ))}
-        <NextLink href="/" passHref legacyBehavior>
-          <a style={{ textDecoration: 'none' }} onClick={closeMenu}>
-            <ReportButton>보고서 작성</ReportButton>
-          </a>
-        </NextLink>
+        {user ? (
+          <NextLink href="/" passHref legacyBehavior>
+            <a style={{ textDecoration: 'none' }} onClick={closeMenu}>
+              <ReportButton>보고서 작성</ReportButton>
+            </a>
+          </NextLink>
+        ) : (
+          <NextLink href="/login" passHref legacyBehavior>
+            <a style={{ textDecoration: 'none' }} onClick={closeMenu}>
+              <ReportButton>보고서 작성</ReportButton>
+            </a>
+          </NextLink>
+        )}
         {user ? (
           <LoginButton onClick={() => { signOut(); closeMenu(); }}>로그아웃</LoginButton>
         ) : (
