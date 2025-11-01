@@ -10,24 +10,22 @@ import {
   Col,
   Space,
   Typography,
-  Switch,
   RadioChangeEvent,
   App,
 } from 'antd';
-import { SunOutlined, MoonOutlined, RocketOutlined, BellOutlined } from '@ant-design/icons';
+import { RocketOutlined } from '@ant-design/icons';
 import InputForm from './components/InputForm';
 import ResultDisplay from './components/ResultDisplay';
 import { WeeklyReportForm } from './components/WeeklyReportForm';
-import { ReportData, Project, TaskItem, formatDefaultReport, generateReport } from './api/grop';
+import { ReportData, Project, TaskItem, formatDefaultReport, generateReport, generateWeeklyReportFromDaily } from './api/grop';
 import { useTheme } from './components/ThemeProvider';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotification } from '@/context/NotificationContext';
-import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import MainHeader from '@/components/layout/MainHeader';
+import { useRouter } from 'next/navigation';
 
-const { Header, Content } = Layout;
-const { Title, Paragraph } = Typography;
+const { Content } = Layout;
+const { Paragraph } = Typography;
 
 interface InputFormData {
   userName: string;
@@ -36,20 +34,23 @@ interface InputFormData {
   miscTasks: TaskItem[];
 }
 
+const createEmptyReportData = (): ReportData => ({
+  userName: '',
+  date: '',
+  projects: [] as Project[],
+  miscTasks: [] as TaskItem[],
+  reportType: 'morning',
+});
+
 export default function Home() {
   const [activeTab, setActiveTab] = useState('daily');
-  const [formData, setFormData] = useState<ReportData>({
-    userName: '',
-    date: '',
-    projects: [] as Project[],
-    miscTasks: [] as TaskItem[],
-    reportType: 'morning',
-  });
-  const { isDarkMode, setIsDarkMode } = useTheme();
-  const { user, loading: authLoading, signOut } = useAuth();
-  const { unreadCount, sendBrowserNotification } = useNotification();
+  const [formData, setFormData] = useState<ReportData>(createEmptyReportData());
+  const { isDarkMode } = useTheme();
+  const { user, loading: authLoading, initialized } = useAuth();
+  const { sendBrowserNotification } = useNotification();
   const { message: messageApi } = App.useApp();
   const supabase = createClient();
+  const router = useRouter();
 
   const [isLoadingAI, setIsLoadingAI] = useState(false);
   const [generatedText, setGeneratedText] = useState<string | null>(null);
@@ -58,6 +59,16 @@ export default function Home() {
   const [isSavingReport, setIsSavingReport] = useState(false);
 
 
+
+  useEffect(() => {
+    if (!authLoading && initialized && !user) {
+      router.replace('/landing');
+      setFormData(createEmptyReportData());
+      setActiveTab('daily');
+      setGeneratedText(null);
+      setAiError(null);
+    }
+  }, [authLoading, initialized, user, router]);
 
   useEffect(() => {
     if (user && !formData.userName) {
@@ -136,6 +147,24 @@ export default function Home() {
     setAiError(null);
   };
 
+  // AI 자동 생성 핸들러 (일일 보고서 기반)
+  const handleWeeklyAIGenerate = async (weeklyData: string) => {
+    setAiError(null);
+    setIsLoadingAI(true);
+    setGeneratedText(null);
+
+    try {
+      const result = await generateWeeklyReportFromDaily(weeklyData, formData.userName || user?.user_metadata?.full_name || user?.email?.split('@')[0] || '');
+      setGeneratedText(result);
+      messageApi.success('AI 주간 보고서 생성 완료!');
+    } catch (err) {
+      console.error('AI 주간 보고서 생성 오류:', err);
+      setAiError(err instanceof Error ? err.message : 'AI 주간 보고서 생성 중 오류가 발생했습니다.');
+    } finally {
+      setIsLoadingAI(false);
+    }
+  };
+
   const handleGenerateAIReport = async () => {
       setAiError(null);
       if (!formData.userName || !formData.date) {
@@ -165,11 +194,6 @@ export default function Home() {
 
   const getTextForDailyDisplay = (): string | null => {
       if (activeTab !== 'daily') return null;
-      return generatedText ?? defaultPreviewText;
-  }
-
-  const getTextForWeeklyDisplay = (): string | null => {
-      if (activeTab !== 'weekly') return null;
       return generatedText ?? defaultPreviewText;
   }
 
@@ -314,30 +338,13 @@ export default function Home() {
       key: 'weekly',
       label: '주간 보고서',
       children: (
-        <Row gutter={[32, 32]}>
-          <Col xs={24} lg={12}>
-            <WeeklyReportForm onSubmit={handleWeeklySubmit} initialData={formData} />
-          </Col>
-          <Col xs={24} lg={12}>
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-              <Button
-                type="primary"
-                icon={<RocketOutlined />}
-                loading={isLoadingAI}
-                disabled={isLoadingAI || !formData.userName || !formData.date || !(formData.projects.some(p => p.tasks.some(t => t.description)) || formData.miscTasks.some(t => t.description))}
-                onClick={handleGenerateAIReport}
-                block
-                size="large"
-              >
-                {isLoadingAI ? 'AI 생성 중...' : '✨ AI야 도와줘 (주간)'}
-              </Button>
-              <ResultDisplay
-                isLoading={isLoadingAI}
-                textToDisplay={generatedText ?? defaultPreviewText}
-              />
-            </Space>
-          </Col>
-        </Row>
+        <WeeklyReportForm
+          onSubmit={handleWeeklySubmit}
+          initialData={formData}
+          onAIGenerate={handleWeeklyAIGenerate}
+          isLoadingAI={isLoadingAI}
+          generatedText={generatedText}
+        />
       ),
     },
     {

@@ -2,11 +2,12 @@
 
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { AuthApiError } from '@supabase/supabase-js';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useTheme } from '@/app/components/ThemeProvider';
-import { Card, Form, Input, Button, Typography, Alert, Space, Switch } from 'antd';
-import { UserOutlined, LockOutlined, SunOutlined, MoonOutlined } from '@ant-design/icons';
+import { Card, Form, Input, Button, Typography, Alert, Space } from 'antd';
+import { UserOutlined, LockOutlined } from '@ant-design/icons';
 
 const { Title, Text } = Typography;
 
@@ -17,7 +18,7 @@ export default function LoginPage() {
   const [resetMessage, setResetMessage] = useState<string | null>(null);
   const router = useRouter();
   const supabase = createClient();
-  const { isDarkMode, setIsDarkMode } = useTheme();
+  const { isDarkMode } = useTheme();
   const [form] = Form.useForm();
 
   const handleLogin = async (values: { email: string; password: string }) => {
@@ -36,7 +37,12 @@ export default function LoginPage() {
 
       if (signInError) {
         console.error('Supabase 로그인 오류:', signInError);
-        throw signInError;
+        if (signInError instanceof AuthApiError && signInError.status === 400) {
+          setError('아이디 혹은 비밀번호가 틀렸습니다. 다시 확인해주세요.');
+        } else {
+          setError(`로그인 실패: ${signInError.message}`);
+        }
+        return;
       }
 
       console.log('로그인 성공:', data.user?.email);
@@ -44,7 +50,9 @@ export default function LoginPage() {
       router.push('/');
     } catch (err: unknown) {
       console.error('Login error details:', err);
-      if (err instanceof Error) {
+      if (err instanceof AuthApiError && err.status === 400) {
+        setError('아이디 혹은 비밀번호가 틀렸습니다. 다시 확인해주세요.');
+      } else if (err instanceof Error) {
         setError(`로그인 실패: ${err.message}`);
       } else {
         setError('알 수 없는 오류로 로그인에 실패했습니다.');
@@ -99,16 +107,6 @@ export default function LoginPage() {
       backgroundColor: isDarkMode ? '#141414' : '#f0f2f5',
       transition: 'background-color 0.3s'
     }}>
-      {/* 테마 토글 버튼 */}
-      <div style={{ position: 'absolute', top: '20px', right: '20px' }}>
-        <Switch
-          checkedChildren={<MoonOutlined />}
-          unCheckedChildren={<SunOutlined />}
-          checked={isDarkMode}
-          onChange={setIsDarkMode}
-        />
-      </div>
-
       <Card 
         style={{ 
           width: '100%', 

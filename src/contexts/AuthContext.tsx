@@ -1,8 +1,9 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { User, Session } from '@supabase/supabase-js';
+import { User, Session, AuthApiError } from '@supabase/supabase-js';
 import { ProjectRole } from '@/types/ai-pm';
 
 // User profile interface
@@ -58,6 +59,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   
   const supabaseRef = useRef(createClient());
   const supabase = supabaseRef.current;
+  const router = useRouter();
+  const pathname = usePathname();
 
   // Derived state
   const isAdmin = profile?.role === 'admin';
@@ -165,11 +168,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (error) {
+        if (error instanceof AuthApiError && error.status === 400) {
+          return { error: '아이디 혹은 비밀번호가 틀렸습니다. 다시 확인해주세요.' };
+        }
         return { error: error.message };
       }
 
       return {};
     } catch (error) {
+      if (error instanceof AuthApiError && error.status === 400) {
+        return { error: '아이디 혹은 비밀번호가 틀렸습니다. 다시 확인해주세요.' };
+      }
       return { error: '로그인 중 오류가 발생했습니다.' };
     }
   }, []);
@@ -178,12 +187,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = useCallback(async () => {
     try {
       await supabaseRef.current.auth.signOut();
+      setUser(null);
       setProfile(null);
       setProjectMemberships([]);
+      router.replace('/landing');
     } catch (error) {
       console.error('Sign out error:', error);
     }
-  }, []);
+  }, [router]);
+
+  useEffect(() => {
+    if (!initialized || loading) return;
+    if (!router) return;
+    const publicPaths = ['/landing', '/login', '/signup', '/reset-password'];
+    if (!user && pathname && !publicPaths.some(path => pathname.startsWith(path))) {
+      router.replace('/landing');
+    }
+  }, [initialized, loading, user, pathname, router]);
 
   // Refresh profile
   const refreshProfile = useCallback(async () => {
@@ -219,6 +239,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     session,
     profile,
     loading,
+    initialized,
     isAdmin,
     projectMemberships,
     signIn,

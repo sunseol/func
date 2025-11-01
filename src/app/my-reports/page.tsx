@@ -561,7 +561,7 @@ export default function MyReportsPage() {
         footer={null}
         width="90%"
         style={{ maxWidth: '1200px' }}
-        destroyOnClose
+        destroyOnHidden
       >
         {editingReport && (
           <Form
@@ -602,7 +602,7 @@ export default function MyReportsPage() {
           copyReportForm.resetFields();
         }}
         footer={null}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form
           form={copyReportForm}

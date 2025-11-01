@@ -1,9 +1,10 @@
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import styled from 'styled-components';
 import { Link } from 'react-scroll';
 import { FaBars, FaTimes } from 'react-icons/fa';
 import NextLink from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 
 const HeaderContainer = styled.header`
@@ -139,6 +140,12 @@ const ReportButton = styled.button`
 const Header = () => {
   const [isOpen, setIsOpen] = useState(false);
   const { user, signOut } = useAuth();
+  const router = useRouter();
+
+  const handleSignOut = useCallback(async () => {
+    await signOut();
+    router.replace('/landing');
+  }, [signOut, router]);
 
   const toggleMenu = () => setIsOpen(!isOpen);
   const closeMenu = () => setIsOpen(false);
@@ -179,7 +186,7 @@ const Header = () => {
             </NextLink>
           )}
           {user ? (
-            <LoginButton onClick={signOut}>로그아웃</LoginButton>
+            <LoginButton onClick={handleSignOut}>로그아웃</LoginButton>
           ) : (
             <NextLink href="/login" passHref legacyBehavior>
               <a style={{ textDecoration: 'none' }}>
@@ -221,7 +228,7 @@ const Header = () => {
           </NextLink>
         )}
         {user ? (
-          <LoginButton onClick={() => { signOut(); closeMenu(); }}>로그아웃</LoginButton>
+          <LoginButton onClick={() => { handleSignOut(); closeMenu(); }}>로그아웃</LoginButton>
         ) : (
           <NextLink href="/login" passHref legacyBehavior>
             <a style={{ textDecoration: 'none' }} onClick={closeMenu}>

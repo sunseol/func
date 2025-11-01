@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useCallback } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigation } from '@/contexts/NavigationContext';
@@ -14,17 +14,24 @@ import {
   UserCircleIcon,
   ArrowLeftIcon
 } from '@heroicons/react/24/outline';
-import { cn, generateTouchButtonClasses } from '@/lib/responsive-utils';
+import { cn } from '@/lib/responsive-utils';
+import { useRouter } from 'next/navigation';
 
 export default function AIPMHeader() {
   const { user, profile, signOut } = useAuth();
   const { state, toggleSidebar, navigateBack } = useNavigation();
-  const { isMobile, isTablet, isDesktop } = useViewport();
+  const { isMobile, isTablet } = useViewport();
   const { 
     isUserMenuOpen, 
     toggleUserMenu, 
     closeUserMenu 
   } = useMobileNavigation();
+  const router = useRouter();
+
+  const handleSignOut = useCallback(async () => {
+    await signOut();
+    router.replace('/landing');
+  }, [signOut, router]);
 
   const canNavigateBack = state.navigationHistory.length > 1;
 
@@ -198,7 +205,7 @@ export default function AIPMHeader() {
                     </Link>
 
                     <button
-                      onClick={signOut}
+                      onClick={handleSignOut}
                       className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
                     >
                       로그아웃
@@ -240,7 +247,7 @@ export default function AIPMHeader() {
           onClose={closeUserMenu}
           user={user}
           profile={profile}
-          onSignOut={signOut}
+          onSignOut={handleSignOut}
           variant="modal"
         />
       )}

@@ -664,3 +664,119 @@ export function formatDefaultReport(data: ReportData): string {
   }
 }
 
+/**
+ * 일일 보고서 데이터를 기반으로 주간 보고서를 AI로 생성합니다.
+ */
+export async function generateWeeklyReportFromDaily(
+  weeklyData: string,
+  userName: string
+): Promise<string> {
+  try {
+    console.log('[generateWeeklyReportFromDaily] 주간 보고서 생성 시작');
+
+    // 현재 날짜 기준 주차 계산
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const startOfMonth = new Date(year, month - 1, 1);
+    const dayOfMonth = now.getDate();
+    const weekOfMonth = Math.ceil((dayOfMonth + startOfMonth.getDay()) / 7);
+
+    // 이번 주 월요일과 금요일 계산
+    const dayOfWeek = now.getDay();
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + mondayOffset);
+    const friday = new Date(monday);
+    friday.setDate(monday.getDate() + 4);
+
+    const formatDate = (date: Date) => {
+      const m = date.getMonth() + 1;
+      const d = date.getDate();
+      return `${m}월 ${d}일`;
+    };
+
+    const prompt = `당신은 전문적인 주간 업무 계획서를 작성하는 전문가입니다.
+아래 제공된 일일 보고서들을 분석하여 **정확히 다음 형식**에 맞춰 주간 계획서를 작성해주세요.
+
+**필수 출력 형식 (반드시 이 형식을 따라야 합니다):**
+
+주간계획서 (${year}년 ${month}월 ${weekOfMonth}주차)_${userName}
+
+${month}월 ${weekOfMonth}주차 업무목표
+
+주간 업무 계획서 (${year}년 ${formatDate(monday)} ~ ${formatDate(friday)})
+담당자: ${userName}
+
+1. [첫 번째 프로젝트명 또는 업무 카테고리]
+•
+[세부 업무 내용 1]
+[세부 업무 내용 2]
+[세부 업무 내용 3]
+
+2. [두 번째 프로젝트명 또는 업무 카테고리]
+•
+[세부 업무 내용 1]
+[세부 업무 내용 2]
+
+3. [세 번째 프로젝트명 또는 업무 카테고리]
+•
+[세부 업무 내용 1]
+[세부 업무 내용 2]
+
+기타
+•
+[기타 업무나 일반 업무 내용]
+
+Core Priority:
+[가장 중요한 핵심 업무 1~2줄 요약]
+
+**작성 규칙:**
+1. 일일 보고서 데이터를 분석하여 유사한 업무끼리 프로젝트/카테고리로 그룹화하세요
+2. 각 프로젝트는 번호(1, 2, 3...)로 시작하고, 그 다음 줄에 "•" 기호를 넣으세요
+3. 세부 업무는 • 아래에 줄바꿈 없이 자연스럽게 나열하세요
+4. 완료한 업무와 진행 중인 업무를 모두 포함하되, 다음 주 계획 관점으로 작성하세요
+5. "기타" 섹션은 프로젝트에 속하지 않는 일반 업무를 넣으세요
+6. Core Priority는 이번 주 가장 중요한 목표를 간결하게 1~2줄로 요약하세요
+7. 프롬프트나 지시사항은 출력하지 말고, 오직 주간계획서 내용만 출력하세요
+
+**분석할 일일 보고서 데이터:**
+
+${weeklyData}
+
+위 데이터를 분석하여 위 형식에 정확히 맞춰 주간 계획서를 작성해주세요.`;
+
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.3,
+        max_tokens: 3000,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`AI API 오류: ${response.status} ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    const generatedText = result.choices?.[0]?.message?.content;
+
+    if (!generatedText) {
+      throw new Error('AI가 주간 보고서를 생성하지 못했습니다.');
+    }
+
+    console.log('[generateWeeklyReportFromDaily] 주간 보고서 생성 완료');
+    return generatedText;
+
+  } catch (error) {
+    console.error('[generateWeeklyReportFromDaily] 오류:', error);
+    throw error;
+  }
+}
+

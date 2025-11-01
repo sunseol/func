@@ -1,5 +1,7 @@
 'use client';
 
+import '@ant-design/v5-patch-for-react-19';
+
 import React, { useEffect } from 'react';
 import { useTheme } from './components/ThemeProvider';
 import { useComponentPreloader } from '@/hooks/useComponentPreloader';
@@ -35,5 +37,4 @@ export default function ClientLayoutContent({ children }: { children: React.Reac
     </div>
   );
 }
-
 

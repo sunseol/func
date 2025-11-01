@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Layout, Button, Space, Switch, Typography, Drawer, Divider } from 'antd';
@@ -8,15 +8,21 @@ import { SunOutlined, MoonOutlined, BellOutlined, MenuOutlined } from '@ant-desi
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/app/components/ThemeProvider';
 import { useNotification } from '@/context/NotificationContext';
+import { useRouter } from 'next/navigation';
 
 const { Header } = Layout;
-const { Title, Paragraph } = Typography;
 
 export default function MainHeader() {
   const { isDarkMode, setIsDarkMode } = useTheme();
   const { user, loading: authLoading, signOut } = useAuth();
   const { unreadCount } = useNotification();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  const router = useRouter();
+
+  const handleSignOut = useCallback(async () => {
+    await signOut();
+    router.replace('/landing');
+  }, [signOut, router]);
 
   return (
     <Header
@@ -106,7 +112,7 @@ export default function MainHeader() {
                 </Button>
               </Link>
             )}
-               <Button type="primary" danger onClick={signOut} size="small" className="ml-1">
+               <Button type="primary" danger onClick={handleSignOut} size="small" className="ml-1">
               로그아웃
             </Button>
              </Space>
@@ -150,7 +156,7 @@ export default function MainHeader() {
               <Link href="/admin"><Button block type="text">관리자</Button></Link>
             )}
             <Divider className="my-3" />
-            <Button block danger type="primary" onClick={signOut}>로그아웃</Button>
+            <Button block danger type="primary" onClick={handleSignOut}>로그아웃</Button>
           </div>
         ) : (
           <div className="flex flex-col gap-2">
