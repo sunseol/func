@@ -73,5 +73,10 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "webpack-bundle-analyzer": "^4.10.2"
+  },
+  "overrides": {
+    "@ant-design/nextjs-registry": {
+      "next": "$next"
+    }
   }
 }
