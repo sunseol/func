@@ -1,233 +1,394 @@
 'use client';
 
 import { useEffect } from 'react';
-import { Form, Input, Button, DatePicker, Card, Space, Popconfirm } from 'antd';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
-import { Project, TaskItem, ReportData } from '../api/grop';
-import dayjs from 'dayjs'; // Dayjs import
-import 'dayjs/locale/ko'; // 한국어 로케일
-dayjs.locale('ko'); // 로케일 설정
+import { useForm, useFieldArray, Control } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+import { format } from 'date-fns';
+import { ko } from 'date-fns/locale';
+import { CalendarIcon, Plus, Trash2 } from 'lucide-react';
 
-// AntD Form Item 타입
-interface FormValues {
-  userName: string;
-  date: dayjs.Dayjs | null; // DatePicker는 Dayjs 객체 사용
-  projects: Project[];
-  miscTasks: TaskItem[];
-}
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Calendar } from '@/components/ui/calendar';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Project, TaskItem, ReportData } from '../api/grop';
+
+// Zod Schema
+const taskSchema = z.object({
+  description: z.string().min(1, '업무 내용을 입력해주세요.'),
+  collaborator: z.string().optional(),
+  status: z.string().default('진행 중'),
+});
+
+const projectSchema = z.object({
+  name: z.string().min(1, '프로젝트명을 입력해주세요.'),
+  tasks: z.array(taskSchema),
+});
+
+const inputFormSchema = z.object({
+  userName: z.string().min(1, '이름을 입력해주세요.'),
+  date: z.date({ required_error: '날짜를 선택해주세요.' }),
+  projects: z.array(projectSchema),
+  miscTasks: z.array(taskSchema),
+});
+
+type InputFormValues = z.infer<typeof inputFormSchema>;
 
 interface InputFormProps {
   onDataChange: (data: {
     userName: string;
-    date: string; // 부모 컴포넌트에는 'YYYY-MM-DD 요일' 형식의 string으로 전달
+    date: string;
     projects: Project[];
     miscTasks: TaskItem[];
   }) => void;
-  initialData: ReportData; // 초기 데이터 prop 추가
+  initialData: ReportData;
 }
 
-  // 협업자 정보 포맷팅 ('/w' 자동 추가)
 const formatCollaborator = (value: string | undefined): string => {
   if (!value || !value.trim()) return '';
-    if (value.trim().startsWith('/w')) return value;
-    return `/w ${value.trim()}`;
-  };
+  if (value.trim().startsWith('/w')) return value;
+  return `/w ${value.trim()}`;
+};
 
 export default function InputForm({ onDataChange, initialData }: InputFormProps) {
-  const [form] = Form.useForm<FormValues>();
+  const form = useForm<InputFormValues>({
+    resolver: zodResolver(inputFormSchema),
+    defaultValues: {
+      userName: initialData.userName || '',
+      date: initialData.date ? new Date(initialData.date) : new Date(),
+      projects: initialData.projects && initialData.projects.length > 0
+        ? initialData.projects
+        : [],
+      miscTasks: initialData.miscTasks && initialData.miscTasks.length > 0
+        ? initialData.miscTasks
+        : [],
+    },
+  });
 
-  // 초기 데이터 설정
+  const { fields: projectFields, append: appendProject, remove: removeProject } = useFieldArray({
+    control: form.control,
+    name: 'projects',
+  });
+
+  const { fields: miscTaskFields, append: appendMiscTask, remove: removeMiscTask } = useFieldArray({
+    control: form.control,
+    name: 'miscTasks',
+  });
+
+  // Watch for changes and notify parent
   useEffect(() => {
-    form.setFieldsValue({
-      userName: initialData.userName,
-      // 날짜 문자열을 Dayjs 객체로 변환, 유효하지 않으면 null (형식 지정)
-      date: initialData.date ? dayjs(initialData.date, 'YYYY-MM-DD dddd') : null, 
-      projects: initialData.projects || [],
-      miscTasks: initialData.miscTasks || [],
-    });
-  }, [initialData, form]);
+    const subscription = form.watch((value) => {
+      if (!value.date) return;
 
-  // 폼 값 변경 시 부모 컴포넌트에 알림
-  const handleValuesChange = (_changedValues: Partial<FormValues>, allValues: FormValues) => {
-    // 날짜를 'YYYY-MM-DD 요일' 형식으로 변환하여 전달
-    let formattedDateString = '';
-    if (allValues.date) {
-      // KST를 기준으로 날짜와 요일 포맷팅 (dayjs locale이 'ko'로 설정되어 있다고 가정)
-      const year = allValues.date.year();
-      const month = (allValues.date.month() + 1).toString().padStart(2, '0'); // month()는 0부터 시작
-      const day = allValues.date.date().toString().padStart(2, '0');
-      const dayOfWeek = allValues.date.format('dddd'); // 'ko' 로케일 사용 시 '월요일', '화요일' 등
-      formattedDateString = `${year}-${month}-${day} ${dayOfWeek}`;
-    }
+      const formattedDate = format(value.date, 'yyyy-MM-dd eeee', { locale: ko });
 
-    onDataChange({
-        ...allValues,
-        date: formattedDateString, // 수정된 날짜 형식으로 전달
-        // projects와 miscTasks 내의 collaborator 필드 포맷팅
-        projects: (allValues.projects || []).map(p => ({
-          ...p,
-          tasks: (p.tasks || []).map(t => ({
-            ...t,
-            collaborator: formatCollaborator(t.collaborator)
-          }))
-        })),
-        miscTasks: (allValues.miscTasks || []).map(t => ({
-          ...t,
-            collaborator: formatCollaborator(t.collaborator)
+      // Transform data to match parent expectation
+      // We cast types because watch partials are slightly loose
+      const transformedProjects = (value.projects || []).map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        tasks: (p.tasks || []).map((t: any) => ({
+          description: t.description,
+          collaborator: formatCollaborator(t.collaborator),
+          status: t.status
         }))
+      }));
+
+      const transformedMiscTasks = (value.miscTasks || []).map((t: any) => ({
+        description: t.description,
+        collaborator: formatCollaborator(t.collaborator),
+        status: t.status
+      }));
+
+      onDataChange({
+        userName: value.userName as string,
+        date: formattedDate,
+        projects: transformedProjects,
+        miscTasks: transformedMiscTasks
+      });
     });
-  };
+    return () => subscription.unsubscribe();
+  }, [form, onDataChange]);
+
+  // Sync initialData if it changes externally (e.g. clear)
+  useEffect(() => {
+    // Need care here to avoid infinite loops if onDataChange triggers parent state update
+    // Only reset if completely different or empty?
+    // Actually standard pattern is to only use initialValues.
+    // But Home page resets form on logout.
+    if (!initialData.userName && !initialData.date) {
+      // Assume reset
+      form.reset({
+        userName: '',
+        date: undefined,
+        projects: [],
+        miscTasks: []
+      });
+    } else if (initialData.userName !== form.getValues('userName')) {
+      form.setValue('userName', initialData.userName);
+    }
+  }, [initialData.userName, initialData.date, form]);
+
 
   return (
-    <Form
-      form={form}
-      layout="vertical"
-      onValuesChange={handleValuesChange}
-      initialValues={{
-          projects: [], // 초기 빈 배열 설정
-          miscTasks: [],
-      }}
-    >
-      <Card 
-        title="기본 정보" 
-        className="dark:!bg-neutral-900 dark:!text-gray-100" 
-        style={{ marginBottom: 24 }}
-        styles={{
-          header: { padding: '10px 12px' },
-          body: { padding: 12 }
-        }}
-      >
-        <Form.Item
-          label="이름"
-          name="userName"
-          rules={[{ required: true, message: '이름을 입력해주세요.' }]}
-        >
-          <Input placeholder="이름 입력" />
-        </Form.Item>
-        <Form.Item
-          label="날짜"
-          name="date"
-          rules={[{ required: true, message: '날짜를 선택해주세요.' }]}
-        >
-          <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD dddd" />
-        </Form.Item>
-      </Card>
-
-      <Card 
-        title="프로젝트별 업무" 
-        className="dark:!bg-neutral-900 dark:!text-gray-100" 
-        style={{ marginBottom: 24 }}
-        styles={{
-          header: { padding: '10px 12px' },
-          body: { padding: 12 }
-        }}
-      >
-        <Form.List name="projects">
-          {(fields, { add, remove }) => (
-            <Space direction="vertical" style={{ width: '100%' }}>
-              {fields.map(({ key, name, ...restField }) => (
-                <Card 
-                  key={key} 
-                  size="small" 
-                  title={`프로젝트 ${name + 1}`}
-                  className="dark:!bg-neutral-900 dark:!text-gray-100"
-                  styles={{
-                    header: { padding: '8px 10px' },
-                    body: { padding: 10 }
-                  }}
-                  extra={
-                    <Popconfirm title="이 프로젝트를 삭제할까요?" onConfirm={() => remove(name)} okText="예" cancelText="아니오">
-                        <Button icon={<DeleteOutlined />} type="text" danger />
-                    </Popconfirm>
-                  }
-                >
-                  <Form.Item
-                    {...restField}
-                    name={[name, 'name']}
-                    label="프로젝트명"
-                    rules={[{ required: true, message: '프로젝트명을 입력해주세요.' }]}
-                    style={{ marginBottom: 16 }}
-                  >
-                    <Input placeholder="예: 신규 서비스 기획" />
-                  </Form.Item>
-                  
-                  <Form.List name={[name, 'tasks']}>
-                    {(taskFields, { add: addTask, remove: removeTask }) => (
-                      <Space direction="vertical" style={{ width: '100%' }}>
-                        {taskFields.map(({ key: taskKey, name: taskName, ...restTaskField }) => (
-                          <Space key={taskKey} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
-                            <Form.Item
-                              {...restTaskField}
-                              name={[taskName, 'description']}
-                              rules={[{ required: true, message: '업무 내용을 입력해주세요.' }]}
-                              style={{ flexGrow: 1, marginBottom: 0 }}
-                            >
-                              <Input.TextArea placeholder="예: 사용자 인터페이스 설계" autoSize={{ minRows: 1, maxRows: 3 }} />
-                            </Form.Item>
-                             <Form.Item
-                              {...restTaskField}
-                              name={[taskName, 'collaborator']}
-                              style={{ marginBottom: 0, minWidth: '100px' }} // 협업자 입력칸 너비 조절
-                            >
-                              <Input placeholder="협업자 (/w 이름)" />
-                            </Form.Item>
-                            <Button icon={<DeleteOutlined />} onClick={() => removeTask(taskName)} type="text" danger />
-                          </Space>
-                        ))}
-                        <Button type="dashed" onClick={() => addTask({ description: '', collaborator: '', status: '진행 중' })} block icon={<PlusOutlined />}>
-                          업무 추가
+    <Form {...form}>
+      <form className="space-y-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>기본 정보</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-6 md:grid-cols-2">
+            <FormField
+              control={form.control}
+              name="userName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>이름</FormLabel>
+                  <FormControl>
+                    <Input placeholder="이름 입력" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="date"
+              render={({ field }) => (
+                <FormItem className="flex flex-col">
+                  <FormLabel>날짜</FormLabel>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <FormControl>
+                        <Button
+                          variant={"outline"}
+                          className={cn(
+                            "w-full pl-3 text-left font-normal",
+                            !field.value && "text-muted-foreground"
+                          )}
+                        >
+                          {field.value ? (
+                            format(field.value, "PPP", { locale: ko })
+                          ) : (
+                            <span>날짜를 선택하세요</span>
+                          )}
+                          <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                         </Button>
-                      </Space>
-                    )}
-                  </Form.List>
-                </Card>
-              ))}
-              <Button type="dashed" onClick={() => add({ name: '', tasks: [{ description: '', collaborator: '', status: '진행 중' }] })} block icon={<PlusOutlined />}>
-                프로젝트 추가
-              </Button>
-            </Space>
-          )}
-        </Form.List>
-      </Card>
+                      </FormControl>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={field.value}
+                        onSelect={field.onChange}
+                        initialFocus
+                        locale={ko}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </CardContent>
+        </Card>
 
-       <Card 
-         title="기타 업무" 
-         className="dark:!bg-neutral-900 dark:!text-gray-100"
-         styles={{
-           header: { padding: '10px 12px' },
-           body: { padding: 12 }
-         }}
-       >
-         <Form.List name="miscTasks">
-          {(fields, { add, remove }) => (
-            <Space direction="vertical" style={{ width: '100%' }}>
-              {fields.map(({ key, name, ...restField }) => (
-                <Space key={key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
-                  <Form.Item
-                    {...restField}
-                    name={[name, 'description']}
-                    rules={[{ required: true, message: '업무 내용을 입력해주세요.' }]}
-                    style={{ flexGrow: 1, marginBottom: 0 }}
-                  >
-                    <Input.TextArea placeholder="예: 팀 주간 회의 참석" autoSize={{ minRows: 1, maxRows: 3 }} />
-                  </Form.Item>
-                  <Form.Item
-                    {...restField}
-                    name={[name, 'collaborator']}
-                    style={{ marginBottom: 0, minWidth: '100px' }}
-                  >
-                    <Input placeholder="협업자 (/w 이름)" />
-                  </Form.Item>
-                  <Button icon={<DeleteOutlined />} onClick={() => remove(name)} type="text" danger />
-                </Space>
-              ))}
-              <Button type="dashed" onClick={() => add({ description: '', collaborator: '', status: '진행 중' })} block icon={<PlusOutlined />}>
-                기타 업무 추가
-              </Button>
-            </Space>
-          )}
-        </Form.List>
-      </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle>프로젝트별 업무</CardTitle>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => appendProject({ name: '', tasks: [{ description: '', collaborator: '', status: '진행 중' }] })}
+            >
+              <Plus className="mr-2 h-4 w-4" /> 프로젝트 추가
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {projectFields.map((field, index) => (
+              <ProjectItem
+                key={field.id}
+                index={index}
+                control={form.control}
+                remove={removeProject}
+                canRemove={projectFields.length > 0}
+              />
+            ))}
+            {projectFields.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg">
+                프로젝트가 없습니다. 프로젝트를 추가해주세요.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle>기타 업무</CardTitle>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => appendMiscTask({ description: '', collaborator: '', status: '진행 중' })}
+            >
+              <Plus className="mr-2 h-4 w-4" /> 기타 업무 추가
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {miscTaskFields.map((field, index) => (
+              <div key={field.id} className="flex gap-2 items-start group">
+                <FormField
+                  control={form.control}
+                  name={`miscTasks.${index}.description`}
+                  render={({ field }) => (
+                    <FormItem className="flex-1">
+                      <FormControl>
+                        <Textarea placeholder="예: 팀 주간 회의 참석" className="resize-none min-h-[40px]" rows={2} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name={`miscTasks.${index}.collaborator`}
+                  render={({ field }) => (
+                    <FormItem className="w-[140px]">
+                      <FormControl>
+                        <Input placeholder="협업자 (/w 이름)" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                  onClick={() => removeMiscTask(index)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+            {miscTaskFields.length === 0 && (
+              <div className="text-center py-4 text-sm text-muted-foreground">
+                등록된 기타 업무가 없습니다.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </form>
     </Form>
   );
-} 
+}
+
+// Sub-component for Project with nested tasks field array
+function ProjectItem({ index, control, remove, canRemove }: { index: number, control: Control<InputFormValues>, remove: (index: number) => void, canRemove: boolean }) {
+  const { fields, append, remove: removeTask } = useFieldArray({
+    control,
+    name: `projects.${index}.tasks`
+  });
+
+  return (
+    <Card className="border-secondary/50">
+      <CardHeader className="p-4 flex flex-row items-start justify-between space-y-0">
+        <div className="flex-1 mr-4">
+          <FormField
+            control={control}
+            name={`projects.${index}.name`}
+            render={({ field }) => (
+              <FormItem>
+                <FormControl>
+                  <Input placeholder="프로젝트명 (예: 신규 서비스 기획)" className="font-semibold" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="text-destructive hover:text-destructive hover:bg-destructive/10 h-9 w-9"
+          onClick={() => remove(index)}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </CardHeader>
+      <CardContent className="p-4 pt-0 space-y-3">
+        {fields.map((taskField, taskIndex) => (
+          <div key={taskField.id} className="flex gap-2 items-start">
+            <div className="pt-2 text-xs text-muted-foreground w-8 text-center">{taskIndex + 1}</div>
+            <FormField
+              control={control}
+              name={`projects.${index}.tasks.${taskIndex}.description`}
+              render={({ field }) => (
+                <FormItem className="flex-1">
+                  <FormControl>
+                    <Textarea
+                      placeholder="예: 사용자 인터페이스 설계"
+                      className="resize-none min-h-[40px]"
+                      rows={2}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={control}
+              name={`projects.${index}.tasks.${taskIndex}.collaborator`}
+              render={({ field }) => (
+                <FormItem className="w-[120px]">
+                  <FormControl>
+                    <Input placeholder="협업자" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground hover:text-destructive"
+              onClick={() => removeTask(taskIndex)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        ))}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="w-full border border-dashed text-muted-foreground hover:text-primary"
+          onClick={() => append({ description: '', collaborator: '', status: '진행 중' })}
+        >
+          <Plus className="mr-2 h-3 w-3" /> 업무 추가
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}

@@ -1,4 +1,4 @@
-import '@ant-design/v5-patch-for-react-19'; // Ant Design React 19 호환성 패치 임포트
+
 import { Inter } from "next/font/google";
 import type { Viewport } from 'next';
 import "./globals.css";
@@ -6,7 +6,7 @@ import { ThemeProvider } from "./components/ThemeProvider";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { NotificationProvider } from "@/context/NotificationContext";
 import { ViewportProvider } from "@/contexts/ViewportContext";
-import { App as AntApp } from 'antd'; // Ant Design의 App 컴포넌트 임포트
+import { Toaster } from "@/components/ui/sonner"
 import ClientLayoutContent from "./ClientLayoutContent";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -28,13 +28,17 @@ export default function RootLayout({
   return (
     <html lang="ko" suppressHydrationWarning>
       <body className={inter.className}>
-        <ThemeProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
           <ViewportProvider>
             <AuthProvider>
               <NotificationProvider>
-                <AntApp>
-                  <ClientLayoutContent>{children}</ClientLayoutContent>
-                </AntApp>
+                <ClientLayoutContent>{children}</ClientLayoutContent>
+                <Toaster />
               </NotificationProvider>
             </AuthProvider>
           </ViewportProvider>

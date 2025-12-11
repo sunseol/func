@@ -1,41 +1,34 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import {
-  Card,
-  Input,
-  Button,
-  Space,
-  Typography,
-  Spin,
-  Alert,
-  List,
-  Avatar,
-  Divider,
-  Tag,
-  Tooltip
-} from 'antd';
-import {
-  SendOutlined,
-  RobotOutlined,
-  UserOutlined,
-  QuestionCircleOutlined,
-  BulbOutlined,
-  BarChartOutlined,
-  FileTextOutlined
-} from '@ant-design/icons';
 import { createClient } from '@/lib/supabase/client';
-import { useTheme } from '@/app/components/ThemeProvider';
+import { useTheme } from 'next-themes';
+import {
+  Send,
+  Bot,
+  User,
+  HelpCircle,
+  Lightbulb,
+  BarChart2,
+  FileText,
+  Loader2
+} from 'lucide-react';
 
-const { TextArea } = Input;
-const { Text, Paragraph } = Typography;
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
 
 interface ChatMessage {
   id: string;
   type: 'user' | 'assistant';
   content: string;
   timestamp: Date;
-  context?: string; // 어떤 데이터를 기반으로 답변했는지
+  context?: string;
 }
 
 interface AdminAIAssistantProps {
@@ -44,35 +37,23 @@ interface AdminAIAssistantProps {
 }
 
 export default function AdminAIAssistant({ className, style }: AdminAIAssistantProps) {
-  const { isDarkMode } = useTheme();
+  const { theme } = useTheme();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [supabase] = useState(() => createClient());
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // 초기 환영 메시지
   useEffect(() => {
     const welcomeMessage: ChatMessage = {
       id: 'welcome',
       type: 'assistant',
-      content: `안녕하세요! 저는 FunCommute AI 어시스턴트입니다. 📊
-
-보고서 데이터를 분석하고 다음과 같은 질문에 답변할 수 있습니다:
-
-• "이번 주 가장 활발한 사용자는 누구인가요?"
-• "프로젝트별 업무 분포를 알려주세요"
-• "최근 보고서 작성 패턴은 어떤가요?"
-• "팀의 생산성 트렌드를 분석해주세요"
-• "특정 사용자의 업무 현황을 요약해주세요"
-
-궁금한 것이 있으시면 언제든 물어보세요!`,
+      content: `안녕하세요! 저는 FunCommute AI 어시스턴트입니다. 📊\n\n보고서 데이터를 분석하고 다음과 같은 질문에 답변할 수 있습니다:\n\n• "이번 주 가장 활발한 사용자는 누구인가요?"\n• "프로젝트별 업무 분포를 알려주세요"\n• "최근 보고서 작성 패턴은 어떤가요?"\n• "팀의 생산성 트렌드를 분석해주세요"\n• "특정 사용자의 업무 현황을 요약해주세요"\n\n궁금한 것이 있으시면 언제든 물어보세요!`,
       timestamp: new Date()
     };
     setMessages([welcomeMessage]);
   }, []);
 
-  // 메시지 추가 시 스크롤
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -92,11 +73,8 @@ export default function AdminAIAssistant({ className, style }: AdminAIAssistantP
     setLoading(true);
 
     try {
-      // 관련 보고서 데이터 조회
-      const reportData = await fetchRelevantReports(inputValue);
-
-      // AI 응답 생성
-      const aiResponse = await generateAIResponse(inputValue, reportData);
+      const reportData = await fetchRelevantReports(userMessage.content);
+      const aiResponse = await generateAIResponse(userMessage.content, reportData);
 
       const assistantMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
@@ -123,9 +101,6 @@ export default function AdminAIAssistant({ className, style }: AdminAIAssistantP
 
   const fetchRelevantReports = async (query: string) => {
     try {
-      // 쿼리 분석하여 필요한 데이터 결정
-      const isUserQuery = query.includes('사용자') || query.includes('누구');
-      const isProjectQuery = query.includes('프로젝트') || query.includes('업무');
       const isTimeQuery = query.includes('최근') || query.includes('이번') || query.includes('오늘') || query.includes('주');
 
       let queryBuilder = supabase
@@ -133,7 +108,6 @@ export default function AdminAIAssistant({ className, style }: AdminAIAssistantP
         .select('*')
         .order('created_at', { ascending: false });
 
-      // 시간 기반 필터링
       if (isTimeQuery) {
         if (query.includes('오늘')) {
           const today = new Date().toISOString().split('T')[0];
@@ -143,10 +117,10 @@ export default function AdminAIAssistant({ className, style }: AdminAIAssistantP
           weekAgo.setDate(weekAgo.getDate() - 7);
           queryBuilder = queryBuilder.gte('report_date', weekAgo.toISOString().split('T')[0]);
         } else if (query.includes('최근')) {
-          queryBuilder = queryBuilder.limit(50); // 최근 50개
+          queryBuilder = queryBuilder.limit(50);
         }
       } else {
-        queryBuilder = queryBuilder.limit(100); // 기본적으로 최근 100개
+        queryBuilder = queryBuilder.limit(100);
       }
 
       const { data, error } = await queryBuilder;
@@ -161,7 +135,6 @@ export default function AdminAIAssistant({ className, style }: AdminAIAssistantP
 
   const generateAIResponse = async (query: string, reportData: any[]) => {
     try {
-      // 보고서 데이터 요약
       const dataContext = generateDataContext(reportData);
 
       const prompt = `
@@ -215,33 +188,29 @@ ${dataContext}
       return '현재 조회된 보고서 데이터가 없습니다.';
     }
 
-    // 기본 통계
     const totalReports = reportData.length;
     const uniqueUsers = new Set(reportData.map(r => r.user_id)).size;
-    const reportTypes = reportData.reduce((acc: Record<string, number>, r) => {
+    const reportTypes = reportData.reduce((acc: Record<string, number>, r: any) => {
       acc[r.report_type] = (acc[r.report_type] || 0) + 1;
       return acc;
     }, {});
 
-    // 사용자별 통계
-    const userStats = reportData.reduce((acc: Record<string, number>, r) => {
+    const userStats = reportData.reduce((acc: Record<string, number>, r: any) => {
       const userName = r.user_name_snapshot;
       acc[userName] = (acc[userName] || 0) + 1;
       return acc;
     }, {});
 
-    // 최근 활동
-    const recentDates = [...new Set(reportData.map(r => r.report_date))].sort().reverse().slice(0, 7);
+    const recentDates = [...new Set(reportData.map((r: any) => r.report_date))].sort().reverse().slice(0, 7);
 
     let context = `총 ${totalReports}개의 보고서, ${uniqueUsers}명의 사용자\n`;
     context += `보고서 유형: ${Object.entries(reportTypes).map(([type, count]) => `${type}(${count})`).join(', ')}\n`;
     context += `활발한 사용자: ${Object.entries(userStats).sort(([, a], [, b]) => (b as number) - (a as number)).slice(0, 5).map(([name, count]) => `${name}(${count})`).join(', ')}\n`;
     context += `최근 활동 날짜: ${recentDates.join(', ')}\n`;
 
-    // 샘플 보고서 내용 (처음 3개)
     if (reportData.length > 0) {
       context += '\n최근 보고서 샘플:\n';
-      reportData.slice(0, 3).forEach((report, index) => {
+      reportData.slice(0, 3).forEach((report: any, index: number) => {
         context += `${index + 1}. ${report.report_date} - ${report.user_name_snapshot} (${report.report_type}): ${report.report_content.substring(0, 100)}...\n`;
       });
     }
@@ -261,183 +230,109 @@ ${dataContext}
   };
 
   return (
-    <Card
-      title={
-        <Space>
-          <RobotOutlined style={{ color: '#1890ff' }} />
-          AI 어시스턴트
-        </Space>
-      }
-      className={className}
-      style={{
-        minHeight: '600px',
-        height: 'auto',
-        display: 'flex',
-        flexDirection: 'column',
-        backgroundColor: isDarkMode ? '#1f1f1f' : '#fff',
-        borderColor: isDarkMode ? '#434343' : '#d9d9d9',
-        ...style
-      }}
-      styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column', padding: 0 } }}
-    >
-      {/* 메시지 영역 */}
-      <div style={{
-        flex: 1,
-        overflowY: 'auto',
-        padding: '16px',
-        backgroundColor: isDarkMode ? '#141414' : '#fafafa',
-        minHeight: '400px',
-        maxHeight: '70vh'
-      }}>
-        <List
-          dataSource={messages}
-          renderItem={(message) => (
-            <List.Item style={{ border: 'none', padding: '8px 0' }}>
-              <div style={{
-                display: 'flex',
-                width: '100%',
-                justifyContent: message.type === 'user' ? 'flex-end' : 'flex-start'
-              }}>
-                <div style={{
-                  maxWidth: '80%',
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 8,
-                  flexDirection: message.type === 'user' ? 'row-reverse' : 'row'
-                }}>
-                  <Avatar
-                    icon={message.type === 'user' ? <UserOutlined /> : <RobotOutlined />}
-                    style={{
-                      backgroundColor: message.type === 'user' ? '#1890ff' : '#52c41a',
-                      flexShrink: 0
-                    }}
-                  />
-                  <div style={{
-                    backgroundColor: message.type === 'user'
-                      ? '#1890ff'
-                      : isDarkMode ? '#262626' : '#fff',
-                    color: message.type === 'user'
-                      ? '#fff'
-                      : isDarkMode ? '#fff' : '#000',
-                    padding: '12px 16px',
-                    borderRadius: '12px',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                    position: 'relative',
-                    border: isDarkMode && message.type === 'assistant' ? '1px solid #434343' : 'none'
-                  }}>
-                    <Paragraph
-                      style={{
-                        margin: 0,
-                        color: message.type === 'user'
-                          ? '#fff'
-                          : isDarkMode ? '#fff' : '#000',
-                        whiteSpace: 'pre-wrap'
-                      }}
-                    >
-                      {message.content}
-                    </Paragraph>
-                    {message.context && (
-                      <div style={{
-                        marginTop: 8,
-                        paddingTop: 8,
-                        borderTop: isDarkMode ? '1px solid #434343' : '1px solid #f0f0f0'
-                      }}>
-                        <Text type="secondary" style={{
-                          fontSize: '12px',
-                          color: isDarkMode ? '#999' : '#666'
-                        }}>
-                          📊 {message.context}
-                        </Text>
-                      </div>
-                    )}
-                    <div style={{ marginTop: 4 }}>
-                      <Text type="secondary" style={{
-                        fontSize: '11px',
-                        color: message.type === 'user'
-                          ? 'rgba(255,255,255,0.7)'
-                          : isDarkMode ? '#999' : '#666'
-                      }}>
-                        {message.timestamp.toLocaleTimeString('ko-KR', {
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </Text>
+    <Card className={cn("flex flex-col h-[600px]", className)} style={style}>
+      <CardHeader className="pb-3 border-b">
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Bot className="h-5 w-5 text-primary" />
+          AI 데이터 분석 어시스턴트
+        </CardTitle>
+        <CardDescription>
+          보고서 데이터를 기반으로 질문에 답변해드립니다.
+        </CardDescription>
+      </CardHeader>
+
+      <CardContent className="flex-1 p-0 overflow-hidden bg-muted/20">
+        <ScrollArea className="h-full p-4">
+          <div className="space-y-4">
+            {messages.map((message) => (
+              <div
+                key={message.id}
+                className={cn(
+                  "flex gap-3 max-w-[85%]",
+                  message.type === 'user' ? "ml-auto flex-row-reverse" : "mr-auto"
+                )}
+              >
+                <Avatar className={cn(
+                  "h-8 w-8",
+                  message.type === 'assistant' ? "bg-primary/10 text-primary" : "bg-muted"
+                )}>
+                  {message.type === 'user' ?
+                    <AvatarImage src="" /> :
+                    null}
+                  <AvatarFallback className={message.type === 'assistant' ? "bg-primary text-primary-foreground" : ""}>
+                    {message.type === 'user' ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+                  </AvatarFallback>
+                </Avatar>
+
+                <div className={cn(
+                  "rounded-lg p-3 text-sm shadow-sm",
+                  message.type === 'user'
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-card border text-card-foreground"
+                )}>
+                  <div className="whitespace-pre-wrap leading-relaxed">
+                    {message.content}
+                  </div>
+                  {message.context && (
+                    <div className="mt-2 pt-2 border-t border-primary/10 text-xs opacity-70 flex items-center gap-1">
+                      <BarChart2 className="h-3 w-3" /> {message.context}
                     </div>
+                  )}
+                  <div className="mt-1 text-[10px] opacity-70 text-right">
+                    {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
               </div>
-            </List.Item>
-          )}
-        />
-        {loading && (
-          <div style={{ textAlign: 'center', padding: '20px 0' }}>
-            <Spin />
-            <div style={{ marginTop: 8 }}>
-              <Text type="secondary" style={{ color: isDarkMode ? '#999' : '#666' }}>
-                AI가 답변을 생성하고 있습니다...
-              </Text>
-            </div>
+            ))}
+            {loading && (
+              <div className="flex gap-3 max-w-[85%] mr-auto">
+                <Avatar className="h-8 w-8 bg-primary/10 text-primary">
+                  <AvatarFallback><Bot className="h-4 w-4" /></AvatarFallback>
+                </Avatar>
+                <div className="rounded-lg p-3 text-sm bg-card border text-card-foreground shadow-sm flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  <span className="text-muted-foreground">답변을 생성하고 있습니다...</span>
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
           </div>
-        )}
-        <div ref={messagesEndRef} />
+        </ScrollArea>
+      </CardContent>
+
+      <div className="bg-background p-2 border-t text-xs text-muted-foreground flex gap-2 overflow-x-auto pb-4 px-4 sticky bottom-[70px]">
+        {messages.length <= 2 && suggestedQuestions.map((q, i) => (
+          <Badge
+            key={i}
+            variant="outline"
+            className="cursor-pointer hover:bg-muted whitespace-nowrap py-1"
+            onClick={() => handleSuggestedQuestion(q)}
+          >
+            {q}
+          </Badge>
+        ))}
       </div>
 
-      {/* 추천 질문 (메시지가 적을 때만 표시) */}
-      {messages.length <= 1 && (
-        <div style={{ padding: '0 16px 16px' }}>
-          <Text type="secondary" style={{ fontSize: '12px', color: isDarkMode ? '#999' : '#666' }}>
-            💡 추천 질문:
-          </Text>
-          <div style={{ marginTop: 8 }}>
-            <Space wrap>
-              {suggestedQuestions.map((question, index) => (
-                <Tag
-                  key={index}
-                  style={{ cursor: 'pointer', marginBottom: 4 }}
-                  onClick={() => handleSuggestedQuestion(question)}
-                >
-                  {question}
-                </Tag>
-              ))}
-            </Space>
-          </div>
-        </div>
-      )}
-
-      <Divider style={{ margin: 0 }} />
-
-      {/* 입력 영역 */}
-      <div style={{ padding: '16px' }}>
-        <Space.Compact style={{ width: '100%' }}>
-          <TextArea
+      <CardFooter className="p-3 pt-0 border-t bg-background">
+        <form
+          className="flex w-full items-center gap-2 mt-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSendMessage();
+          }}
+        >
+          <Input
+            placeholder="궁금한 내용을 입력하세요..."
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            placeholder="보고서에 대해 궁금한 것을 물어보세요..."
-            autoSize={{ minRows: 1, maxRows: 3 }}
-            onPressEnter={(e) => {
-              if (!e.shiftKey) {
-                e.preventDefault();
-                handleSendMessage();
-              }
-            }}
             disabled={loading}
+            className="flex-1"
           />
-          <Button
-            type="primary"
-            icon={<SendOutlined />}
-            onClick={handleSendMessage}
-            loading={loading}
-            disabled={!inputValue.trim()}
-          >
-            전송
+          <Button type="submit" size="icon" disabled={loading || !inputValue.trim()}>
+            <Send className="h-4 w-4" />
           </Button>
-        </Space.Compact>
-        <div style={{ marginTop: 8 }}>
-          <Text type="secondary" style={{ fontSize: '11px', color: isDarkMode ? '#999' : '#666' }}>
-            💡 Shift + Enter로 줄바꿈, Enter로 전송
-          </Text>
-        </div>
-      </div>
+        </form>
+      </CardFooter>
     </Card>
   );
 }

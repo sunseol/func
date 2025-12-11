@@ -2,7 +2,7 @@
 
 // Base types
 export type ProjectRole = '콘텐츠기획' | '서비스기획' | 'UIUX기획' | '개발자';
-export type DocumentStatus = 'private' | 'pending_approval' | 'official';
+export type DocumentStatus = 'private' | 'pending_approval' | 'official' | 'rejected';
 export type WorkflowStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 
 // Project types
@@ -278,7 +278,8 @@ export const ROLE_DESCRIPTIONS: Record<ProjectRole, string> = {
 export const STATUS_DESCRIPTIONS: Record<DocumentStatus, string> = {
   'private': '개인 작업 중',
   'pending_approval': '승인 대기 중',
-  'official': '공식 승인됨'
+  'official': '공식 승인됨',
+  'rejected': '승인 반려됨'
 };
 
 // Utility functions
@@ -287,7 +288,7 @@ export function isValidProjectRole(role: string): role is ProjectRole {
 }
 
 export function isValidDocumentStatus(status: string): status is DocumentStatus {
-  return ['private', 'pending_approval', 'official'].includes(status);
+  return ['private', 'pending_approval', 'official', 'rejected'].includes(status);
 }
 
 export function isValidWorkflowStep(step: number): step is WorkflowStep {

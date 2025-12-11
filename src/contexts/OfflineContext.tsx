@@ -34,11 +34,11 @@ interface OfflineProviderProps {
   enableStorage?: boolean;
 }
 
-export function OfflineProvider({ 
-  children, 
+export function OfflineProvider({
+  children,
   onActionRetry,
   enableQueue = true,
-  enableStorage = true 
+  enableStorage = true
 }: OfflineProviderProps) {
   const { isOnline, isOffline } = useNetworkStatus();
   const [pendingActions, setPendingActions] = useState<OfflineAction[]>([]);
@@ -129,7 +129,7 @@ export function OfflineProvider({
     for (const action of actionsToRetry) {
       try {
         const success = await onActionRetry(action);
-        
+
         if (success) {
           successfulActions.push(action.id);
         } else {
@@ -146,7 +146,7 @@ export function OfflineProvider({
         }
       } catch (err) {
         console.warn(`Failed to retry action ${action.id}:`, err);
-        
+
         const updatedAction = {
           ...action,
           retryCount: action.retryCount + 1
@@ -272,21 +272,21 @@ interface UseOfflineApiOptions {
 }
 
 export function useOfflineApi(options: UseOfflineApiOptions = {}) {
-  const { 
-    enableQueue = true, 
-    maxRetries = 3, 
-    cacheKey, 
-    cacheTTL 
+  const {
+    enableQueue = true,
+    maxRetries = 3,
+    cacheKey,
+    cacheTTL
   } = options;
-  
-  const { 
-    isOffline, 
-    queueAction, 
-    getOfflineData, 
-    setOfflineData 
+
+  const {
+    isOffline,
+    queueAction,
+    getOfflineData,
+    setOfflineData
   } = useOffline();
 
-  const makeRequest = async <T>(
+  const makeRequest = async <T,>(
     requestFn: () => Promise<T>,
     actionType?: string,
     actionData?: any
@@ -295,12 +295,12 @@ export function useOfflineApi(options: UseOfflineApiOptions = {}) {
     if (!isOffline) {
       try {
         const result = await requestFn();
-        
+
         // Cache the result if cache key is provided
         if (cacheKey) {
           await setOfflineData(cacheKey, result, cacheTTL);
         }
-        
+
         return result;
       } catch (err) {
         // If request fails and we have queue enabled, queue it

@@ -4,24 +4,27 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigation } from '@/contexts/NavigationContext';
-import { 
-  ProjectResponse, 
-  ProjectWithCreator, 
-  ProjectMemberWithProfile, 
+import {
+  ProjectResponse,
+  ProjectWithCreator,
+  ProjectMemberWithProfile,
   ProjectProgress
 } from '@/types/ai-pm';
 import MemberManagement from '@/components/ai-pm/MemberManagement';
 import WorkflowProgress from '@/components/ai-pm/WorkflowProgress';
 import WorkflowSidebar from '@/components/ai-pm/WorkflowSidebar';
 import ProjectCollaborationDashboard from '@/components/ai-pm/ProjectCollaborationDashboard';
-import { Card } from 'antd';
-import { 
-  ArrowLeftIcon,
-  UsersIcon,
-  DocumentTextIcon,
-  Cog6ToothIcon,
-  Bars3Icon
-} from '@heroicons/react/24/outline';
+import {
+  ArrowLeft,
+  Users,
+  FileText,
+  Settings,
+  Menu,
+  Percent
+} from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function ProjectDetailPage() {
   const params = useParams();
@@ -29,31 +32,31 @@ export default function ProjectDetailPage() {
   const { user } = useAuth();
   const { state: navState, setCurrentProject } = useNavigation();
   const projectId = params.projectId as string;
-  
+
   const [project, setProject] = useState<ProjectWithCreator | null>(null);
   const [members, setMembers] = useState<ProjectMemberWithProfile[]>([]);
   const [progress, setProgress] = useState<ProjectProgress[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'collaboration' | 'members' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState('overview');
   const [showWorkflowSidebar, setShowWorkflowSidebar] = useState(false);
 
   const fetchProjectData = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch(`/api/ai-pm/projects/${projectId}`, { cache: 'no-store' });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || '프로젝트 정보를 불러오는데 실패했습니다.');
       }
 
       const data: ProjectResponse = await response.json();
-      
+
       setProject(data.project);
       setMembers(data.members);
       setProgress(data.progress);
-      
+
     } catch (err) {
       setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.');
     } finally {
@@ -105,12 +108,9 @@ export default function ProjectDetailPage() {
         <div className="text-center">
           <h2 className="text-2xl font-bold text-red-600 mb-4">오류 발생</h2>
           <p className="text-gray-600 mb-4">{error}</p>
-          <button
-            onClick={() => router.push('/ai-pm')}
-            className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
-          >
+          <Button onClick={() => router.push('/ai-pm')}>
             대시보드로 돌아가기
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -124,20 +124,13 @@ export default function ProjectDetailPage() {
   const completedSteps = (progress || [])
     .filter(p => p.has_official_document)
     .map(p => p.workflow_step)
-    .filter(step => step !== undefined && step !== null);
-  
+    .filter((step): step is number => step !== undefined && step !== null);
+
   const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('ko-KR', {
     year: 'numeric',
     month: 'long',
     day: 'numeric'
   });
-
-  const tabs = [
-    { id: 'overview' as const, name: '개요', icon: DocumentTextIcon },
-    { id: 'collaboration' as const, name: '협업 현황', icon: UsersIcon },
-    { id: 'members' as const, name: '멤버 관리', icon: UsersIcon },
-    { id: 'settings' as const, name: '설정', icon: Cog6ToothIcon }
-  ];
 
   return (
     <>
@@ -148,8 +141,8 @@ export default function ProjectDetailPage() {
             className="fixed inset-0 bg-black/30 backdrop-blur-sm"
             onClick={() => setShowWorkflowSidebar(false)}
           />
-          <div className="relative w-80 h-full">
-            <WorkflowSidebar 
+          <div className="relative w-80 h-full bg-white shadow-xl">
+            <WorkflowSidebar
               projectId={projectId}
               projectName={project.name}
               currentStep={currentStep}
@@ -165,8 +158,8 @@ export default function ProjectDetailPage() {
       )}
 
       {project && (
-        <div className="hidden lg:block w-80 flex-shrink-0">
-          <WorkflowSidebar 
+        <div className="hidden lg:block w-80 flex-shrink-0 border-r bg-gray-50/50">
+          <WorkflowSidebar
             projectId={projectId}
             projectName={project.name}
             currentStep={currentStep}
@@ -177,26 +170,29 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-3 sm:py-4">
+      <div className="flex-1 flex flex-col overflow-hidden bg-background">
+        <div className="bg-white dark:bg-neutral-900 border-b border-gray-200 dark:border-neutral-800 px-3 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <button
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={() => setShowWorkflowSidebar(true)}
-                className="lg:hidden p-2 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100"
+                className="lg:hidden"
               >
-                <Bars3Icon className="h-5 w-5" />
-              </button>
-              <button
+                <Menu className="h-5 w-5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={() => router.push('/ai-pm')}
-                className="p-2 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100"
               >
-                <ArrowLeftIcon className="h-5 w-5" />
-              </button>
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
-                <p className="mt-1 text-sm text-gray-500">
-                  생성일: {formatDate(project.created_at)} | 
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{project.name}</h1>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  생성일: {formatDate(project.created_at)} |
                   생성자: {project.creator_name || project.creator_email}
                 </p>
               </div>
@@ -205,88 +201,93 @@ export default function ProjectDetailPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-3 sm:p-6">
-            <div className="border-b border-gray-200 mb-6">
-              <nav className="-mb-px flex space-x-8">
-                {tabs.map((tab) => {
-                  const Icon = tab.icon;
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center ${
-                        activeTab === tab.id
-                          ? 'border-blue-500 text-blue-600'
-                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                      }`}
-                    >
-                      <Icon className="h-5 w-5 mr-2" />
-                      {tab.name}
-                    </button>
-                  );
-                })}
-              </nav>
-            </div>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+            <TabsList>
+              <TabsTrigger value="overview" className="flex items-center gap-2">
+                <FileText className="h-4 w-4" /> 개요
+              </TabsTrigger>
+              <TabsTrigger value="collaboration" className="flex items-center gap-2">
+                <Users className="h-4 w-4" /> 협업 현황
+              </TabsTrigger>
+              <TabsTrigger value="members" className="flex items-center gap-2">
+                <Users className="h-4 w-4" /> 멤버 관리
+              </TabsTrigger>
+              <TabsTrigger value="settings" className="flex items-center gap-2">
+                <Settings className="h-4 w-4" /> 설정
+              </TabsTrigger>
+            </TabsList>
 
-            {activeTab === 'overview' && (
+            <TabsContent value="overview">
               <div className="space-y-8">
-                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                    <Card>
-                      <div className="flex items-center">
-                        <UsersIcon className="h-8 w-8 text-blue-600" />
-                        <div className="ml-4">
-                          <p className="text-2xl font-bold">{members.length}</p>
-                          <p className="text-sm text-gray-600">프로젝트 멤버</p>
-                        </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                  <Card>
+                    <CardContent className="flex items-center p-6">
+                      <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-full">
+                        <Users className="h-8 w-8 text-blue-600 dark:text-blue-400" />
                       </div>
-                    </Card>
-                    <Card>
-                      <div className="flex items-center">
-                        <DocumentTextIcon className="h-8 w-8 text-green-600" />
-                        <div className="ml-4">
-                          <p className="text-2xl font-bold">{completedSteps.length}</p>
-                          <p className="text-sm text-gray-600">완료된 단계</p>
-                        </div>
+                      <div className="ml-4">
+                        <p className="text-2xl font-bold">{members.length}</p>
+                        <p className="text-sm text-muted-foreground">프로젝트 멤버</p>
                       </div>
-                    </Card>
-                    <Card>
-                      <div className="flex items-center">
-                        <div className="h-8 w-8 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold">%</div>
-                        <div className="ml-4">
-                          <p className="text-2xl font-bold">{Math.round((completedSteps.length / 9) * 100)}%</p>
-                          <p className="text-sm text-gray-600">진행률</p>
-                        </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="flex items-center p-6">
+                      <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-full">
+                        <FileText className="h-8 w-8 text-green-600 dark:text-green-400" />
                       </div>
-                    </Card>
-                 </div>
+                      <div className="ml-4">
+                        <p className="text-2xl font-bold">{completedSteps.length}</p>
+                        <p className="text-sm text-muted-foreground">완료된 단계</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="flex items-center p-6">
+                      <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-full">
+                        <Percent className="h-8 w-8 text-purple-600 dark:text-purple-400" />
+                      </div>
+                      <div className="ml-4">
+                        <p className="text-2xl font-bold">{Math.round((completedSteps.length / 9) * 100)}%</p>
+                        <p className="text-sm text-muted-foreground">진행률</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
 
                 {project && (
-                  <WorkflowProgress 
+                  <WorkflowProgress
                     currentStep={currentStep}
                     completedSteps={completedSteps}
                     totalSteps={9}
                   />
                 )}
               </div>
-            )}
+            </TabsContent>
 
-            {activeTab === 'collaboration' && (
+            <TabsContent value="collaboration">
               <ProjectCollaborationDashboard projectId={projectId} />
-            )}
+            </TabsContent>
 
-            {activeTab === 'members' && (
+            <TabsContent value="members">
               <MemberManagement
                 projectId={projectId}
                 members={members}
                 onMembersUpdate={handleMembersUpdate}
               />
-            )}
+            </TabsContent>
 
-            {activeTab === 'settings' && (
+            <TabsContent value="settings">
               <Card>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">프로젝트 설정</h3>
-                <p className="text-gray-600">프로젝트 설정 기능은 향후 구현 예정입니다.</p>
+                <CardHeader>
+                  <CardTitle>프로젝트 설정</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-muted-foreground">프로젝트 설정 기능은 향후 구현 예정입니다.</p>
+                </CardContent>
               </Card>
-            )}
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
     </>

@@ -4,7 +4,7 @@ import React from 'react';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { cn } from '@/lib/responsive-utils';
 import MobileActionMenu, { ActionMenuItem } from './MobileActionMenu';
-import { 
+import {
   PencilIcon,
   TrashIcon,
   EyeIcon,
@@ -33,14 +33,14 @@ export const COMMON_ACTIONS = {
     icon: EyeIcon,
     onClick
   }),
-  
+
   edit: (onClick: () => void): ActionMenuItem => ({
     key: 'edit',
     label: '수정',
     icon: PencilIcon,
     onClick
   }),
-  
+
   delete: (onClick: () => void): ActionMenuItem => ({
     key: 'delete',
     label: '삭제',
@@ -48,35 +48,35 @@ export const COMMON_ACTIONS = {
     onClick,
     danger: true
   }),
-  
+
   duplicate: (onClick: () => void): ActionMenuItem => ({
     key: 'duplicate',
     label: '복제',
     icon: DocumentDuplicateIcon,
     onClick
   }),
-  
+
   share: (onClick: () => void): ActionMenuItem => ({
     key: 'share',
     label: '공유',
     icon: ShareIcon,
     onClick
   }),
-  
+
   archive: (onClick: () => void): ActionMenuItem => ({
     key: 'archive',
     label: '보관',
     icon: ArchiveBoxIcon,
     onClick
   }),
-  
+
   approve: (onClick: () => void): ActionMenuItem => ({
     key: 'approve',
     label: '승인',
     icon: CheckIcon,
     onClick
   }),
-  
+
   reject: (onClick: () => void): ActionMenuItem => ({
     key: 'reject',
     label: '거부',
@@ -84,14 +84,14 @@ export const COMMON_ACTIONS = {
     onClick,
     danger: true
   }),
-  
+
   download: (onClick: () => void): ActionMenuItem => ({
     key: 'download',
     label: '다운로드',
     icon: ArrowDownTrayIcon,
     onClick
   }),
-  
+
   settings: (onClick: () => void): ActionMenuItem => ({
     key: 'settings',
     label: '설정',
@@ -108,9 +108,9 @@ export default function TableActionButtons({
   maxVisibleButtons = 2
 }: TableActionButtonsProps) {
   const { isMobile, isTablet } = useBreakpoint();
-  
+
   // Determine effective variant
-  const effectiveVariant = variant === 'auto' 
+  const effectiveVariant = variant === 'auto'
     ? (isMobile ? 'menu' : (isTablet && actions.length > maxVisibleButtons ? 'menu' : 'buttons'))
     : variant;
 
@@ -153,7 +153,7 @@ export default function TableActionButtons({
         {/* Visible action buttons */}
         {visibleActions.map((action) => {
           const IconComponent = action.icon;
-          
+
           return (
             <button
               key={action.key}
@@ -163,8 +163,8 @@ export default function TableActionButtons({
                 'flex items-center justify-center rounded-lg border border-gray-300',
                 'hover:bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:border-blue-500',
                 'disabled:opacity-50 disabled:cursor-not-allowed transition-colors',
-                action.danger 
-                  ? 'text-red-600 hover:bg-red-50 hover:border-red-300' 
+                action.danger
+                  ? 'text-red-600 hover:bg-red-50 hover:border-red-300'
                   : 'text-gray-600',
                 isMobile ? mobileSizeClasses[size] : sizeClasses[size]
               )}
@@ -223,7 +223,7 @@ export function createTableActionColumn<T>(
     priority: 'high' as const,
     render: (_: any, record: T, index: number) => {
       const actions = getActions(record, index);
-      
+
       return (
         <TableActionButtons
           actions={actions}
@@ -238,7 +238,7 @@ export function createTableActionColumn<T>(
 // Preset action configurations for common use cases
 export const ACTION_PRESETS = {
   // Basic CRUD actions
-  crud: <T>(
+  crud: <T,>(
     onView: (record: T) => void,
     onEdit: (record: T) => void,
     onDelete: (record: T) => void
@@ -249,7 +249,7 @@ export const ACTION_PRESETS = {
   ],
 
   // Document management actions
-  document: <T>(
+  document: <T,>(
     onView: (record: T) => void,
     onEdit: (record: T) => void,
     onShare: (record: T) => void,
@@ -264,7 +264,7 @@ export const ACTION_PRESETS = {
   ],
 
   // Approval workflow actions
-  approval: <T>(
+  approval: <T,>(
     onView: (record: T) => void,
     onApprove: (record: T) => void,
     onReject: (record: T) => void
@@ -275,7 +275,7 @@ export const ACTION_PRESETS = {
   ],
 
   // User management actions
-  user: <T>(
+  user: <T,>(
     onView: (record: T) => void,
     onEdit: (record: T) => void,
     onArchive: (record: T) => void

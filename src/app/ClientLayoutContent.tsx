@@ -1,15 +1,17 @@
 'use client';
 
-import '@ant-design/v5-patch-for-react-19';
+
 
 import React, { useEffect } from 'react';
-import { useTheme } from './components/ThemeProvider';
+import { useTheme } from "next-themes";
+import { ThemeProvider } from './components/ThemeProvider';
 import { useComponentPreloader } from '@/hooks/useComponentPreloader';
 import MainHeader from '@/components/layout/MainHeader';
 
 export default function ClientLayoutContent({ children }: { children: React.ReactNode }) {
   useComponentPreloader();
-  const { isDarkMode } = useTheme();
+  const { resolvedTheme } = useTheme();
+  const isDarkMode = resolvedTheme === 'dark';
 
   // body 배경/텍스트를 테마에 맞춰 직접 동기화 (충돌 방지)
   useEffect(() => {

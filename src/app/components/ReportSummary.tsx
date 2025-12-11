@@ -1,34 +1,29 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Card, 
-  Button, 
-  Select, 
-  DatePicker, 
-  Space, 
-  Typography, 
-  Spin, 
-  Row,
-  Col,
-  Statistic,
-  Tag,
-  Divider
-} from 'antd';
-import { 
-  FileTextOutlined, 
-  UserOutlined, 
-  CalendarOutlined,
-  BarChartOutlined,
-  RobotOutlined
-} from '@ant-design/icons';
+import {
+  FileText,
+  User,
+  Calendar as CalendarIcon,
+  BarChart,
+  Bot,
+  Search
+} from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { useTheme } from '@/app/components/ThemeProvider';
-import type { Dayjs } from 'dayjs';
+import { useTheme } from 'next-themes';
+import { format, subDays } from 'date-fns';
+import { ko } from 'date-fns/locale';
+import { DateRange } from 'react-day-picker';
 
-const { Title, Text, Paragraph } = Typography;
-const { Option } = Select;
-const { RangePicker } = DatePicker;
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
+import { Loader2 } from 'lucide-react';
 
 interface DailyReport {
   id: string;
@@ -56,17 +51,22 @@ interface ReportSummaryProps {
 }
 
 export default function ReportSummary({ onSummaryGenerated }: ReportSummaryProps) {
-  const { isDarkMode } = useTheme();
+  const { theme } = useTheme();
   const [loading, setLoading] = useState(false);
   const [reports, setReports] = useState<DailyReport[]>([]);
   const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
-  const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
-  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+
+  // Filters
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: subDays(new Date(), 7),
+    to: new Date()
+  });
+  const [selectedUser, setSelectedUser] = useState<string>('all');
   const [reportType, setReportType] = useState<string>('all');
-  const [availableUsers, setAvailableUsers] = useState<Array<{id: string, name: string}>>([]);
+  const [availableUsers, setAvailableUsers] = useState<Array<{ id: string, name: string }>>([]);
   const [supabase] = useState(() => createClient());
 
-  // 사용자 목록 로드
+  // Load users
   useEffect(() => {
     const fetchUsers = async () => {
       try {
@@ -95,37 +95,36 @@ export default function ReportSummary({ onSummaryGenerated }: ReportSummaryProps
     fetchUsers();
   }, [supabase]);
 
-  // 필터 조건 변경 시 AI 요약 초기화
+  // Reset summary on filter change
   useEffect(() => {
     if (summaryData) {
       setSummaryData(null);
     }
-  }, [dateRange, selectedUsers, reportType]);
+  }, [dateRange, selectedUser, reportType]);
 
   const fetchReports = async () => {
     setLoading(true);
-    // 새로운 조회 시 기존 AI 요약 초기화
     setSummaryData(null);
-    
+
     try {
       let query = supabase
         .from('daily_reports')
         .select('*')
         .order('created_at', { ascending: false });
 
-      // 날짜 범위 필터
-      if (dateRange && dateRange[0] && dateRange[1]) {
-        const startDate = dateRange[0].format('YYYY-MM-DD');
-        const endDate = dateRange[1].format('YYYY-MM-DD');
-        query = query.gte('report_date', startDate).lte('report_date', endDate);
+      if (dateRange?.from) {
+        const fromStr = format(dateRange.from, 'yyyy-MM-dd');
+        query = query.gte('report_date', fromStr);
+      }
+      if (dateRange?.to) {
+        const toStr = format(dateRange.to, 'yyyy-MM-dd');
+        query = query.lte('report_date', toStr);
       }
 
-      // 사용자 필터
-      if (selectedUsers.length > 0) {
-        query = query.in('user_id', selectedUsers);
+      if (selectedUser !== 'all') {
+        query = query.eq('user_id', selectedUser);
       }
 
-      // 보고서 타입 필터
       if (reportType !== 'all') {
         query = query.eq('report_type', reportType);
       }
@@ -142,34 +141,27 @@ export default function ReportSummary({ onSummaryGenerated }: ReportSummaryProps
   };
 
   const generateSummary = async () => {
-    if (reports.length === 0) {
-      return;
-    }
+    if (reports.length === 0) return;
 
     setLoading(true);
     try {
-      // 기본 통계 계산
+      // Basic stats
       const totalReports = reports.length;
       const uniqueUsers = new Set(reports.map(r => r.user_id));
       const userCount = uniqueUsers.size;
 
-      // 타입별 보고서 수
       const reportsByType = reports.reduce((acc, report) => {
         acc[report.report_type] = (acc[report.report_type] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
 
-      // 사용자별 보고서 수
       const reportsByUser = reports.reduce((acc, report) => {
         const userName = report.user_name_snapshot;
         acc[userName] = (acc[userName] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
 
-      // 키 인사이트 생성
       const keyInsights = generateKeyInsights(reports, reportsByType, reportsByUser);
-
-      // AI 요약 생성
       const aiSummary = await generateAISummary(reports);
 
       const summary: SummaryData = {
@@ -191,32 +183,29 @@ export default function ReportSummary({ onSummaryGenerated }: ReportSummaryProps
   };
 
   const generateKeyInsights = (
-    reports: DailyReport[], 
+    reports: DailyReport[],
     reportsByType: Record<string, number>,
     reportsByUser: Record<string, number>
   ): string[] => {
     const insights: string[] = [];
 
-    // 가장 활발한 사용자
     const mostActiveUser = Object.entries(reportsByUser)
-      .sort(([,a], [,b]) => b - a)[0];
+      .sort(([, a], [, b]) => b - a)[0];
     if (mostActiveUser) {
       insights.push(`가장 활발한 사용자: ${mostActiveUser[0]} (${mostActiveUser[1]}개 보고서)`);
     }
 
-    // 보고서 타입 분석
-    const typeNames = {
+    const typeNames: Record<string, string> = {
       morning: '출근 보고서',
       evening: '퇴근 보고서',
       weekly: '주간 보고서'
     };
     const mostCommonType = Object.entries(reportsByType)
-      .sort(([,a], [,b]) => b - a)[0];
+      .sort(([, a], [, b]) => b - a)[0];
     if (mostCommonType) {
-      insights.push(`가장 많은 보고서 유형: ${typeNames[mostCommonType[0] as keyof typeof typeNames]} (${mostCommonType[1]}개)`);
+      insights.push(`가장 많은 보고서 유형: ${typeNames[mostCommonType[0]] || mostCommonType[0]} (${mostCommonType[1]}개)`);
     }
 
-    // 최근 활동 분석
     const recentReports = reports.filter(r => {
       const reportDate = new Date(r.report_date);
       const threeDaysAgo = new Date();
@@ -230,12 +219,11 @@ export default function ReportSummary({ onSummaryGenerated }: ReportSummaryProps
 
   const generateAISummary = async (reports: DailyReport[]): Promise<string> => {
     try {
-      // 보고서 내용을 요약하기 위한 샘플 데이터 준비
       const sampleReports = reports.slice(0, 10).map(r => ({
         date: r.report_date,
         type: r.report_type,
         user: r.user_name_snapshot,
-        content: r.report_content.substring(0, 200) // 처음 200자만
+        content: r.report_content.substring(0, 200)
       }));
 
       const prompt = `
@@ -258,9 +246,7 @@ ${sampleReports.map(r => `- ${r.date} (${r.type}): ${r.user} - ${r.content}`).jo
 
       const response = await fetch('/api/groq', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt }),
       });
 
@@ -277,186 +263,186 @@ ${sampleReports.map(r => `- ${r.date} (${r.type}): ${r.user} - ${r.content}`).jo
   };
 
   return (
-    <Card 
-      title={<span style={{ color: isDarkMode ? '#fff' : '#000' }}>📊 보고서 요약 분석</span>}
-      style={{ 
-        marginBottom: 24,
-        backgroundColor: isDarkMode ? '#1f1f1f' : '#fff',
-        borderColor: isDarkMode ? '#434343' : '#d9d9d9'
-      }}
-    >
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        {/* 필터 옵션 */}
-        <Row gutter={[16, 16]}>
-          <Col xs={24} sm={12} md={8}>
-            <Text strong style={{ color: isDarkMode ? '#fff' : '#000' }}>기간 선택:</Text>
-            <RangePicker
-              style={{ width: '100%', marginTop: 4 }}
-              onChange={(dates) => setDateRange(dates)}
-              placeholder={['시작일', '종료일']}
-            />
-          </Col>
-          <Col xs={24} sm={12} md={8}>
-            <Text strong style={{ color: isDarkMode ? '#fff' : '#000' }}>사용자 선택:</Text>
-            <Select
-              mode="multiple"
-              style={{ width: '100%', marginTop: 4 }}
-              placeholder="사용자 선택 (전체)"
-              value={selectedUsers}
-              onChange={setSelectedUsers}
-              allowClear
-            >
-              {availableUsers.map(user => (
-                <Option key={user.id} value={user.id}>
-                  {user.name}
-                </Option>
-              ))}
-            </Select>
-          </Col>
-          <Col xs={24} sm={12} md={8}>
-            <Text strong style={{ color: isDarkMode ? '#fff' : '#000' }}>보고서 유형:</Text>
-            <Select
-              style={{ width: '100%', marginTop: 4 }}
-              value={reportType}
-              onChange={setReportType}
-            >
-              <Option value="all">전체</Option>
-              <Option value="morning">출근 보고서</Option>
-              <Option value="evening">퇴근 보고서</Option>
-              <Option value="weekly">주간 보고서</Option>
-            </Select>
-          </Col>
-        </Row>
+    <Card className="mb-6">
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <BarChart className="h-5 w-5" />
+          <CardTitle>보고서 요약 분석</CardTitle>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Filters */}
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="space-y-2">
+            <span className="text-sm font-medium">기간 선택</span>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant={"outline"}
+                  className={cn(
+                    "w-full justify-start text-left font-normal",
+                    !dateRange && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {dateRange?.from ? (
+                    dateRange.to ? (
+                      <>
+                        {format(dateRange.from, "LLL dd, y")} -{" "}
+                        {format(dateRange.to, "LLL dd, y")}
+                      </>
+                    ) : (
+                      format(dateRange.from, "LLL dd, y")
+                    )
+                  ) : (
+                    <span>날짜 선택</span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  initialFocus
+                  mode="range"
+                  defaultMonth={dateRange?.from}
+                  selected={dateRange}
+                  onSelect={setDateRange}
+                  numberOfMonths={2}
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
 
-        {/* 액션 버튼 */}
-        <Row gutter={[16, 16]}>
-          <Col>
-            <Button 
-              type="primary" 
-              icon={<BarChartOutlined />}
-              onClick={fetchReports}
-              loading={loading}
-            >
-              보고서 조회
-            </Button>
-          </Col>
-          <Col>
-            <Button 
-              type="primary" 
-              icon={<RobotOutlined />}
-              onClick={generateSummary}
-              loading={loading}
-              disabled={reports.length === 0}
-            >
-              AI 요약 생성
-            </Button>
-          </Col>
-        </Row>
-
-        {/* 기본 통계 */}
-        {reports.length > 0 && (
-          <Row gutter={[16, 16]}>
-            <Col xs={12} sm={6}>
-              <Statistic
-                title="총 보고서"
-                value={reports.length}
-                prefix={<FileTextOutlined />}
-              />
-            </Col>
-            <Col xs={12} sm={6}>
-              <Statistic
-                title="참여 사용자"
-                value={new Set(reports.map(r => r.user_id)).size}
-                prefix={<UserOutlined />}
-              />
-            </Col>
-            <Col xs={12} sm={6}>
-              <Statistic
-                title="기간"
-                value={reports.length > 0 ? `${reports[reports.length - 1]?.report_date} ~ ${reports[0]?.report_date}` : '-'}
-                prefix={<CalendarOutlined />}
-              />
-            </Col>
-          </Row>
-        )}
-
-        {/* AI 요약 결과 */}
-        {summaryData && (
-          <Card 
-            title={<span style={{ color: isDarkMode ? '#fff' : '#000' }}>🤖 AI 분석 결과</span>}
-            type="inner"
-            style={{
-              backgroundColor: isDarkMode ? '#141414' : '#fafafa',
-              borderColor: isDarkMode ? '#434343' : '#d9d9d9'
-            }}
-          >
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-              {/* 키 인사이트 */}
-              <div>
-                <Title level={5}>📈 주요 인사이트</Title>
-                {summaryData.keyInsights.map((insight, index) => (
-                  <Tag key={index} color="blue" style={{ margin: '2px 4px 2px 0' }}>
-                    {insight}
-                  </Tag>
+          <div className="space-y-2">
+            <span className="text-sm font-medium">사용자 선택</span>
+            <Select value={selectedUser} onValueChange={setSelectedUser}>
+              <SelectTrigger>
+                <SelectValue placeholder="사용자 선택" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">전체 사용자</SelectItem>
+                {availableUsers.map(user => (
+                  <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>
                 ))}
-              </div>
+              </SelectContent>
+            </Select>
+          </div>
 
-              <Divider />
+          <div className="space-y-2">
+            <span className="text-sm font-medium">보고서 유형</span>
+            <Select value={reportType} onValueChange={setReportType}>
+              <SelectTrigger>
+                <SelectValue placeholder="유형 선택" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">전체 유형</SelectItem>
+                <SelectItem value="morning">출근 보고서</SelectItem>
+                <SelectItem value="evening">퇴근 보고서</SelectItem>
+                <SelectItem value="weekly">주간 보고서</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
 
-              {/* AI 요약 */}
+        {/* Actions */}
+        <div className="flex gap-2">
+          <Button onClick={fetchReports} disabled={loading} className="gap-2">
+            <Search className="h-4 w-4" /> 보고서 조회
+          </Button>
+          <Button
+            onClick={generateSummary}
+            className="gap-2 bg-gradient-to-r from-violet-600 to-indigo-600 text-white"
+            disabled={loading || reports.length === 0}
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
+            AI 요약 생성
+          </Button>
+        </div>
+
+        {/* Stats */}
+        {summaryData && (
+          <div className="space-y-6 pt-4 animate-in fade-in slide-in-from-bottom-5 duration-500">
+            <div className="grid grid-cols-3 gap-4">
+              <Card className="bg-muted/50">
+                <CardContent className="p-6 flex flex-col items-center">
+                  <FileText className="h-8 w-8 mb-2 text-primary" />
+                  <div className="text-2xl font-bold">{summaryData.totalReports}</div>
+                  <div className="text-xs text-muted-foreground">총 보고서</div>
+                </CardContent>
+              </Card>
+              <Card className="bg-muted/50">
+                <CardContent className="p-6 flex flex-col items-center">
+                  <User className="h-8 w-8 mb-2 text-primary" />
+                  <div className="text-2xl font-bold">{summaryData.userCount}</div>
+                  <div className="text-xs text-muted-foreground">참여 사용자</div>
+                </CardContent>
+              </Card>
+              <Card className="bg-muted/50">
+                <CardContent className="p-6 flex flex-col items-center">
+                  <CalendarIcon className="h-8 w-8 mb-2 text-primary" />
+                  <div className="text-sm font-bold text-center">
+                    {reports.length > 0 ? `${format(new Date(reports[reports.length - 1].report_date), 'MM/dd')} ~ ${format(new Date(reports[0].report_date), 'MM/dd')}` : '-'}
+                  </div>
+                  <div className="text-xs text-muted-foreground">기간</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card className="border-primary/20 bg-primary/5">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Bot className="h-5 w-5 text-primary" /> AI 분석 결과
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <h4 className="text-sm font-semibold mb-2">📈 주요 인사이트</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {summaryData.keyInsights.map((insight, i) => (
+                      <Badge key={i} variant="secondary">{insight}</Badge>
+                    ))}
+                  </div>
+                </div>
+                <Separator />
+                <div>
+                  <h4 className="text-sm font-semibold mb-2">🧠 AI 종합 분석</h4>
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground">
+                    {summaryData.aiSummary}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="grid md:grid-cols-2 gap-6">
               <div>
-                <Title level={5}>🧠 AI 종합 분석</Title>
-                <Paragraph style={{ 
-                  backgroundColor: isDarkMode ? '#262626' : '#f6f8fa', 
-                  padding: 16, 
-                  borderRadius: 8,
-                  whiteSpace: 'pre-wrap',
-                  color: isDarkMode ? '#fff' : '#000'
-                }}>
-                  {summaryData.aiSummary}
-                </Paragraph>
-              </div>
-
-              {/* 상세 통계 */}
-              <Row gutter={[16, 16]}>
-                <Col xs={24} sm={12}>
-                  <Title level={5}>📊 보고서 유형별 분포</Title>
+                <h4 className="text-sm font-semibold mb-2">보고서 유형별 분포</h4>
+                <div className="space-y-2">
                   {Object.entries(summaryData.reportsByType).map(([type, count]) => (
-                    <div key={type} style={{ marginBottom: 8 }}>
-                      <Text style={{ color: isDarkMode ? '#fff' : '#000' }}>
-                        {type === 'morning' ? '출근' : type === 'evening' ? '퇴근' : '주간'}: 
-                        <strong style={{ marginLeft: 8 }}>{count}개</strong>
-                      </Text>
+                    <div key={type} className="flex justify-between text-sm border p-2 rounded bg-card">
+                      <span>{type === 'morning' ? '출근' : type === 'evening' ? '퇴근' : '주간'}</span>
+                      <span className="font-bold">{count}개</span>
                     </div>
                   ))}
-                </Col>
-                <Col xs={24} sm={12}>
-                  <Title level={5}>👥 사용자별 작성 현황</Title>
+                </div>
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold mb-2">사용자별 작성 현황</h4>
+                <div className="space-y-2">
                   {Object.entries(summaryData.reportsByUser)
-                    .sort(([,a], [,b]) => b - a)
+                    .sort(([, a], [, b]) => b - a)
                     .slice(0, 5)
                     .map(([user, count]) => (
-                    <div key={user} style={{ marginBottom: 8 }}>
-                      <Text style={{ color: isDarkMode ? '#fff' : '#000' }}>
-                        {user}: <strong>{count}개</strong>
-                      </Text>
-                    </div>
-                  ))}
-                </Col>
-              </Row>
-            </Space>
-          </Card>
-        )}
-
-        {loading && (
-          <div style={{ textAlign: 'center', padding: '20px 0' }}>
-            <Spin size="large" />
-            <div style={{ marginTop: 8 }}>
-              <Text type="secondary" style={{ color: isDarkMode ? '#999' : '#666' }}>분석 중...</Text>
+                      <div key={user} className="flex justify-between text-sm border p-2 rounded bg-card">
+                        <span>{user}</span>
+                        <span className="font-bold">{count}개</span>
+                      </div>
+                    ))}
+                </div>
+              </div>
             </div>
+
           </div>
         )}
-      </Space>
+      </CardContent>
     </Card>
   );
 }

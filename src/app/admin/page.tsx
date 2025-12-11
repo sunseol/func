@@ -2,47 +2,73 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { useTheme } from '@/app/components/ThemeProvider';
-import { 
-  Card, 
-  Spin, 
-  Typography, 
-  Button, 
-  Space, 
-  Layout, 
-  Switch, 
-  Avatar, 
-  Input, 
-  Select, 
-  DatePicker, 
-  Row, 
-  Col, 
-  Modal, 
-  App as AntApp, 
+import { useTheme } from 'next-themes';
+import {
+  Users,
+  FileText,
+  BarChart,
+  Calendar,
+  Search,
+  Trash2,
+  Eye,
+  ShieldAlert,
+  ShieldCheck,
+  MoreHorizontal
+} from 'lucide-react';
+import { toast } from 'sonner';
+
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
   Table,
-  Tag,
-  Popconfirm,
-  Statistic,
-  Tabs
-} from 'antd';
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Badge } from '@/components/ui/badge';
 import ReportSummary from '@/app/components/ReportSummary';
 import AdminAIAssistant from '@/app/components/AdminAIAssistant';
-import { 
-  DeleteOutlined, 
-  EyeOutlined,
-  BarChartOutlined,
-  TeamOutlined,
-  FileTextOutlined,
-  RobotOutlined
-} from '@ant-design/icons';
-import type { ColumnsType } from 'antd/es/table';
-
-const { Content } = Layout;
-const { Title, Text } = Typography;
-const { Option } = Select;
 
 interface DailyReport {
   id: string;
@@ -76,7 +102,7 @@ interface AdminStats {
 
 export default function AdminPage() {
   const { user, loading: authLoading } = useAuth();
-  const { isDarkMode, setIsDarkMode } = useTheme();
+  const { theme } = useTheme();
   const router = useRouter();
   const [reports, setReports] = useState<DailyReport[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -92,175 +118,95 @@ export default function AdminPage() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
-  const [filterDate, setFilterDate] = useState<string | null>(null);
   const [selectedReport, setSelectedReport] = useState<DailyReport | null>(null);
   const [isReportModalVisible, setIsReportModalVisible] = useState(false);
   const [activeTab, setActiveTab] = useState('ai-summary');
 
-  const { message: messageApi } = AntApp.useApp();
-
-  // 관리자 권한 확인 (최고 관리자 이메일만)
+  // Admin Check
   const isAdmin = user?.email === 'jakeseol99@keduall.com';
-  
-  // 디버깅용 - 사용자 정보 출력
-  useEffect(() => {
-    if (user) {
-      console.log('현재 사용자 정보:', {
-        email: user.email,
-        user_metadata: user.user_metadata,
-        isAdmin: isAdmin
-      });
-    }
-  }, [user, isAdmin]);
 
   const fetchData = useCallback(async () => {
-    if (!user || !isAdmin) {
-      console.log('fetchData 중단: user 또는 isAdmin 조건 불만족', { user: !!user, isAdmin });
-      return;
-    }
-    
-    console.log('관리자 데이터 로딩 시작...');
+    if (!user || !isAdmin) return;
+
     setLoading(true);
     setError(null);
-    
+
     try {
-      console.log('1. 보고서 데이터 조회 시작...');
-      // 모든 보고서 가져오기
+      // 1. Fetch Reports
       const { data: reportsData, error: reportsError } = await supabase
         .from('daily_reports')
-        .select<'*', DailyReport>('*')
+        .select('*')
         .order('created_at', { ascending: false });
-      
-      if (reportsError) {
-        console.error('보고서 조회 오류:', reportsError);
-        throw new Error(`보고서 조회 실패: ${reportsError.message}`);
-      }
-      
-      console.log('보고서 데이터 조회 성공:', reportsData?.length || 0, '개');
+
+      if (reportsError) throw new Error(reportsError.message);
+
       setReports(reportsData || []);
 
-      // 사용자 통계 계산
+      // Stats
       const today = new Date().toISOString().split('T')[0];
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      
-      const reportsToday = reportsData?.filter(r => r.report_date === today).length || 0;
-      const reportsThisWeek = reportsData?.filter(r => r.report_date >= weekAgo).length || 0;
 
-      console.log('2. 사용자 프로필 데이터 조회 시작...');
-      
-      // 먼저 user_profiles 테이블 시도
+      const reportsToday = reportsData?.filter((r: any) => r.report_date === today).length || 0;
+      const reportsThisWeek = reportsData?.filter((r: any) => r.report_date >= weekAgo).length || 0;
+
+      // 2. Fetch Users (Try table first, fallback to extraction)
       let profilesData = null;
-      let profilesError = null;
-      
       try {
         const result = await supabase
           .from('user_profiles')
           .select('*')
           .order('created_at', { ascending: false });
-        
         profilesData = result.data;
-        profilesError = result.error;
       } catch (err) {
-        console.log('user_profiles 테이블 접근 실패, 대체 방법 사용');
-        profilesError = err;
+        console.log('user_profiles fallback');
       }
 
-      if (profilesError || !profilesData) {
-        console.error('사용자 프로필 조회 오류:', profilesError);
-        console.log('보고서 데이터에서 사용자 정보를 추출합니다.');
-        
-        // 보고서 데이터에서 사용자 정보 추출
+      if (profilesData) {
+        setUsers(profilesData);
+        setStats({
+          totalUsers: profilesData.length,
+          totalReports: reportsData?.length || 0,
+          reportsToday,
+          reportsThisWeek
+        });
+      } else {
+        // Fallback: extract from reports + current user
         const uniqueUsers = new Map();
-        
-        // 보고서에서 사용자 정보 추출
-        reportsData?.forEach(report => {
+        reportsData?.forEach((report: any) => {
           if (!uniqueUsers.has(report.user_id)) {
             uniqueUsers.set(report.user_id, {
               id: report.user_id,
-              email: 'Unknown', // 보고서에서는 이메일 정보가 없음
-              user_metadata: { 
-                full_name: report.user_name_snapshot,
-                role: 'user' // 기본값
-              },
-              created_at: report.created_at,
-              last_sign_in_at: null
+              email: 'Unknown',
+              user_metadata: { full_name: report.user_name_snapshot, role: 'user' },
+              created_at: report.created_at
             });
           }
         });
-        
-        // 현재 로그인한 사용자 추가 (관리자)
         if (user && !uniqueUsers.has(user.id)) {
           uniqueUsers.set(user.id, {
             id: user.id,
             email: user.email || 'Unknown',
             user_metadata: {
-              full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Unknown',
+              full_name: user.user_metadata?.full_name || 'Unknown',
               role: user.email === 'jakeseol99@keduall.com' ? 'admin' : 'user'
             },
-            created_at: user.created_at,
-            last_sign_in_at: user.last_sign_in_at
+            created_at: user.created_at
           });
         }
-        
-        const extractedUsers = Array.from(uniqueUsers.values());
-        setUsers(extractedUsers);
-        
-        // 통계 업데이트
+        const extracted = Array.from(uniqueUsers.values()) as UserProfile[];
+        setUsers(extracted);
         setStats({
-          totalUsers: extractedUsers.length,
-          totalReports: reportsData?.length || 0,
-          reportsToday,
-          reportsThisWeek
-        });
-        
-        console.log('보고서에서 추출한 사용자 수:', extractedUsers.length);
-      } else {
-        console.log('사용자 프로필 데이터 조회 성공:', profilesData?.length || 0, '개');
-        
-        // user_profiles 데이터를 UserProfile 형식으로 변환
-        const formattedUsers = profilesData.map(profile => ({
-          id: profile.id,
-          email: profile.email,
-          user_metadata: { 
-            full_name: profile.full_name,
-            role: profile.role 
-          },
-          created_at: profile.created_at,
-          last_sign_in_at: undefined // user_profiles 테이블에는 없는 정보
-        }));
-        setUsers(formattedUsers);
-        
-        // 통계 업데이트 (실제 사용자 수 사용)
-        setStats({
-          totalUsers: profilesData?.length || 1,
+          totalUsers: extracted.length,
           totalReports: reportsData?.length || 0,
           reportsToday,
           reportsThisWeek
         });
       }
-      
-      console.log('관리자 데이터 로딩 완료');
 
-    } catch (err: unknown) {
-      console.error('관리자 데이터 로딩 중 상세 오류:', err);
-      
-      let errorMessage = '데이터를 불러오는 중 오류가 발생했습니다.';
-      
-      if (err instanceof Error) {
-        errorMessage = `오류: ${err.message}`;
-        console.error('Error 객체:', {
-          name: err.name,
-          message: err.message,
-          stack: err.stack
-        });
-      } else if (typeof err === 'string') {
-        errorMessage = err;
-      } else if (err && typeof err === 'object') {
-        console.error('오류 객체 상세:', JSON.stringify(err, null, 2));
-        errorMessage = `오류: ${JSON.stringify(err)}`;
-      }
-      
-      setError(errorMessage);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || '데이터 로딩 실패');
+      toast.error('데이터를 불러오지 못했습니다.');
     } finally {
       setLoading(false);
     }
@@ -271,13 +217,12 @@ export default function AdminPage() {
       router.push('/login');
       return;
     }
-    
     if (!authLoading && user && !isAdmin) {
-      messageApi.error('관리자 권한이 필요합니다.');
+      toast.error('관리자 권한이 필요합니다.');
       router.push('/');
       return;
     }
-  }, [user, authLoading, isAdmin, router, messageApi]);
+  }, [user, authLoading, isAdmin, router]);
 
   useEffect(() => {
     if (user && isAdmin) {
@@ -287,468 +232,287 @@ export default function AdminPage() {
 
   const handleDeleteReport = async (reportId: string) => {
     try {
-      const { error: deleteError } = await supabase
-        .from('daily_reports')
-        .delete()
-        .eq('id', reportId);
-
-      if (deleteError) throw deleteError;
-
-      setReports(prevReports => prevReports.filter(report => report.id !== reportId));
-      messageApi.success('보고서가 성공적으로 삭제되었습니다.');
-    } catch (err: unknown) {
-      let errorMessage = '보고서 삭제 중 오류가 발생했습니다.';
-      if (err instanceof Error) {
-        errorMessage = err.message;
-      }
-      console.error('보고서 삭제 오류:', err);
-      messageApi.error(errorMessage);
+      const { error } = await supabase.from('daily_reports').delete().eq('id', reportId);
+      if (error) throw error;
+      setReports(prev => prev.filter(r => r.id !== reportId));
+      toast.success('보고서가 삭제되었습니다.');
+    } catch (err) {
+      console.error(err);
+      toast.error('삭제 실패');
     }
-  };
-
-  const showReportDetail = (report: DailyReport) => {
-    setSelectedReport(report);
-    setIsReportModalVisible(true);
   };
 
   const handleUpdateUserRole = async (userId: string, role: string) => {
     try {
-      // user_profiles 테이블에서 직접 role 업데이트
       const { error } = await supabase
         .from('user_profiles')
-        .update({ 
-          role: role === 'admin' ? 'admin' : 'user',
-          updated_at: new Date().toISOString()
-        })
+        .update({ role, updated_at: new Date().toISOString() })
         .eq('id', userId);
 
       if (error) throw error;
-
-      // 사용자 목록 새로고침
       await fetchData();
-      messageApi.success(`사용자 권한이 ${role === 'admin' ? '관리자로' : '일반 사용자로'} 변경되었습니다.`);
-    } catch (err: unknown) {
-      let errorMessage = '사용자 권한 변경 중 오류가 발생했습니다.';
-      if (err instanceof Error) {
-        errorMessage = err.message;
-      }
-      console.error('사용자 권한 변경 오류:', err);
-      messageApi.error(errorMessage);
+      toast.success(`사용자 권한이 ${role === 'admin' ? '관리자로' : '사용자로'} 변경되었습니다.`);
+    } catch (err) {
+      console.error(err);
+      toast.error('권한 변경 실패');
     }
   };
 
-  const UserManagementTab = () => {
-    const userColumns: ColumnsType<UserProfile> = [
-      {
-        title: '이메일',
-        dataIndex: 'email',
-        key: 'email',
-        width: 250,
-      },
-      {
-        title: '이름',
-        key: 'full_name',
-        render: (_, record) => (
-          <Text style={{ color: isDarkMode ? '#fff' : '#000' }}>
-            {record.user_metadata?.full_name || '-'}
-          </Text>
-        ),
-        width: 150,
-      },
-      {
-        title: '권한',
-        key: 'role',
-        render: (_, record) => {
-          const isUserAdmin = record.email === 'jakeseol99@keduall.com' || record.user_metadata?.role === 'admin';
-          return (
-            <Tag color={isUserAdmin ? 'red' : 'blue'}>
-              {isUserAdmin ? '관리자' : '일반 사용자'}
-            </Tag>
-          );
-        },
-        width: 120,
-      },
-      {
-        title: '가입일',
-        dataIndex: 'created_at',
-        key: 'created_at',
-        render: (date: string) => new Date(date).toLocaleDateString('ko-KR'),
-        width: 120,
-      },
-      {
-        title: '최근 로그인',
-        dataIndex: 'last_sign_in_at',
-        key: 'last_sign_in_at',
-        render: (date: string | null) => date ? new Date(date).toLocaleDateString('ko-KR') : '-',
-        width: 120,
-      },
-      {
-        title: '작업',
-        key: 'actions',
-        render: (_, record) => {
-          const isUserAdmin = record.email === 'jakeseol99@keduall.com' || record.user_metadata?.role === 'admin';
-          const isSuperAdmin = record.email === 'jakeseol99@keduall.com';
-          
-          return (
-            <Space>
-              {!isSuperAdmin && (
-                <Button
-                  type={isUserAdmin ? 'default' : 'primary'}
-                  size="small"
-                  onClick={() => handleUpdateUserRole(record.id, isUserAdmin ? 'user' : 'admin')}
-                >
-                  {isUserAdmin ? '관리자 해제' : '관리자 지정'}
-                </Button>
-              )}
-              {isSuperAdmin && (
-                <Tag color="gold">최고 관리자</Tag>
-              )}
-            </Space>
-          );
-        },
-        width: 150,
-      },
-    ];
-
-    return (
-      <div>
-        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-          <Col span={24}>
-            <Text type="secondary" style={{ color: isDarkMode ? '#999' : '#666' }}>
-              총 {users.length}명의 사용자가 등록되어 있습니다.
-            </Text>
-          </Col>
-        </Row>
-        
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '50px 0' }}>
-            <Spin size="large" />
-          </div>
-        ) : error ? (
-          <div style={{ textAlign: 'center', color: 'red' }}>{error}</div>
-        ) : (
-          <Table
-            columns={userColumns}
-            dataSource={users}
-            rowKey="id"
-            pagination={{
-              pageSize: 20,
-              showSizeChanger: true,
-              showQuickJumper: true,
-              showTotal: (total, range) => `${range[0]}-${range[1]} / 총 ${total}명`,
-            }}
-            scroll={{ x: 800 }}
-          />
-        )}
-      </div>
-    );
-  };
-
   const filteredReports = reports.filter(report => {
-    const searchTermMatch = report.report_content.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          report.user_name_snapshot.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          report.report_date.includes(searchTerm);
-    
-    const typeMatch = filterType === 'all' || report.report_type === filterType;
-    const dateMatch = !filterDate || report.report_date === filterDate;
-
-    return searchTermMatch && typeMatch && dateMatch;
+    const matchTerm = report.report_content.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      report.user_name_snapshot.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      report.report_date.includes(searchTerm);
+    const matchType = filterType === 'all' || report.report_type === filterType;
+    return matchTerm && matchType;
   });
 
-  const columns: ColumnsType<DailyReport> = [
-    {
-      title: '날짜',
-      dataIndex: 'report_date',
-      key: 'report_date',
-      sorter: (a, b) => a.report_date.localeCompare(b.report_date),
-      width: 120,
-    },
-    {
-      title: '작성자',
-      dataIndex: 'user_name_snapshot',
-      key: 'user_name_snapshot',
-      width: 120,
-    },
-    {
-      title: '종류',
-      dataIndex: 'report_type',
-      key: 'report_type',
-      render: (type: string) => (
-        <Tag color={type === 'morning' ? 'blue' : type === 'evening' ? 'orange' : 'green'}>
-          {type === 'morning' ? '출근' : type === 'evening' ? '퇴근' : '주간'}
-        </Tag>
-      ),
-      width: 80,
-    },
-    {
-      title: '내용 미리보기',
-      dataIndex: 'report_content',
-      key: 'report_content',
-      render: (content: string) => (
-        <Text 
-          ellipsis={{ tooltip: true }} 
-          style={{ 
-            maxWidth: 300,
-            color: isDarkMode ? '#fff' : '#000'
-          }}
-        >
-          {content.substring(0, 100)}...
-        </Text>
-      ),
-    },
-    {
-      title: '작성일시',
-      dataIndex: 'created_at',
-      key: 'created_at',
-      render: (date: string) => new Date(date).toLocaleString('ko-KR'),
-      width: 150,
-    },
-    {
-      title: '작업',
-      key: 'actions',
-      render: (_, record) => (
-        <Space>
-          <Button
-            type="text"
-            icon={<EyeOutlined />}
-            onClick={() => showReportDetail(record)}
-          />
-          <Popconfirm
-            title="이 보고서를 삭제하시겠습니까?"
-            onConfirm={() => handleDeleteReport(record.id)}
-            okText="삭제"
-            cancelText="취소"
-          >
-            <Button type="text" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
-      width: 100,
-    },
-  ];
-
   if (authLoading || (loading && !reports.length && !error)) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 200px)', textAlign: 'center' }}>
-        <Spin size="large">
-          <div style={{ padding: '50px', border: '1px solid transparent' }} />
-        </Spin>
-      </div>
-    );
+    return <div className="flex h-screen items-center justify-center">로딩 중...</div>;
   }
 
-  // 전역 헤더를 사용하므로 로컬 헤더는 제거
-
   return (
-    <Layout style={{ minHeight: '100vh', backgroundColor: isDarkMode ? '#001529' : '#f0f2f5' }}>
-      <Content className="px-3 sm:px-6 md:px-12 py-6" style={{ transition: 'background-color 0.3s' }}>
-        <div className="rounded-lg"
-          style={{
-            background: isDarkMode ? '#1f1f1f' : '#fff',
-            padding: 12,
-            borderRadius: 8,
-            transition: 'background-color 0.3s',
-            border: isDarkMode ? '1px solid #434343' : '1px solid #d9d9d9'
-          }}
-        >
-          <Space direction="vertical" size="large" style={{ width: '100%' }}>
-            <Title level={2} style={{color: isDarkMode ? 'white' : 'black'}}>관리자 대시보드</Title>
-            
-            {/* 통계 카드 */}
-            <Row gutter={[16, 16]}>
-              <Col xs={24} sm={12} md={6}>
-                <Card>
-                  <Statistic
-                    title="총 사용자"
-                    value={stats.totalUsers}
-                    prefix={<TeamOutlined />}
-                    valueStyle={{ color: '#3f8600' }}
-                  />
-                </Card>
-              </Col>
-              <Col xs={24} sm={12} md={6}>
-                <Card>
-                  <Statistic
-                    title="총 보고서"
-                    value={stats.totalReports}
-                    prefix={<FileTextOutlined />}
-                    valueStyle={{ color: '#1890ff' }}
-                  />
-                </Card>
-              </Col>
-              <Col xs={24} sm={12} md={6}>
-                <Card>
-                  <Statistic
-                    title="오늘 보고서"
-                    value={stats.reportsToday}
-                    prefix={<BarChartOutlined />}
-                    valueStyle={{ color: '#cf1322' }}
-                  />
-                </Card>
-              </Col>
-              <Col xs={24} sm={12} md={6}>
-                <Card>
-                  <Statistic
-                    title="이번 주 보고서"
-                    value={stats.reportsThisWeek}
-                    prefix={<BarChartOutlined />}
-                    valueStyle={{ color: '#722ed1' }}
-                  />
-                </Card>
-              </Col>
-            </Row>
+    <div className="min-h-screen bg-muted/40 p-4 md:p-8 pt-6">
+      <div className="max-w-7xl mx-auto space-y-8">
 
-            {/* 탭 메뉴 */}
-            <Tabs 
-              activeKey={activeTab} 
-              onChange={setActiveTab}
-              items={[
-                {
-                  key: 'ai-summary',
-                  label: (
-                    <Space>
-                      <RobotOutlined />
-                      AI 분석
-                    </Space>
-                  ),
-                  children: (
-                    <Row gutter={[24, 24]} align="stretch">
-                      <Col xs={24} lg={14}>
-                        <ReportSummary />
-                      </Col>
-                      <Col xs={24} lg={10} style={{ display: 'flex' }}>
-                        <AdminAIAssistant style={{ width: '100%' }} />
-                      </Col>
-                    </Row>
-                  )
-                },
-                {
-                  key: 'reports',
-                  label: (
-                    <Space>
-                      <FileTextOutlined />
-                      보고서 관리
-                    </Space>
-                  ),
-                  children: (
-                    <>
-                      {/* 필터 */}
-                      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-                        <Col xs={24} sm={12} md={8}>
-                          <Input
-                            placeholder="작성자, 내용 또는 날짜로 검색"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            allowClear
-                          />
-                        </Col>
-                        <Col xs={24} sm={12} md={6}>
-                          <Select
-                            value={filterType}
-                            onChange={setFilterType}
-                            style={{ width: '100%' }}
-                          >
-                            <Option value="all">모든 종류</Option>
-                            <Option value="morning">출근 보고서</Option>
-                            <Option value="evening">퇴근 보고서</Option>
-                            <Option value="weekly">주간 보고서</Option>
-                          </Select>
-                        </Col>
-                        <Col xs={24} sm={12} md={6}>
-                          <DatePicker
-                            onChange={(_date, dateString) => setFilterDate(typeof dateString === 'string' ? dateString : null)}
-                            style={{ width: '100%' }}
-                            placeholder="날짜 선택"
-                          />
-                        </Col>
-                      </Row>
-
-                      {/* 보고서 테이블 */}
-                      {loading ? (
-                         <div style={{ textAlign: 'center', padding: '50px 0' }}>
-                           <Spin size="large" />
-                         </div>
-                      ) : error ? (
-                        <div style={{ textAlign: 'center', color: 'red' }}>{error}</div>
-                      ) : (
-                        <Table
-                          columns={columns}
-                          dataSource={filteredReports}
-                          rowKey="id"
-                          pagination={{
-                            pageSize: 20,
-                            showSizeChanger: true,
-                            showQuickJumper: true,
-                            showTotal: (total, range) => `${range[0]}-${range[1]} / 총 ${total}개`,
-                          }}
-                          scroll={{ x: 800 }}
-                        />
-                      )}
-                    </>
-                  )
-                },
-                {
-                  key: 'users',
-                  label: (
-                    <Space>
-                      <TeamOutlined />
-                      사용자 관리
-                    </Space>
-                  ),
-                  children: <UserManagementTab />
-                }
-              ]}
-            />
-          </Space>
-        </div>
-      </Content>
-
-      {/* 보고서 상세 모달 */}
-      <Modal
-        title={`보고서 상세 - ${selectedReport?.report_date} (${selectedReport?.user_name_snapshot})`}
-        open={isReportModalVisible}
-        onCancel={() => setIsReportModalVisible(false)}
-        footer={[
-          <Button key="close" onClick={() => setIsReportModalVisible(false)}>
-            닫기
-          </Button>
-        ]}
-        width={800}
-      >
-        {selectedReport && (
+        <div className="flex items-center justify-between">
           <div>
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-              <div>
-                <Text strong style={{ color: isDarkMode ? '#fff' : '#000' }}>종류: </Text>
-                <Tag color={selectedReport.report_type === 'morning' ? 'blue' : selectedReport.report_type === 'evening' ? 'orange' : 'green'}>
-                  {selectedReport.report_type === 'morning' ? '출근 보고서' : selectedReport.report_type === 'evening' ? '퇴근 보고서' : '주간 보고서'}
-                </Tag>
-              </div>
-              <div>
-                <Text strong style={{ color: isDarkMode ? '#fff' : '#000' }}>작성일시: </Text>
-                <Text style={{ color: isDarkMode ? '#fff' : '#000' }}>
-                  {new Date(selectedReport.created_at).toLocaleString('ko-KR')}
-                </Text>
-              </div>
-              <div>
-                <Text strong style={{ color: isDarkMode ? '#fff' : '#000' }}>내용:</Text>
-                <div style={{ 
-                  marginTop: 8, 
-                  padding: 16, 
-                  border: '1px solid #d9d9d9', 
-                  borderRadius: 6,
-                  backgroundColor: isDarkMode ? '#1f1f1f' : '#fafafa',
-                  whiteSpace: 'pre-wrap',
-                  maxHeight: 400,
-                  overflow: 'auto'
-                }}>
-                  {selectedReport.report_content}
-                </div>
-              </div>
-            </Space>
+            <h2 className="text-3xl font-bold tracking-tight">관리자 대시보드</h2>
+            <p className="text-muted-foreground">시스템 현황 및 보고서 관리</p>
           </div>
-        )}
-      </Modal>
-    </Layout>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={fetchData}>새로고침</Button>
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">총 사용자</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.totalUsers}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">총 보고서</CardTitle>
+              <FileText className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.totalReports}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">오늘 보고서</CardTitle>
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.reportsToday}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">이번 주 보고서</CardTitle>
+              <BarChart className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.reportsThisWeek}</div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Tabs defaultValue="ai-summary" className="space-y-4" onValueChange={setActiveTab}>
+          <TabsList>
+            <TabsTrigger value="ai-summary">AI 분석</TabsTrigger>
+            <TabsTrigger value="reports">보고서 관리</TabsTrigger>
+            <TabsTrigger value="users">사용자 관리</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="ai-summary" className="space-y-4">
+            <div className="grid lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
+                <ReportSummary />
+              </div>
+              <div className="lg:col-span-1">
+                <AdminAIAssistant className="h-[600px]" />
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="reports">
+            <Card>
+              <CardHeader>
+                <CardTitle>보고서 목록</CardTitle>
+                <CardDescription>전체 사용자의 업무 보고서를 조회하고 관리합니다.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col md:flex-row gap-4 mb-6">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="검색어 입력..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-8"
+                    />
+                  </div>
+                  <div className="w-full md:w-[200px]">
+                    <Select value={filterType} onValueChange={setFilterType}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="유형 선택" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">전체</SelectItem>
+                        <SelectItem value="morning">출근</SelectItem>
+                        <SelectItem value="evening">퇴근</SelectItem>
+                        <SelectItem value="weekly">주간</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>날짜</TableHead>
+                        <TableHead>사용자</TableHead>
+                        <TableHead>유형</TableHead>
+                        <TableHead className="w-[400px]">내용 요약</TableHead>
+                        <TableHead className="text-right">작업</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredReports.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center py-8">
+                            보고서가 없습니다.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredReports.map((report) => (
+                          <TableRow key={report.id}>
+                            <TableCell>{report.report_date}</TableCell>
+                            <TableCell className="font-medium">{report.user_name_snapshot}</TableCell>
+                            <TableCell>
+                              <Badge variant={report.report_type === 'morning' ? 'default' : report.report_type === 'evening' ? 'secondary' : 'outline'}>
+                                {report.report_type === 'morning' ? '출근' : report.report_type === 'evening' ? '퇴근' : '주간'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="max-w-[400px] truncate text-muted-foreground">
+                              {report.report_content}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-2">
+                                <Button variant="ghost" size="icon" onClick={() => { setSelectedReport(report); setIsReportModalVisible(true); }}>
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleDeleteReport(report.id)}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="users">
+            <Card>
+              <CardHeader>
+                <CardTitle>사용자 목록</CardTitle>
+                <CardDescription>시스템 사용자 및 권한 현황입니다.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>이름</TableHead>
+                        <TableHead>이메일</TableHead>
+                        <TableHead>권한</TableHead>
+                        <TableHead>가입일</TableHead>
+                        <TableHead className="text-right">관리</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {users.map((u) => (
+                        <TableRow key={u.id}>
+                          <TableCell className="font-medium">{u.user_metadata?.full_name || '-'}</TableCell>
+                          <TableCell>{u.email}</TableCell>
+                          <TableCell>
+                            {u.user_metadata?.role === 'admin' || u.email === 'jakeseol99@keduall.com' ? (
+                              <Badge variant="destructive" className="gap-1">
+                                <ShieldAlert className="h-3 w-3" /> 관리자
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="gap-1">
+                                <ShieldCheck className="h-3 w-3" /> 사용자
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>{new Date(u.created_at).toLocaleDateString()}</TableCell>
+                          <TableCell className="text-right">
+                            {u.email !== 'jakeseol99@keduall.com' && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuLabel>권한 설정</DropdownMenuLabel>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => handleUpdateUserRole(u.id, 'admin')}>
+                                    관리자로 변경
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleUpdateUserRole(u.id, 'user')}>
+                                    사용자로 변경
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      {/* Report Detail Modal */}
+      <Dialog open={isReportModalVisible} onOpenChange={setIsReportModalVisible}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>보고서 상세</DialogTitle>
+            <DialogDescription>
+              {selectedReport?.report_date} - {selectedReport?.user_name_snapshot}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex gap-4 text-sm">
+              <div className="font-bold">유형: {selectedReport?.report_type}</div>
+              <div className="text-muted-foreground">작성일: {selectedReport?.created_at && new Date(selectedReport.created_at).toLocaleString()}</div>
+            </div>
+            <div className="bg-muted p-4 rounded-md whitespace-pre-wrap leading-relaxed">
+              {selectedReport?.report_content}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setIsReportModalVisible(false)}>닫기</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

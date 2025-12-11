@@ -1,159 +1,100 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
-@font-face {
-  font-family: 'NotoSansKR';
-  src: url('/fonts/NotoSansKR-Regular.ttf') format('truetype');
-  font-weight: normal;
-  font-style: normal;
-}
+@plugin 'tailwindcss-animate';
 
+@custom-variant dark (&:is(.dark *));
 
-/* :root 변수는 유지해도 괜찮지만, 클래스 기반 다크모드에서는
-   Tailwind의 색상 팔레트를 직접 사용하는 것이 일반적입니다. */
-/*
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: 0 0% 100%;
+  --foreground: 222.2 84% 4.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 222.2 84% 4.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222.2 84% 4.9%;
+  --primary: 222.2 47.4% 11.2%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 210 40% 96.1%;
+  --secondary-foreground: 222.2 47.4% 11.2%;
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --accent: 210 40% 96.1%;
+  --accent-foreground: 222.2 47.4% 11.2%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
+  --ring: 222.2 84% 4.9%;
+  --radius: 0.5rem;
+  --chart-1: 12 76% 61%;
+  --chart-2: 173 58% 39%;
+  --chart-3: 197 37% 24%;
+  --chart-4: 43 74% 66%;
+  --chart-5: 27 87% 67%;
 }
-*/
 
-/* @theme inline 블록 주석 처리 */
-/*
+.dark {
+  --background: 222.2 84% 4.9%;
+  --foreground: 210 40% 98%;
+  --card: 222.2 84% 4.9%;
+  --card-foreground: 210 40% 98%;
+  --popover: 222.2 84% 4.9%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 210 40% 98%;
+  --primary-foreground: 222.2 47.4% 11.2%;
+  --secondary: 217.2 32.6% 17.5%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 217.2 32.6% 17.5%;
+  --muted-foreground: 215 20.2% 65.1%;
+  --accent: 217.2 32.6% 17.5%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 217.2 32.6% 17.5%;
+  --input: 217.2 32.6% 17.5%;
+  --ring: 212.7 26.8% 83.9%;
+  --chart-1: 220 70% 50%;
+  --chart-2: 160 60% 45%;
+  --chart-3: 30 80% 55%;
+  --chart-4: 280 65% 60%;
+  --chart-5: 340 75% 55%;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 }
-*/
 
-/* prefers-color-scheme 기반 다크모드 주석 처리 */
-/*
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
   }
-}
-*/
-
-/* 강제 다크 배경/텍스트 (우선순위 확보) */
-html.dark body {
-  background-color: #0a0a0a !important;
-  color: #e5e7eb !important; /* gray-200 */
-}
-
-/* 다크 모드 강제 유틸리티 보정 (미전환 요소 대비) */
-html.dark .bg-white { background-color: #171717 !important; }
-html.dark .bg-gray-50 { background-color: #0f0f0f !important; }
-html.dark .border-gray-200 { border-color: #2f2f2f !important; }
-html.dark .text-gray-900 { color: #f5f5f5 !important; }
-html.dark .text-gray-600 { color: #d1d5db !important; }
-html.dark .ant-app { background-color: transparent !important; }
-html.dark #__next { background-color: transparent !important; }
-
-body {
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-/* Tailwind 기본 레이어 추가 (필요할 수 있음) */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* Markdown 뷰어 가독성 (다크/라이트) */
-.markdown-content {
-  color: #111827; /* gray-900 */
-}
-.markdown-content pre,
-.markdown-content code {
-  background-color: #f6f8fa;
-  color: #111827;
-}
-.dark .markdown-content {
-  color: #e5e7eb; /* gray-200 */
-}
-.dark .markdown-content pre,
-.dark .markdown-content code {
-  background-color: #0b1220; /* near to neutral-950 */
-  color: #e5e7eb;
-}
-.dark .markdown-content a { color: #93c5fd; }
-.markdown-content a { color: #2563eb; }
-
-/* Mobile compact spacing for Ant Design Cards (global) */
-@media (max-width: 640px) {
-  .ant-card .ant-card-head {
-    padding: 0 12px !important;
-    min-height: 42px;
+  body {
+    @apply bg-background text-foreground;
   }
-  .ant-card .ant-card-head-title {
-    padding: 10px 0 !important;
-  }
-  .ant-card .ant-card-extra {
-    padding: 10px 0 !important;
-  }
-  .ant-card .ant-card-body {
-    padding: 12px !important;
-  }
-  .ant-card-small .ant-card-body {
-    padding: 10px !important;
-  }
-}
-
-/* MDEditor 스타일 */
-.w-md-editor {
-  background-color: transparent !important;
-}
-
-.w-md-editor-text-pre, 
-.w-md-editor-text-input, 
-.w-md-editor-text {
-  font-size: 14px !important;
-  line-height: 1.6 !important;
-}
-
-.w-md-editor.w-md-editor-focus {
-  border-color: #1890ff !important;
-}
-
-/* 다크 모드에서 MDEditor 스타일 */
-[data-color-mode="dark"] .w-md-editor {
-  background-color: #1f1f1f !important;
-  border-color: #434343 !important;
-}
-
-[data-color-mode="dark"] .w-md-editor-text-pre,
-[data-color-mode="dark"] .w-md-editor-text-input {
-  color: #ffffff !important;
-  background-color: #1f1f1f !important;
-}
-
-[data-color-mode="dark"] .w-md-editor-preview {
-  background-color: #1f1f1f !important;
-  color: #ffffff !important;
-}
-
-/* 라이트 모드에서 MDEditor 스타일 */
-[data-color-mode="light"] .w-md-editor {
-  background-color: #ffffff !important;
-  border-color: #d9d9d9 !important;
-}
-
-[data-color-mode="light"] .w-md-editor-text-pre,
-[data-color-mode="light"] .w-md-editor-text-input {
-  color: #000000 !important;
-  background-color: #ffffff !important;
-}
-
-[data-color-mode="light"] .w-md-editor-preview {
-  background-color: #ffffff !important;
-  color: #000000 !important;
-}
-
-/* 모바일에서 input 클릭 시 자동 확대 방지 (iOS Safari) */
-input,
-textarea,
-select {
-  font-size: 16px !important;
 }
