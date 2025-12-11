@@ -1,7 +1,7 @@
 import Groq from 'groq-sdk';
 import { validateAiPmPrompt, logSecurityEvent } from '@/lib/security/promptInjection';
 
-const groq = new Groq({
+const getGroqClient = () => new Groq({
   apiKey: process.env.NEXT_PUBLIC_GROQ_API_KEY,
 });
 
@@ -35,7 +35,7 @@ export async function summarizeContent(rawContent: string): Promise<string> {
     //   throw new Error('요약 과정에서 보안 위험이 감지되었습니다.');
     // }
 
-    const completion = await groq.chat.completions.create({
+    const completion = await getGroqClient().chat.completions.create({
       messages: [{ role: 'user', content: summarizationPrompt }],
       model: 'meta-llama/llama-4-scout-17b-16e-instruct', // 빠르고 경제적인 모델 사용
       temperature: 0.2, // 창의성보다는 정확성에 초점
@@ -62,7 +62,7 @@ export async function generateReport(summary: string, reportPrompt: string): Pro
   console.log('[AI_SERVICE] Starting report generation from summary...');
   try {
     const fullPrompt = `${reportPrompt}\n${summary}`;
-    
+
     // // 이 단계에서는 프롬프트와 요약된 내용 모두에 대해 보안 검사를 수행합니다.
     // const securityResult = validateAiPmPrompt(fullPrompt, 'report_generation');
     // if (!securityResult.isSecure && securityResult.riskLevel === 'critical') {
@@ -70,7 +70,7 @@ export async function generateReport(summary: string, reportPrompt: string): Pro
     //   throw new Error('리포트 생성 과정에서 보안 위험이 감지되었습니다.');
     // }
 
-    const completion = await groq.chat.completions.create({
+    const completion = await getGroqClient().chat.completions.create({
       messages: [{ role: 'user', content: fullPrompt }],
       model: 'openai/gpt-oss-120b', // 강력한 모델로 HTML 생성
       temperature: 0.3, // 더 일관된 레이아웃을 위해 낮춤
@@ -88,13 +88,13 @@ export async function generateReport(summary: string, reportPrompt: string): Pro
     //     console.warn('AI response security risk detected:', responseSecurityResult);
     //     return responseSecurityResult.sanitizedInput;
     // }
-    
+
     console.log('[AI_SERVICE] Report generation successful.');
     return response;
   } catch (error) {
     console.error('Report Generation Error:', error);
     if (error instanceof Error) {
-        throw new Error(`AI 서비스 오류: ${error.message}`);
+      throw new Error(`AI 서비스 오류: ${error.message}`);
     }
     throw new Error('알 수 없는 AI 서비스 오류가 발생했습니다.');
   }

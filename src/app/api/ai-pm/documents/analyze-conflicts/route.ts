@@ -5,9 +5,7 @@ import Groq from 'groq-sdk';
 
 export const runtime = 'nodejs';
 
-const groq = new Groq({
-  apiKey: process.env.NEXT_PUBLIC_GROQ_API_KEY,
-});
+
 
 interface ConflictAnalysisRequest {
   projectId: string;
@@ -76,21 +74,21 @@ export async function POST(request: NextRequest) {
       console.error('Error fetching official documents:', documentsError);
       return NextResponse.json({ error: 'Failed to fetch project documents' }, { status: 500 });
     }
-    
+
     // Manually fetch user details for document creators
     let documentContext: any[] = [];
     if (officialDocuments && officialDocuments.length > 0) {
-        const userIds = officialDocuments.map(doc => doc.created_by);
-        const { data: profiles } = await supabase.from('user_profiles').select('id, full_name, email').in('id', userIds);
-        const userMap = new Map(profiles?.map(p => [p.id, { name: p.full_name, email: p.email }]));
-        
-        documentContext = officialDocuments.map((doc: any) => ({
-          step: doc.workflow_step,
-          title: doc.title,
-          content: doc.content,
-          version: doc.version,
-          author: userMap.get(doc.created_by)?.name || userMap.get(doc.created_by)?.email || 'Unknown'
-        }));
+      const userIds = officialDocuments.map(doc => doc.created_by);
+      const { data: profiles } = await supabase.from('user_profiles').select('id, full_name, email').in('id', userIds);
+      const userMap = new Map(profiles?.map(p => [p.id, { name: p.full_name, email: p.email }]));
+
+      documentContext = officialDocuments.map((doc: any) => ({
+        step: doc.workflow_step,
+        title: doc.title,
+        content: doc.content,
+        version: doc.version,
+        author: userMap.get(doc.created_by)?.name || userMap.get(doc.created_by)?.email || 'Unknown'
+      }));
     }
 
     const analysisPrompt = `
@@ -117,6 +115,10 @@ ${documentContext.map((doc, index) => `### 문서 ${index + 1} (워크플로우 
 충돌이 없더라도 일관성 향상이나 품질 개선을 위한 제안을 포함해주세요. 한국어로 답변해주세요.`;
 
     try {
+      const groq = new Groq({
+        apiKey: process.env.NEXT_PUBLIC_GROQ_API_KEY,
+      });
+
       const completion = await groq.chat.completions.create({
         messages: [
           { role: 'system', content: '당신은 프로젝트 기획 문서의 충돌을 분석하는 전문가입니다. 주어진 문서들을 분석하고 정확한 JSON 형식으로 결과를 제공합니다.' },
@@ -129,7 +131,7 @@ ${documentContext.map((doc, index) => `### 문서 ${index + 1} (워크플로우 
 
       const aiResponse = completion.choices[0]?.message?.content;
       if (!aiResponse) throw new Error('AI analysis failed');
-      
+
       let analysisResult: ConflictAnalysisResult;
       try {
         const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);

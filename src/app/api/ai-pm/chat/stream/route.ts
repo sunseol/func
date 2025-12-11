@@ -5,15 +5,13 @@ import { SendMessageRequest, AIpmErrorType, isValidWorkflowStep } from '@/types/
 import { getConversationManager } from '@/lib/ai-pm/conversation-manager';
 import Groq from 'groq-sdk';
 
-const groq = new Groq({
-  apiKey: process.env.NEXT_PUBLIC_GROQ_API_KEY,
-});
+
 
 export async function POST(request: NextRequest) {
   try {
     const cookieStore = cookies();
     const supabase = await createClient();
-    
+
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
@@ -73,13 +71,13 @@ export async function POST(request: NextRequest) {
       .eq('id', projectId)
       .single();
 
-    const projectContext = project 
+    const projectContext = project
       ? `프로젝트명: ${project.name}\n프로젝트 설명: ${project.description || '없음'}`
       : undefined;
 
     // 워크플로우 단계별 프롬프트 생성
     const systemPrompt = generateSystemPrompt(workflow_step, projectContext);
-    
+
     // Prepare conversation history for GROQ
     const conversationHistory = messages.slice(-10).map(msg => ({
       role: msg.role,
@@ -89,10 +87,14 @@ export async function POST(request: NextRequest) {
     // GROQ API를 사용한 스트리밍 응답
     const encoder = new TextEncoder();
     let accumulatedResponse = '';
-    
+
     const stream = new ReadableStream({
       async start(controller) {
         try {
+          const groq = new Groq({
+            apiKey: process.env.NEXT_PUBLIC_GROQ_API_KEY,
+          });
+
           const completion = await groq.chat.completions.create({
             messages: [
               { role: 'system', content: systemPrompt },
@@ -146,19 +148,19 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Chat stream error:', error);
-    
+
     const typedError = error as any;
     if (typedError.error && typedError.message) {
       const statusCode = typedError.error === AIpmErrorType.UNAUTHORIZED ? 401 :
-                        typedError.error === AIpmErrorType.FORBIDDEN ? 403 :
-                        typedError.error === AIpmErrorType.RATE_LIMITED ? 429 :
-                        500;
+        typedError.error === AIpmErrorType.FORBIDDEN ? 403 :
+          typedError.error === AIpmErrorType.RATE_LIMITED ? 429 :
+            500;
       return NextResponse.json(error, { status: statusCode });
     }
 
     return NextResponse.json(
-      { 
-        error: AIpmErrorType.INTERNAL_ERROR, 
+      {
+        error: AIpmErrorType.INTERNAL_ERROR,
         message: '서버 오류가 발생했습니다.',
         details: process.env.NODE_ENV === 'development' ? (error as Error).message : undefined
       },
@@ -168,7 +170,7 @@ export async function POST(request: NextRequest) {
 }
 
 function generateSystemPrompt(workflowStep: number, projectContext?: string): string {
-    const stepPrompts: Record<number, string> = {
+  const stepPrompts: Record<number, string> = {
     1: `당신은 플랫폼 기획 전문가입니다. 현재 1단계 '컨셉 정의' 단계에서 작업 중입니다.
 
 주요 역할:
@@ -288,10 +290,10 @@ function generateSystemPrompt(workflowStep: number, projectContext?: string): st
   };
 
   const basePrompt = stepPrompts[workflowStep] || stepPrompts[1];
-  
+
   if (projectContext) {
     return `${basePrompt}\n\n프로젝트 정보:\n${projectContext}\n\n위 프로젝트 정보를 참고하여 구체적이고 맞춤형 조언을 제공해주세요.`;
   }
-  
+
   return basePrompt;
 }
