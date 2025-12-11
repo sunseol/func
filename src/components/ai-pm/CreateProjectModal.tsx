@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { CloseOutlined } from '@ant-design/icons';
+import { X } from 'lucide-react';
 import { CreateProjectRequest } from '@/types/ai-pm';
 import { KeyboardAwareForm } from '@/components/ui/KeyboardAwareForm';
 
@@ -20,7 +20,7 @@ export default function CreateProjectModal({ onClose, onSuccess }: CreateProject
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.name.trim()) {
       setError('프로젝트 이름을 입력해주세요.');
       return;
@@ -67,7 +67,7 @@ export default function CreateProjectModal({ onClose, onSuccess }: CreateProject
     <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
       <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
         {/* Background overlay */}
-        <div 
+        <div
           className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
           onClick={onClose}
           aria-hidden="true"
@@ -85,7 +85,7 @@ export default function CreateProjectModal({ onClose, onSuccess }: CreateProject
               className="text-gray-400 hover:text-gray-600 transition-colors"
               disabled={loading}
             >
-              <CloseOutlined style={{ fontSize: 24 }} />
+              <X className="h-6 w-6" />
             </button>
           </div>
 
