@@ -277,8 +277,7 @@ ${formatPromptDataForTemplate(data)}`;
           'Authorization': `Bearer ${GROQ_API_KEY}`,
         },
         body: JSON.stringify({
-          // model: "llama3-8b-8192", // 다른 모델 사용 가능 시
-          model: "meta-llama/llama-4-scout-17b-16e-instruct", // llama-4-scout 모델 대신 llama3 사용 시도
+          model: "llama-3.1-8b-instant", // Updated to latest production model
           messages: [
             {
               role: "system",
@@ -288,10 +287,6 @@ ${formatPromptDataForTemplate(data)}`;
               role: "user",
               content: userPrompt
             },
-            // {
-            //   role: "assistant",
-            //   content: "이해했습니다. 주어진 정보를 바탕으로 보고서를 작성하겠습니다."
-            // }, // Assistant 턴 제거 시도
             {
               role: "user",
               content: instructionFormat
@@ -472,71 +467,6 @@ function formatPromptDataForTemplate(data: ReportData): string {
   
   return prompt;
 }
-
-// 주간 보고서용 월/주차 형식 날짜 변환
-// function formatMonthWeekDate(dateStr: string): string { // 이 함수는 getWeeklyReportDateInfo 로 대체됨
-//   try {
-//     // ISO 날짜 문자열이나 다른 형식의 날짜 문자열을 Date 객체로 변환
-//     let date: Date;
-    
-//     if (dateStr.includes('T')) {
-//       // ISO 형식 (YYYY-MM-DDTHH:MM:SS.sssZ)
-//       date = new Date(dateStr);
-//     } else if (dateStr.match(/\\d+\\.\\d+\\.\\d+\\(.+\\)/)) {
-//       // YYYY.MM.DD(요일) 형식
-//       const match = dateStr.match(/(\\d+)\\.(\\d+)\\.(\\d+)/);
-//       if (!match) return dateStr;
-      
-//       const [, year, month, day] = match;
-//       date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-//     } else {
-//       // 다른 형식이거나 파싱 실패 시 현재 날짜 사용
-//       date = new Date();
-//     }
-    
-//     const year = date.getFullYear();
-//     const month = date.getMonth() + 1;
-    
-//     // 이번 주의 시작일(월요일)과 종료일(금요일) 계산
-//     const day = date.getDate();
-//     const dayOfWeek = date.getDay(); // 0=일, 1=월, 2=화, ..., 6=토
-    
-//     // 현재 날짜가 속한 주의 월요일 날짜 계산
-//     const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // 일요일이면 전 주 월요일로
-//     const mondayDate = new Date(date);
-//     mondayDate.setDate(day + mondayOffset);
-    
-//     // 현재 날짜가 속한 주의 금요일 날짜 계산
-//     const fridayDate = new Date(mondayDate);
-//     fridayDate.setDate(mondayDate.getDate() + 4);
-    
-//     const startDay = mondayDate.getDate();
-//     const endDay = fridayDate.getDate();
-    
-//     // 주차 계산 (대략적인 방법)
-//     // 월의 첫 날짜
-//     const firstDayOfMonth = new Date(year, month - 1, 1);
-//     // 월의 첫 번째 월요일 찾기
-//     const firstMondayOffset = (8 - firstDayOfMonth.getDay()) % 7;
-//     const firstMonday = new Date(firstDayOfMonth);
-//     firstMonday.setDate(1 + firstMondayOffset);
-    
-//     // 해당 날짜가 몇 번째 주인지 계산
-//     const weekNumber = Math.ceil((mondayDate.getDate() - firstMonday.getDate() + 1) / 7) + 1;
-    
-//     // 월이 다른 경우 처리
-//     if (mondayDate.getMonth() !== fridayDate.getMonth()) {
-//       const startMonth = mondayDate.getMonth() + 1;
-//       const endMonth = fridayDate.getMonth() + 1;
-//       return \`\${month}월 \${weekNumber}주차 (\${year}년 \${startMonth}월 \${startDay}일 ~ \${endMonth}월 \${endDay}일)\`;
-//     }
-    
-//     return \`\${month}월 \${weekNumber}주차 (\${year}년 \${month}월 \${startDay}일 ~ \${endDay}일)\`;
-//   } catch (error) {
-//     console.error('주간 날짜 포맷 변환 중 오류 발생:', error);
-//     return dateStr;
-//   }
-// }
 
 // 주간 보고서용 상세 포맷팅 함수 (본문 양식 변경)
 function formatDetailedPromptData(data: ReportData): string {
@@ -753,7 +683,7 @@ ${weeklyData}
         'Authorization': `Bearer ${process.env.NEXT_PUBLIC_GROQ_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+        model: 'llama-3.1-8b-instant', // Updated to latest production model
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.3,
         max_tokens: 3000,
@@ -779,4 +709,3 @@ ${weeklyData}
     throw error;
   }
 }
-

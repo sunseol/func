@@ -92,7 +92,7 @@ export class AIService {
   constructor(config: AIServiceConfig) {
     this.config = {
       apiKey: config.apiKey,
-      model: config.model || 'meta-llama/llama-4-maverick-17b-128e-instruct',
+      model: config.model || 'llama-3.1-8b-instant',
       temperature: config.temperature || 0.7,
       maxTokens: config.maxTokens || 4096
     };

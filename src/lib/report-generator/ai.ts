@@ -37,7 +37,7 @@ export async function summarizeContent(rawContent: string): Promise<string> {
 
     const completion = await groq.chat.completions.create({
       messages: [{ role: 'user', content: summarizationPrompt }],
-      model: 'meta-llama/llama-4-scout-17b-16e-instruct', // 빠르고 경제적인 모델 사용
+      model: 'llama-3.1-8b-instant', // 빠르고 경제적인 모델 사용
       temperature: 0.2, // 창의성보다는 정확성에 초점
       max_tokens: 3500, // 충분한 요약 분량 확보
     });
@@ -72,7 +72,7 @@ export async function generateReport(summary: string, reportPrompt: string): Pro
 
     const completion = await groq.chat.completions.create({
       messages: [{ role: 'user', content: fullPrompt }],
-      model: 'openai/gpt-oss-120b', // 강력한 모델로 HTML 생성
+      model: 'llama-3.3-70b-versatile', // 강력한 모델로 HTML 생성
       temperature: 0.3, // 더 일관된 레이아웃을 위해 낮춤
       max_tokens: 4500, // 충분한 HTML 생성 분량
     });
