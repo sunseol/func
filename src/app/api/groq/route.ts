@@ -29,7 +29,8 @@ export async function POST(request: NextRequest) {
           content: prompt,
         },
       ],
-      model: 'llama3-8b-8192',
+      // model: 'llama3-8b-8192', // Deprecated
+      model: 'llama-3.1-8b-instant', // Updated to latest production model
       temperature: 0.7,
       max_tokens: 1024,
       top_p: 1,

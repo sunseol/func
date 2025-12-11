@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
               ...conversationHistory,
               { role: 'user', content: message.trim() }
             ],
-            model: 'meta-llama/llama-4-maverick-17b-128e-instruct',
+            model: 'llama-3.1-8b-instant',
             temperature: 0.7,
             max_tokens: 2048,
             stream: true,
