@@ -215,15 +215,11 @@ const Header = () => {
           </MobileNavLink>
         ))}
         {user ? (
-          <NextLink href="/" passHref legacyBehavior>
-            <a style={{ textDecoration: 'none' }} onClick={closeMenu}>
-              <ReportButton>보고서 작성</ReportButton>
-            </a>
-          </NextLink>
+          <ReportButton onClick={() => router.push('/')}>보고서 작성</ReportButton>
         ) : (
           <NextLink href="/login" passHref legacyBehavior>
             <a style={{ textDecoration: 'none' }} onClick={closeMenu}>
-              <ReportButton>보고서 작성</ReportButton>
+              <ReportButton as="span">보고서 작성</ReportButton>
             </a>
           </NextLink>
         )}
