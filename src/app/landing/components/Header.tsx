@@ -153,10 +153,8 @@ const Header = () => {
   return (
     <>
       <HeaderContainer>
-        <NextLink href="/landing" passHref legacyBehavior>
-          <a style={{ textDecoration: 'none', color: 'inherit', cursor: 'pointer' }}>
-            <Logo as="div" style={{ cursor: 'pointer' }}>FunCommute</Logo>
-          </a>
+        <NextLink href="/landing" className="no-underline text-inherit cursor-pointer">
+          <Logo as="div" style={{ cursor: 'pointer' }}>FunCommute</Logo>
         </NextLink>
         <Nav>
           {navItems.map(item => (
@@ -173,25 +171,17 @@ const Header = () => {
             </NavLink>
           ))}
           {user ? (
-            <NextLink href="/" passHref legacyBehavior>
-              <a style={{ textDecoration: 'none' }}>
-                <ReportButton>보고서 작성</ReportButton>
-              </a>
-            </NextLink>
+            <ReportButton onClick={() => router.push('/')}>보고서 작성</ReportButton>
           ) : (
-            <NextLink href="/login" passHref legacyBehavior>
-              <a style={{ textDecoration: 'none' }}>
-                <ReportButton>보고서 작성</ReportButton>
-              </a>
+            <NextLink href="/login" className="no-underline text-inherit">
+              <ReportButton as="span">보고서 작성</ReportButton>
             </NextLink>
           )}
           {user ? (
             <LoginButton onClick={handleSignOut}>로그아웃</LoginButton>
           ) : (
-            <NextLink href="/login" passHref legacyBehavior>
-              <a style={{ textDecoration: 'none' }}>
-                <LoginButton>로그인</LoginButton>
-              </a>
+            <NextLink href="/login" className="no-underline text-inherit">
+              <LoginButton>로그인</LoginButton>
             </NextLink>
           )}
         </Nav>
@@ -215,21 +205,17 @@ const Header = () => {
           </MobileNavLink>
         ))}
         {user ? (
-          <ReportButton onClick={() => router.push('/')}>보고서 작성</ReportButton>
+          <ReportButton onClick={() => { router.push('/'); closeMenu(); }}>보고서 작성</ReportButton>
         ) : (
-          <NextLink href="/login" passHref legacyBehavior>
-            <a style={{ textDecoration: 'none' }} onClick={closeMenu}>
-              <ReportButton as="span">보고서 작성</ReportButton>
-            </a>
+          <NextLink href="/login" className="no-underline text-inherit" onClick={closeMenu}>
+            <ReportButton as="span">보고서 작성</ReportButton>
           </NextLink>
         )}
         {user ? (
           <LoginButton onClick={() => { handleSignOut(); closeMenu(); }}>로그아웃</LoginButton>
         ) : (
-          <NextLink href="/login" passHref legacyBehavior>
-            <a style={{ textDecoration: 'none' }} onClick={closeMenu}>
-              <LoginButton>로그인</LoginButton>
-            </a>
+          <NextLink href="/login" className="no-underline text-inherit" onClick={closeMenu}>
+            <LoginButton>로그인</LoginButton>
           </NextLink>
         )}
       </MobileNav>
