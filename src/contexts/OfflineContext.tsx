@@ -286,7 +286,7 @@ export function useOfflineApi(options: UseOfflineApiOptions = {}) {
     setOfflineData 
   } = useOffline();
 
-  const makeRequest = async <T>(
+  const makeRequest = async <T,>(
     requestFn: () => Promise<T>,
     actionType?: string,
     actionData?: any

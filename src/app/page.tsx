@@ -17,10 +17,11 @@ import { RocketOutlined } from '@ant-design/icons';
 import InputForm from './components/InputForm';
 import ResultDisplay from './components/ResultDisplay';
 import { WeeklyReportForm } from './components/WeeklyReportForm';
-import { ReportData, Project, TaskItem, formatDefaultReport, generateReport, generateWeeklyReportFromDaily } from './api/grop';
+import type { Project, ReportDraft, TaskItem } from '@/features/reports/types';
+import { formatDefaultReport, generateReport, generateWeeklyReportFromDaily } from '@/features/reports/ai';
 import { useTheme } from './components/ThemeProvider';
 import { useAuth } from '@/contexts/AuthContext';
-import { useNotification } from '@/context/NotificationContext';
+import { useNotification } from '@/contexts/NotificationContext';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
@@ -34,7 +35,7 @@ interface InputFormData {
   miscTasks: TaskItem[];
 }
 
-const createEmptyReportData = (): ReportData => ({
+const createEmptyReportData = (): ReportDraft => ({
   userName: '',
   date: '',
   projects: [] as Project[],
@@ -44,7 +45,7 @@ const createEmptyReportData = (): ReportData => ({
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('daily');
-  const [formData, setFormData] = useState<ReportData>(createEmptyReportData());
+  const [formData, setFormData] = useState<ReportDraft>(createEmptyReportData());
   const { isDarkMode } = useTheme();
   const { user, loading: authLoading, initialized } = useAuth();
   const { sendBrowserNotification } = useNotification();
@@ -114,7 +115,7 @@ export default function Home() {
       setFormData(prevData => ({
         ...prevData,
         reportType: 'weekly',
-        date: prevData.date || new Date().toISOString()
+        date: prevData.date || new Date().toISOString().slice(0, 10)
       }));
     } else {
       setFormData(prevData => ({
@@ -133,7 +134,7 @@ export default function Home() {
     }
   };
 
-  const handleWeeklySubmit = (data: ReportData) => {
+  const handleWeeklySubmit = (data: ReportDraft) => {
     setFormData({
       ...data,
       reportType: 'weekly',
@@ -223,11 +224,9 @@ export default function Home() {
 
     setIsSavingReport(true);
     try {
-      const originalDateString = formData.date;
-      const formattedDate = originalDateString ? originalDateString.substring(0, 10) : null;
+      const formattedDate = formData.date;
       
-      console.log('[handleSaveReport] Original date string:', originalDateString);
-      console.log('[handleSaveReport] Formatted date for DB:', formattedDate);
+
 
       if (!formattedDate || formattedDate.length !== 10 || !/^\d{4}-\d{2}-\d{2}$/.test(formattedDate)) {
         messageApi.error('유효한 날짜 형식(YYYY-MM-DD)이 아닙니다. 날짜를 다시 확인해주세요.');

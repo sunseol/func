@@ -201,7 +201,7 @@ export class ComponentPreloader {
     );
   }
 
-  async preloadOnIdle(components: (keyof typeof mobileImports)[], isMobile: boolean) {
+  async preloadOnIdle(components: readonly (keyof typeof mobileImports)[], isMobile: boolean) {
     if (typeof window === 'undefined') return;
 
     const preload = () => {

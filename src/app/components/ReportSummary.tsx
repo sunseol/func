@@ -261,7 +261,7 @@ ${sampleReports.map(r => `- ${r.date} (${r.type}): ${r.user} - ${r.content}`).jo
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ messages: [{ role: 'user', content: prompt }] }),
       });
 
       if (!response.ok) {

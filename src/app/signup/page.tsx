@@ -9,6 +9,28 @@ import { UserOutlined, LockOutlined, MailOutlined, SunOutlined, MoonOutlined } f
 
 const { Title, Text } = Typography;
 
+function isDuplicateEmailError(error: unknown): boolean {
+  if (!error || typeof error !== 'object' || !('message' in error)) return false;
+  const message = String((error as { message?: string }).message || '').toLowerCase();
+  return (
+    message.includes('already registered') ||
+    message.includes('already exists') ||
+    message.includes('email already') ||
+    message.includes('user already')
+  );
+}
+
+async function checkEmailExists(email: string): Promise<boolean | null> {
+  try {
+    const response = await fetch(`/api/auth/check-email?email=${encodeURIComponent(email)}`);
+    if (!response.ok) return null;
+    const data = (await response.json()) as { exists?: boolean };
+    return !!data.exists;
+  } catch {
+    return null;
+  }
+}
+
 export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -30,6 +52,12 @@ export default function SignupPage() {
     }
 
     try {
+      const emailExists = await checkEmailExists(values.email);
+      if (emailExists) {
+        setError('이미 가입된 이메일입니다. 로그인해주세요.');
+        return;
+      }
+
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: values.email,
         password: values.password,
@@ -42,7 +70,20 @@ export default function SignupPage() {
       });
 
       if (signUpError) {
+        if (isDuplicateEmailError(signUpError)) {
+          setError('이미 가입된 이메일입니다. 로그인해주세요.');
+          return;
+        }
         throw signUpError;
+      }
+
+      if (data.user && data.user.identities && data.user.identities.length === 0) {
+        setError('이미 가입된 이메일입니다. 로그인해주세요.');
+        return;
+      }
+      if (!data.user) {
+        setError('Unable to create account. If you already have an account, please log in.');
+        return;
       }
 
       // signUp 함수의 반환값에서 user 객체를 확인합니다.
@@ -70,7 +111,9 @@ export default function SignupPage() {
       form.resetFields();
 
     } catch (err: unknown) {
-      if (err instanceof Error) {
+      if (isDuplicateEmailError(err)) {
+        setError('이미 가입된 이메일입니다. 로그인해주세요.');
+      } else if (err instanceof Error) {
         setError(err.message || '회원가입 중 오류가 발생했습니다.');
       } else {
         setError('알 수 없는 오류로 회원가입에 실패했습니다.');

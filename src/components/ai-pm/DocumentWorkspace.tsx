@@ -38,7 +38,7 @@ export default function DocumentWorkspace({
   const handleStatusChange = async (documentId: string, newStatus: DocumentStatus) => {
     const action = newStatus === 'pending_approval' ? 'request-approval' : newStatus === 'official' ? 'approve' : null;
 
-    if (!action && newStatus !== 'private' && newStatus !== 'rejected') {
+    if (!action && newStatus !== 'private') {
         showError('유효하지 않은 상태 값입니다.');
         return;
     }
@@ -59,7 +59,7 @@ export default function DocumentWorkspace({
             showError('상태 변경 오류', (err as Error).message);
         }
     } else {
-         // Handle general status updates (e.g., to private, rejected) via a generic update endpoint
+         // Handle general status updates (e.g., to private) via a generic update endpoint
          // This part needs a proper API endpoint like `PATCH /api/ai-pm/documents/{documentId}`
          console.warn(`Status change to "${newStatus}" is not fully implemented yet.`);
          // As a placeholder, we optimistically update the UI

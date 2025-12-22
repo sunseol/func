@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { Form, Input, Button, Card, Space, Popconfirm, Typography, Modal, Spin, Alert, Checkbox, List } from 'antd';
 import { PlusOutlined, DeleteOutlined, RobotOutlined, EditOutlined } from '@ant-design/icons';
-import { Project, TaskItem, ReportData } from '../api/grop';
+import type { Project, ReportDraft, TaskItem } from '@/features/reports/types';
 import dayjs from 'dayjs'; // 날짜 추가 위해
 import { useAuth } from '@/contexts/AuthContext';
 import { getRecentDailyReports, formatDailyReportsForAI, DailyReport } from '@/lib/weekly-report-utils';
@@ -19,8 +19,8 @@ interface WeeklyFormValues {
 }
 
 interface WeeklyReportFormProps {
-  onSubmit: (data: ReportData) => void;
-  initialData: ReportData; // 초기 데이터 prop 추가
+  onSubmit: (data: ReportDraft) => void;
+  initialData: ReportDraft; // 초기 데이터 prop 추가
   onAIGenerate?: (weeklyData: string) => void; // AI 생성 콜백
   isLoadingAI?: boolean; // AI 로딩 상태
   generatedText?: string | null; // AI 생성된 텍스트
@@ -76,9 +76,9 @@ export const WeeklyReportForm: React.FC<WeeklyReportFormProps> = ({
 
   // 폼 제출 핸들러 (AntD onFinish 사용)
   const handleFinish = (values: WeeklyFormValues) => {
-    const reportData: ReportData = {
+    const reportData: ReportDraft = {
       ...values,
-      date: dayjs().toISOString(), // 제출 시점의 날짜 추가
+      date: dayjs().format('YYYY-MM-DD'), // 제출 시점의 날짜(ISO)
       reportType: 'weekly',
       // 필요시 여기서 values 추가 가공
     };

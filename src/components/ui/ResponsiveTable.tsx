@@ -17,7 +17,7 @@ export interface TableColumn<T = any> {
   key: string;
   title: string;
   dataIndex?: keyof T;
-  render?: (value: any, record: T, index: number) => React.ReactNode;
+  render?: (value: any, record: T, index: number) => React.ReactNode | { type: 'mobile-actions'; actions: ActionMenuItem[] };
   width?: string | number;
   priority?: 'high' | 'medium' | 'low'; // For mobile column prioritization
   sortable?: boolean;
@@ -25,6 +25,18 @@ export interface TableColumn<T = any> {
   align?: 'left' | 'center' | 'right';
   className?: string;
   mobileHidden?: boolean; // Hide on mobile by default
+}
+
+type MobileActionsRender = { type: 'mobile-actions'; actions: ActionMenuItem[] };
+
+function isMobileActionsRender(value: unknown): value is MobileActionsRender {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'type' in value &&
+    (value as any).type === 'mobile-actions' &&
+    Array.isArray((value as any).actions)
+  );
 }
 
 export interface ResponsiveTableProps<T = any> {
@@ -81,19 +93,11 @@ function MobileCard<T>({
       );
       
       // Handle mobile action menu
-      if (typeof rendered === 'object' && rendered !== null && 'type' in rendered) {
-        const renderObj = rendered as any;
-        if (renderObj.type === 'mobile-actions') {
-          return (
-            <MobileActionMenu
-              items={renderObj.actions}
-              placement="bottom-left"
-            />
-          );
-        }
+      if (isMobileActionsRender(rendered)) {
+        return <MobileActionMenu items={rendered.actions} placement="bottom-left" />;
       }
       
-      return rendered;
+      return rendered as React.ReactNode;
     }
     return column.dataIndex ? String(record[column.dataIndex] || '') : '';
   };
@@ -479,19 +483,11 @@ export default function ResponsiveTable<T = any>({
                         );
                         
                         // Handle mobile action menu for desktop too
-                        if (typeof rendered === 'object' && rendered !== null && 'type' in rendered) {
-                          const renderObj = rendered as any;
-                          if (renderObj.type === 'mobile-actions') {
-                            return (
-                              <MobileActionMenu
-                                items={renderObj.actions}
-                                placement="bottom-right"
-                              />
-                            );
-                          }
+                        if (isMobileActionsRender(rendered)) {
+                          return <MobileActionMenu items={rendered.actions} placement="bottom-right" />;
                         }
                         
-                        return rendered;
+                        return rendered as React.ReactNode;
                       }
                       return column.dataIndex ? String(record[column.dataIndex] || '') : '';
                     })()}

@@ -1,136 +1,102 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { checkAuth } from '@/lib/ai-pm/auth-middleware';
+﻿import { NextRequest } from 'next/server';
+import { ApiError, json, parseJson, withApi } from '@/lib/http';
+import { getSupabase, requireAuth, requireProjectAccess, requireProjectManagement } from '@/lib/ai-pm/auth';
+import { requireMaxLength, requireString, requireUuid, sanitizeText } from '@/lib/ai-pm/validators';
+import { AIpmErrorType } from '@/types/ai-pm';
 
 export const dynamic = 'force-dynamic';
 
-interface UpdateProjectRequest {
-  name?: string;
-  description?: string;
-}
+type Context = { params: Promise<{ projectId: string }> };
 
-// GET /api/ai-pm/projects/[projectId]
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ projectId: string }> }
-) {
-  try {
-    const supabase = await createClient();
-    const authResult = await checkAuth();
-    
-    if ('error' in authResult) {
-      return NextResponse.json(authResult, { status: 401 });
-    }
+export const GET = withApi(async (_request: NextRequest, { params }: Context) => {
+  const supabase = await getSupabase();
+  const auth = await requireAuth(supabase);
+  const { projectId } = await params;
+  const safeProjectId = requireUuid(projectId, 'projectId');
 
-    const { projectId } = await params;
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(projectId)) {
-      return NextResponse.json({ error: 'INVALID_PROJECT_ID', message: '유효하지 않은 프로젝트 ID입니다.' }, { status: 400 });
-    }
+  await requireProjectAccess(supabase, auth, safeProjectId);
 
-    const { data: project, error: projectError } = await supabase
-      .from('projects_with_creator')
-      .select('*')
-      .eq('id', projectId)
-      .single();
+  const { data: project, error: projectError } = await supabase
+    .from('projects')
+    .select('*')
+    .eq('id', safeProjectId)
+    .single();
 
-    if (projectError) {
-      return NextResponse.json({ error: 'PROJECT_NOT_FOUND', message: '프로젝트를 찾을 수 없습니다.' }, { status: 404 });
-    }
-
-    const { data: members } = await supabase.from('project_members_with_profiles').select('*').eq('project_id', projectId).order('added_at', { ascending: true });
-    const { data: progress } = await supabase.rpc('get_project_progress', { project_uuid: projectId });
-
-    return NextResponse.json({
-      project,
-      members: members || [],
-      progress: progress || []
-    });
-  } catch (error) {
-    console.error('Unexpected error:', error);
-    return NextResponse.json({ error: 'INTERNAL_ERROR', message: '서버 내부 오류가 발생했습니다.' }, { status: 500 });
+  if (projectError || !project) {
+    throw new ApiError(404, AIpmErrorType.PROJECT_NOT_FOUND, 'Project not found', projectError);
   }
-}
 
-// PUT /api/ai-pm/projects/[projectId]
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ projectId: string }> }
-) {
-  try {
-    const supabase = await createClient();
-    const authResult = await checkAuth();
-    
-    if ('error' in authResult) {
-      return NextResponse.json(authResult, { status: 401 });
-    }
+  const { data: members } = await supabase
+    .from('project_members')
+    .select('*')
+    .eq('project_id', safeProjectId)
+    .order('added_at', { ascending: true });
 
-    const { projectId } = await params;
-    const body: UpdateProjectRequest = await request.json();
+  return json({
+    project,
+    members: members || [],
+    progress: [],
+  });
+});
 
-    const updateData: any = {};
-    if (body.name !== undefined) {
-      if (!body.name || body.name.trim().length === 0) return NextResponse.json({ error: 'VALIDATION_ERROR', message: '프로젝트 이름은 필수입니다.' }, { status: 400 });
-      updateData.name = body.name.trim();
-    }
-    if (body.description !== undefined) {
-      updateData.description = body.description?.trim() || null;
-    }
+export const PUT = withApi(async (request: NextRequest, { params }: Context) => {
+  const supabase = await getSupabase();
+  const auth = await requireAuth(supabase);
+  const { projectId } = await params;
+  const safeProjectId = requireUuid(projectId, 'projectId');
 
-    const { data: updatedProject, error: updateError } = await supabase
-      .from('projects')
-      .update(updateData)
-      .eq('id', projectId)
-      .select()
-      .single();
+  await requireProjectManagement(supabase, auth, safeProjectId);
 
-    if (updateError) {
-      console.error('Database error:', updateError);
-      return NextResponse.json({ error: 'DATABASE_ERROR', message: '프로젝트 수정 중 오류가 발생했습니다.' }, { status: 500 });
-    }
+  const body = await parseJson<{ name?: string; description?: string }>(request);
+  const updateData: { name?: string; description?: string | null; updated_at: string } = {
+    updated_at: new Date().toISOString(),
+  };
 
-    return NextResponse.json({ project: updatedProject });
-  } catch (error) {
-    console.error('Unexpected error:', error);
-    return NextResponse.json({ error: 'INTERNAL_ERROR', message: '서버 내부 오류가 발생했습니다.' }, { status: 500 });
+  if (body.name !== undefined) {
+    updateData.name = requireMaxLength(requireString(body.name, 'name'), 'name', 255);
   }
-}
 
-// DELETE /api/ai-pm/projects/[projectId]
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ projectId: string }> }
-) {
-  try {
-    const supabase = await createClient();
-    const authResult = await checkAuth();
-    
-    if ('error' in authResult) {
-        return NextResponse.json(authResult, { status: 401 });
-    }
-
-    const { projectId } = await params;
-    
-    const { data: existingProject, error: checkError } = await supabase
-      .from('projects')
-      .select('id, name')
-      .eq('id', projectId)
-      .single();
-
-    if (checkError) {
-      return NextResponse.json({ error: 'PROJECT_NOT_FOUND', message: '프로젝트를 찾을 수 없습니다.' }, { status: 404 });
-    }
-
-    const { error: deleteError } = await supabase.from('projects').delete().eq('id', projectId);
-
-    if (deleteError) {
-      console.error('Database error:', deleteError);
-      return NextResponse.json({ error: 'DATABASE_ERROR', message: '프로젝트 삭제 중 오류가 발생했습니다.' }, { status: 500 });
-    }
-
-    return NextResponse.json({ message: '프로젝트가 성공적으로 삭제되었습니다.', deletedProject: existingProject });
-  } catch (error) {
-    console.error('Unexpected error:', error);
-    return NextResponse.json({ error: 'INTERNAL_ERROR', message: '서버 내부 오류가 발생했습니다.' }, { status: 500 });
+  if (body.description !== undefined) {
+    const description = sanitizeText(body.description);
+    updateData.description = description ? requireMaxLength(description, 'description', 2000) : null;
   }
-}
+
+  const { data: updatedProject, error: updateError } = await supabase
+    .from('projects')
+    .update(updateData)
+    .eq('id', safeProjectId)
+    .select('*')
+    .single();
+
+  if (updateError || !updatedProject) {
+    throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to update project', updateError);
+  }
+
+  return json({ project: updatedProject });
+});
+
+export const DELETE = withApi(async (_request: NextRequest, { params }: Context) => {
+  const supabase = await getSupabase();
+  const auth = await requireAuth(supabase);
+  const { projectId } = await params;
+  const safeProjectId = requireUuid(projectId, 'projectId');
+
+  await requireProjectManagement(supabase, auth, safeProjectId);
+
+  const { data: existingProject, error: existingError } = await supabase
+    .from('projects')
+    .select('id, name')
+    .eq('id', safeProjectId)
+    .single();
+
+  if (existingError || !existingProject) {
+    throw new ApiError(404, AIpmErrorType.PROJECT_NOT_FOUND, 'Project not found', existingError);
+  }
+
+  const { error: deleteError } = await supabase.from('projects').delete().eq('id', safeProjectId);
+  if (deleteError) {
+    throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to delete project', deleteError);
+  }
+
+  return json({ message: 'OK', deletedProject: existingProject });
+});

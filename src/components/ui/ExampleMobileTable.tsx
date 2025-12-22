@@ -126,13 +126,13 @@ export function ExampleUserTable() {
       key: 'status',
       title: '상태',
       dataIndex: 'status',
-      render: (status) => {
-        const colors = {
+      render: (status: ExampleUser['status']) => {
+        const colors: Record<ExampleUser['status'], string> = {
           active: 'bg-green-100 text-green-800',
           inactive: 'bg-gray-100 text-gray-800',
           pending: 'bg-yellow-100 text-yellow-800'
         };
-        const labels = {
+        const labels: Record<ExampleUser['status'], string> = {
           active: '활성',
           inactive: '비활성',
           pending: '대기'
@@ -153,13 +153,13 @@ export function ExampleUserTable() {
       key: 'lastActivity',
       title: '마지막 활동',
       dataIndex: 'lastActivity',
-      render: (date) => new Date(date).toLocaleDateString('ko-KR')
+      render: (date: string) => new Date(date).toLocaleDateString('ko-KR')
     },
     {
       key: 'joinDate',
       title: '가입일',
       dataIndex: 'joinDate',
-      render: (date) => new Date(date).toLocaleDateString('ko-KR')
+      render: (date: string) => new Date(date).toLocaleDateString('ko-KR')
     }
   ];
 
@@ -324,14 +324,14 @@ export function ExampleDocumentTable() {
       key: 'status',
       title: '상태',
       dataIndex: 'status',
-      render: (status) => {
-        const colors = {
+      render: (status: ExampleDocument['status']) => {
+        const colors: Record<ExampleDocument['status'], string> = {
           draft: 'bg-gray-100 text-gray-800',
           review: 'bg-yellow-100 text-yellow-800',
           approved: 'bg-green-100 text-green-800',
           published: 'bg-blue-100 text-blue-800'
         };
-        const labels = {
+        const labels: Record<ExampleDocument['status'], string> = {
           draft: '초안',
           review: '검토중',
           approved: '승인됨',
@@ -348,21 +348,21 @@ export function ExampleDocumentTable() {
       key: 'updatedAt',
       title: '수정일',
       dataIndex: 'updatedAt',
-      render: (date) => new Date(date).toLocaleDateString('ko-KR')
+      render: (date: string) => new Date(date).toLocaleDateString('ko-KR')
     },
     {
       key: 'createdAt',
       title: '생성일',
       dataIndex: 'createdAt',
-      render: (date) => new Date(date).toLocaleDateString('ko-KR')
+      render: (date: string) => new Date(date).toLocaleDateString('ko-KR')
     },
     {
       key: 'tags',
       title: '태그',
       dataIndex: 'tags',
-      render: (tags) => (
+      render: (tags: string[]) => (
         <div className="flex flex-wrap gap-1">
-          {tags.map((tag, index) => (
+          {tags.map((tag: string, index: number) => (
             <span key={index} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
               {tag}
             </span>

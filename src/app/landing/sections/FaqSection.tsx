@@ -27,7 +27,7 @@ const FaqContainer = styled.div`
 `;
 
 const FaqItem = styled.div`
-  background: ${props => props.theme.colors.lightGray};
+  background: ${props => props.theme.colors.cardBg};
   border-radius: ${props => props.theme.radii.medium};
   overflow: hidden;
 `;
@@ -45,7 +45,7 @@ const Question = styled(motion.div)`
 const Answer = styled(motion.div)`
   padding: 0 1.5rem 1.5rem 1.5rem;
   font-size: 1rem;
-  color: ${props => props.theme.colors.gray};
+  color: ${props => props.theme.colors.textSecondary};
   line-height: 1.6;
 `;
 

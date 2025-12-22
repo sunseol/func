@@ -1,249 +1,121 @@
-import { cookies } from 'next/headers';
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { isValidUUID, ValidationErrors, DatabaseErrors } from '@/lib/ai-pm/auth-middleware';
+﻿import { NextRequest } from 'next/server';
+import { ApiError, json, parseJson, withApi } from '@/lib/http';
+import { getSupabase, requireAuth, requireProjectAccess, requireProjectManagement } from '@/lib/ai-pm/auth';
+import { requireProjectRole, requireString, requireUuid } from '@/lib/ai-pm/validators';
+import { AIpmErrorType } from '@/types/ai-pm';
 
-// Role type for validation
-type ProjectRole = '콘텐츠기획' | '서비스기획' | 'UIUX기획' | '개발자';
+export const dynamic = 'force-dynamic';
 
-function isValidRole(role: any): role is ProjectRole {
-  return ['콘텐츠기획', '서비스기획', 'UIUX기획', '개발자'].includes(role);
-}
+type Context = { params: Promise<{ projectId: string }> };
 
-// GET /api/ai-pm/projects/[projectId]/members
-export async function GET(
-  request: NextRequest,
-  context: { params: { projectId: string } }
-) {
-  try {
-    const cookieStore = cookies();
-    const supabase = await createClient();
-    const projectId = context.params.projectId;
+export const GET = withApi(async (_request: NextRequest, { params }: Context) => {
+  const supabase = await getSupabase();
+  const auth = await requireAuth(supabase);
+  const { projectId } = await params;
+  const safeProjectId = requireUuid(projectId, 'projectId');
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'UNAUTHORIZED', message: '인증이 필요합니다.' }, { status: 401 });
-    }
+  await requireProjectAccess(supabase, auth, safeProjectId);
 
-    if (!isValidUUID(projectId)) {
-      return NextResponse.json(ValidationErrors.INVALID_UUID('프로젝트 ID'), { status: 400 });
-    }
+  const { data: members, error } = await supabase
+    .from('project_members')
+    .select('*')
+    .eq('project_id', safeProjectId)
+    .order('added_at', { ascending: true });
 
-    const { data: members, error } = await supabase
-      .from('project_members_with_profiles')
-      .select('*')
-      .eq('project_id', projectId)
-      .order('added_at', { ascending: true });
-
-    if (error) {
-      console.error('Database error in GET:', error);
-      return NextResponse.json(DatabaseErrors.QUERY_ERROR('멤버 조회'), { status: 500 });
-    }
-
-    return NextResponse.json({ members });
-  } catch (error) {
-    console.error('Unexpected error in GET:', error);
-    return NextResponse.json({ error: 'INTERNAL_ERROR', message: '서버 내부 오류가 발생했습니다.' }, { status: 500 });
+  if (error) {
+    throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to fetch members', error);
   }
-}
 
-// POST /api/ai-pm/projects/[projectId]/members
-export async function POST(
-  request: NextRequest,
-  context: { params: { projectId: string } }
-) {
-  try {
-    const body = await request.json();
-    const cookieStore = cookies();
-    const supabase = await createClient();
-    const projectId = context.params.projectId;
+  return json({ members: members || [] });
+});
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-        return NextResponse.json({ error: 'UNAUTHORIZED', message: '인증이 필요합니다.' }, { status: 401 });
-    }
+export const POST = withApi(async (request: NextRequest, { params }: Context) => {
+  const supabase = await getSupabase();
+  const auth = await requireAuth(supabase);
+  const { projectId } = await params;
+  const safeProjectId = requireUuid(projectId, 'projectId');
 
-    // Check if user is a member of the project
-    const { data: member, error: memberError } = await supabase
-      .from('project_members')
-      .select('id')
-      .eq('project_id', projectId)
-      .eq('user_id', user.id)
-      .maybeSingle();
+  await requireProjectManagement(supabase, auth, safeProjectId);
 
-    if (memberError || !member) {
-      return NextResponse.json({ error: 'FORBIDDEN', message: '프로젝트 멤버만 다른 멤버를 추가할 수 있습니다.' }, { status: 403 });
-    }
-    
-    if (!isValidUUID(projectId)) {
-      return NextResponse.json(ValidationErrors.INVALID_UUID('프로젝트 ID'), { status: 400 });
-    }
-    if (!body.user_id || !isValidUUID(body.user_id)) {
-      return NextResponse.json(ValidationErrors.REQUIRED_FIELD('사용자 ID'), { status: 400 });
-    }
-    if (!body.role || !isValidRole(body.role)) {
-      return NextResponse.json(ValidationErrors.INVALID_ROLE, { status: 400 });
-    }
+  const body = await parseJson<{ user_id?: string; role?: string }>(request);
+  const userId = requireUuid(requireString(body.user_id, 'user_id'), 'user_id');
+  const role = requireProjectRole(body.role, 'role');
 
-    const { data: existingMember, error: memberCheckError } = await supabase
-      .from('project_members')
-      .select('id')
-      .eq('project_id', projectId)
-      .eq('user_id', body.user_id)
-      .maybeSingle();
+  const { data: existing, error: existingError } = await supabase
+    .from('project_members')
+    .select('id')
+    .eq('project_id', safeProjectId)
+    .eq('user_id', userId)
+    .maybeSingle();
 
-    if (memberCheckError) {
-      console.error('Member check error:', memberCheckError);
-      return NextResponse.json(DatabaseErrors.QUERY_ERROR('멤버 확인'), { status: 500 });
-    }
-
-    if (existingMember) {
-      return NextResponse.json(DatabaseErrors.ALREADY_EXISTS('이미 추가된 멤버'), { status: 409 });
-    }
-
-    const { data: newMember, error: addError } = await supabase
-      .from('project_members')
-      .insert({
-          project_id: projectId,
-          user_id: body.user_id,
-          role: body.role,
-          added_by: user.id,
-        })
-      .select()
-      .single();
-
-    if (addError) {
-      console.error('Add member error:', addError);
-      return NextResponse.json(DatabaseErrors.QUERY_ERROR('멤버 추가'), { status: 500 });
-    }
-
-    const { data: memberWithProfile, error: memberProfileError } = await supabase
-      .from('project_members_with_profiles')
-      .select('*')
-      .eq('id', newMember.id)
-      .single();
-
-    if (memberProfileError) {
-        console.error('Fetch new member profile error:', memberProfileError);
-        return NextResponse.json({ member: newMember }, { status: 201 });
-    }
-
-    return NextResponse.json({ member: memberWithProfile }, { status: 201 });
-  } catch (error) {
-    console.error('Unexpected error in POST:', error);
-    return NextResponse.json({ error: 'INTERNAL_ERROR', message: '서버 내부 오류가 발생했습니다.' }, { status: 500 });
+  if (existingError) {
+    throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to check member', existingError);
   }
-}
 
-// PUT /api/ai-pm/projects/[projectId]/members
-export async function PUT(
-  request: NextRequest,
-  context: { params: { projectId: string } }
-) {
-  try {
-    const body = await request.json();
-    const cookieStore = cookies();
-    const supabase = await createClient();
-    const projectId = context.params.projectId;
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'UNAUTHORIZED', message: '인증이 필요합니다.' }, { status: 401 });
-    }
-
-    if (!isValidUUID(projectId)) {
-        return NextResponse.json(ValidationErrors.INVALID_UUID('프로젝트 ID'), { status: 400 });
-    }
-    if (!body.memberId || !isValidUUID(body.memberId)) {
-        return NextResponse.json(ValidationErrors.INVALID_UUID('멤버 ID'), { status: 400 });
-    }
-    if (!body.role || !isValidRole(body.role)) {
-        return NextResponse.json(ValidationErrors.INVALID_ROLE, { status: 400 });
-    }
-
-    const { data: updatedMember, error: updateError } = await supabase
-      .from('project_members')
-      .update({ role: body.role })
-      .eq('project_id', projectId)
-      .eq('id', body.memberId)
-      .select()
-      .single();
-    
-    if (updateError) {
-        console.error('Update member error:', updateError);
-        if (updateError.code === 'PGRST116') {
-            return NextResponse.json(DatabaseErrors.NOT_FOUND('멤버'), { status: 404});
-        }
-        return NextResponse.json(DatabaseErrors.QUERY_ERROR('멤버 역할 수정'), { status: 500 });
-    }
-
-    const { data: memberWithProfile, error: profileError } = await supabase
-        .from('project_members_with_profiles')
-        .select('*')
-        .eq('id', updatedMember.id)
-        .single();
-    
-    if (profileError) {
-        console.error('Fetch updated member profile error:', profileError);
-        return NextResponse.json({ member: updatedMember });
-    }
-
-    return NextResponse.json({ member: memberWithProfile });
-  } catch (error) {
-    console.error('Unexpected error in PUT:', error);
-    return NextResponse.json({ error: 'INTERNAL_ERROR', message: '서버 내부 오류가 발생했습니다.' }, { status: 500 });
+  if (existing) {
+    throw new ApiError(409, AIpmErrorType.MEMBER_ALREADY_EXISTS, 'Member already exists');
   }
-}
 
-// DELETE /api/ai-pm/projects/[projectId]/members
-export async function DELETE(
-  request: NextRequest,
-  context: { params: { projectId: string } }
-) {
-  try {
-    const { memberId } = await request.json();
-    const cookieStore = cookies();
-    const supabase = await createClient();
-    const projectId = context.params.projectId;
+  const { data: inserted, error: insertError } = await supabase
+    .from('project_members')
+    .insert({ project_id: safeProjectId, user_id: userId, role, added_by: auth.user.id })
+    .select()
+    .single();
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'UNAUTHORIZED', message: '인증이 필요합니다.' }, { status: 401 });
-    }
-
-    // Check if user is a member of the project
-    const { data: member, error: memberError } = await supabase
-      .from('project_members')
-      .select('id')
-      .eq('project_id', projectId)
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (memberError || !member) {
-      return NextResponse.json({ error: 'FORBIDDEN', message: '프로젝트 멤버만 다른 멤버를 제거할 수 있습니다.' }, { status: 403 });
-    }
-    
-    if (!isValidUUID(projectId)) {
-        return NextResponse.json(ValidationErrors.INVALID_UUID('프로젝트 ID'), { status: 400 });
-    }
-    if (!memberId || !isValidUUID(memberId)) {
-        return NextResponse.json(ValidationErrors.INVALID_UUID('멤버 ID'), { status: 400 });
-    }
-
-    const { error: deleteError } = await supabase
-      .from('project_members')
-      .delete()
-      .eq('project_id', projectId)
-      .eq('id', memberId);
-
-    if (deleteError) {
-      console.error('Delete member error:', deleteError);
-      return NextResponse.json(DatabaseErrors.QUERY_ERROR('멤버 제거'), { status: 500 });
-    }
-
-    return NextResponse.json({ message: '멤버가 성공적으로 제거되었습니다.' }, { status: 200 });
-  } catch (error) {
-    console.error('Unexpected error in DELETE:', error);
-    return NextResponse.json({ error: 'INTERNAL_ERROR', message: '서버 내부 오류가 발생했습니다.' }, { status: 500 });
+  if (insertError || !inserted) {
+    throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to add member', insertError);
   }
-}
+
+  return json({ member: inserted }, { status: 201 });
+});
+
+export const PUT = withApi(async (request: NextRequest, { params }: Context) => {
+  const supabase = await getSupabase();
+  const auth = await requireAuth(supabase);
+  const { projectId } = await params;
+  const safeProjectId = requireUuid(projectId, 'projectId');
+
+  await requireProjectManagement(supabase, auth, safeProjectId);
+
+  const body = await parseJson<{ memberId?: string; role?: string }>(request);
+  const memberId = requireUuid(requireString(body.memberId, 'memberId'), 'memberId');
+  const role = requireProjectRole(body.role, 'role');
+
+  const { data: updated, error } = await supabase
+    .from('project_members')
+    .update({ role })
+    .eq('id', memberId)
+    .eq('project_id', safeProjectId)
+    .select()
+    .single();
+
+  if (error || !updated) {
+    throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to update member', error);
+  }
+
+  return json({ member: updated });
+});
+
+export const DELETE = withApi(async (request: NextRequest, { params }: Context) => {
+  const supabase = await getSupabase();
+  const auth = await requireAuth(supabase);
+  const { projectId } = await params;
+  const safeProjectId = requireUuid(projectId, 'projectId');
+
+  await requireProjectManagement(supabase, auth, safeProjectId);
+
+  const url = new URL(request.url);
+  const memberId = requireUuid(requireString(url.searchParams.get('memberId'), 'memberId'), 'memberId');
+
+  const { error } = await supabase
+    .from('project_members')
+    .delete()
+    .eq('id', memberId)
+    .eq('project_id', safeProjectId);
+
+  if (error) {
+    throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to delete member', error);
+  }
+
+  return json({ message: 'OK' });
+});

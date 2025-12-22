@@ -1,6 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
-import { motion } from 'framer-motion';
+import { motion, type Variants } from 'framer-motion';
 import { Container } from '../components/Container';
 
 const Section = styled.section`
@@ -58,7 +58,7 @@ const ImageContent = styled(motion.div)`
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
 `;
 
-const textVariants = {
+const textVariants: Variants = {
   offscreen: {
     x: -100,
     opacity: 0,
@@ -74,7 +74,7 @@ const textVariants = {
   },
 };
 
-const imageVariants = {
+const imageVariants: Variants = {
   offscreen: {
     x: 100,
     opacity: 0,

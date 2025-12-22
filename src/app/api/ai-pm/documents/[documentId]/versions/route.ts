@@ -1,172 +1,43 @@
-import { cookies } from 'next/headers';
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+﻿import { NextRequest } from 'next/server';
+import { ApiError, json, withApi } from '@/lib/http';
+import { getSupabase, requireAuth, requireDocumentAccess } from '@/lib/ai-pm/auth';
+import { requireUuid } from '@/lib/ai-pm/validators';
+import { AIpmErrorType } from '@/types/ai-pm';
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { documentId: string } }
-) {
-  try {
-    const cookieStore = cookies();
-    const supabase = await createClient();
+export const dynamic = 'force-dynamic';
 
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+type Context = { params: Promise<{ documentId: string }> };
 
-    const { documentId } = params;
+export const GET = withApi(async (_request: NextRequest, { params }: Context) => {
+  const supabase = await getSupabase();
+  const auth = await requireAuth(supabase);
+  const { documentId } = await params;
+  const safeDocumentId = requireUuid(documentId, 'documentId');
 
-    // Get document to check for project_id
-    const { data: document, error: docError } = await supabase
-      .from('planning_documents')
-      .select('project_id')
-      .eq('id', documentId)
-      .single();
+  const { document } = await requireDocumentAccess(supabase, auth, safeDocumentId);
 
-    if (docError || !document) {
-      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
-    }
-    
-    // Check user's project membership or admin role
-    const { data: projectMember, error: memberError } = await supabase
-      .from('project_members')
-      .select('id')
-      .eq('project_id', document.project_id)
-      .eq('user_id', user.id)
-      .single();
+  const { data: versions, error: versionsError } = await supabase
+    .from('document_versions')
+    .select('*')
+    .eq('document_id', safeDocumentId)
+    .order('version', { ascending: true });
 
-    if (!projectMember && !memberError) {
-      const { data: userProfile } = await supabase.from('user_profiles').select('role').eq('id', user.id).single();
-      if (userProfile?.role !== 'admin') {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-      }
-    }
-
-    // Get document versions
-    const { data: versions, error: versionsError } = await supabase
-      .from('document_versions')
-      .select('id, version, content, created_by, created_at')
-      .eq('document_id', documentId)
-      .order('version', { ascending: false });
-
-    if (versionsError) {
-      console.error('Error fetching document versions:', versionsError);
-      return NextResponse.json({ error: 'Failed to fetch document versions' }, { status: 500 });
-    }
-
-    // Manually fetch user details for creators
-    let formattedVersions: any[] = [];
-    if (versions && versions.length > 0) {
-        const userIds = versions.map(v => v.created_by);
-        const { data: profiles } = await supabase.from('user_profiles').select('id, full_name').in('id', userIds);
-        const { data: users } = await supabase.from('users').select('id, email').in('id', userIds);
-        const userMap = new Map();
-        if (profiles) profiles.forEach(p => userMap.set(p.id, { ...userMap.get(p.id), name: p.full_name }));
-        if (users) users.forEach(u => userMap.set(u.id, { ...userMap.get(u.id), email: u.email }));
-        
-        formattedVersions = versions.map((version: any) => ({
-          ...version,
-          creator_name: userMap.get(version.created_by)?.name,
-          creator_email: userMap.get(version.created_by)?.email
-        }));
-    }
-
-    return NextResponse.json({ versions: formattedVersions });
-
-  } catch (error) {
-    console.error('Error in document versions API:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  if (versionsError) {
+    throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to fetch versions', versionsError);
   }
-}
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { documentId: string } }
-) {
-  try {
-    const cookieStore = cookies();
-    const supabase = await createClient();
-
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { documentId } = params;
-    const body = await request.json();
-    const { versionId } = body;
-
-    // Get the version to restore
-    const { data: versionToRestore, error: versionError } = await supabase
-      .from('document_versions')
-      .select('content, version')
-      .eq('id', versionId)
-      .eq('document_id', documentId)
-      .single();
-
-    if (versionError || !versionToRestore) {
-      return NextResponse.json({ error: 'Version not found' }, { status: 404 });
-    }
-
-    // Get current document for permissions check and creating a new version
-    const { data: currentDocument, error: docError } = await supabase
-      .from('planning_documents')
-      .select('*')
-      .eq('id', documentId)
-      .single();
-
-    if (docError || !currentDocument) {
-      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
-    }
-
-    // Permission check
-    const { data: projectMember, error: memberError } = await supabase
-      .from('project_members')
-      .select('id')
-      .eq('project_id', currentDocument.project_id)
-      .eq('user_id', user.id)
-      .single();
-
-    if (!projectMember && !memberError) {
-      const { data: userProfile } = await supabase.from('user_profiles').select('role').eq('id', user.id).single();
-      if (userProfile?.role !== 'admin') {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-      }
-    }
-    
-    const nextVersion = currentDocument.version + 1;
-    
-    // Save current content as a new version
-    await supabase.from('document_versions').insert({
-      document_id: documentId,
-      version: currentDocument.version,
-      content: currentDocument.content,
-      created_by: currentDocument.created_by
+  const normalized = Array.isArray(versions) ? [...versions] : [];
+  if (!normalized.some((version: any) => version.version === document.version)) {
+    normalized.push({
+      id: 'current',
+      document_id: safeDocumentId,
+      version: document.version,
+      content: document.content,
+      created_by: document.created_by,
+      created_at: document.updated_at ?? document.created_at,
     });
-
-    // Update document with restored content
-    await supabase.from('planning_documents').update({
-      content: versionToRestore.content,
-      version: nextVersion,
-      updated_at: new Date().toISOString(),
-      status: 'private'
-    }).eq('id', documentId);
-    
-    // Create version for restored content
-    await supabase.from('document_versions').insert({
-      document_id: documentId,
-      version: nextVersion,
-      content: versionToRestore.content,
-      created_by: user.id
-    });
-
-    return NextResponse.json({ message: 'Document restored successfully', version: nextVersion });
-
-  } catch (error) {
-    console.error('Error in document version restore API:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+
+  normalized.sort((a: any, b: any) => Number(a.version) - Number(b.version));
+  return json({ versions: normalized });
+});

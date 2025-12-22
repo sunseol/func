@@ -1,65 +1,56 @@
-import { cookies } from 'next/headers';
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { 
-  PendingApprovalsResponse,
-  PendingApprovalDocument,
-  AIpmErrorType
-} from '@/types/ai-pm';
+﻿import { NextRequest } from 'next/server';
+import { ApiError, json, withApi } from '@/lib/http';
+import { getSupabase, requireAuth } from '@/lib/ai-pm/auth';
+import { AIpmErrorType, getWorkflowStepName, PendingApprovalsResponse } from '@/types/ai-pm';
 
-// GET /api/ai-pm/documents/pending-approvals - Get documents pending approval for current user
-export async function GET(request: NextRequest) {
-  try {
-    const cookieStore = cookies();
-    const supabase = await createClient();
-    
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: AIpmErrorType.UNAUTHORIZED, message: '인증이 필요합니다.' },
-        { status: 401 }
-      );
-    }
+export const dynamic = 'force-dynamic';
 
-    // Use the database function to get pending approvals for the user
-    const { data: pendingDocuments, error: queryError } = await supabase
-      .rpc('get_pending_approvals_for_user', { user_uuid: user.id });
+export const GET = withApi(async (_request: NextRequest) => {
+  const supabase = await getSupabase();
+  await requireAuth(supabase, { requireAdmin: true });
 
-    if (queryError) {
-      console.error('Error fetching pending approvals:', queryError);
-      return NextResponse.json(
-        { error: AIpmErrorType.DATABASE_ERROR, message: '승인 대기 문서 조회 중 오류가 발생했습니다.' },
-        { status: 500 }
-      );
-    }
+  const { data: docs, error } = await supabase
+    .from('planning_documents')
+    .select('*')
+    .eq('status', 'pending_approval')
+    .order('created_at', { ascending: false });
 
-    // Format response
-    const documents: PendingApprovalDocument[] = (pendingDocuments || []).map(doc => ({
-      document_id: doc.document_id,
-      project_id: doc.project_id,
-      project_name: doc.project_name,
-      workflow_step: doc.workflow_step,
-      step_name: doc.step_name,
-      title: doc.title,
-      creator_name: doc.creator_name,
-      creator_email: doc.creator_email,
-      created_at: doc.created_at,
-      updated_at: doc.updated_at
-    }));
-
-    const response: PendingApprovalsResponse = { documents };
-    return NextResponse.json(response);
-
-  } catch (error) {
-    console.error('Get Pending Approvals API Error:', error);
-    return NextResponse.json(
-      { 
-        error: AIpmErrorType.INTERNAL_ERROR, 
-        message: '서버 오류가 발생했습니다.',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
-      },
-      { status: 500 }
-    );
+  if (error) {
+    throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to fetch pending approvals', error);
   }
-}
+
+  const projectIds = Array.from(new Set((docs || []).map((doc: any) => doc.project_id)));
+  const creatorIds = Array.from(new Set((docs || []).map((doc: any) => doc.created_by)));
+
+  const { data: projects } = await supabase
+    .from('projects')
+    .select('id, name')
+    .in('id', projectIds);
+  const projectNameById = new Map((projects || []).map((project: any) => [project.id, project.name]));
+
+  const { data: creators } = await supabase
+    .from('user_profiles')
+    .select('id, full_name, email')
+    .in('id', creatorIds);
+  const creatorById = new Map((creators || []).map((creator: any) => [creator.id, creator]));
+
+  const response: PendingApprovalsResponse = {
+    documents: (docs || []).map((doc: any) => {
+      const creator = creatorById.get(doc.created_by);
+      return {
+        document_id: doc.id,
+        project_id: doc.project_id,
+        project_name: projectNameById.get(doc.project_id) || '',
+        workflow_step: doc.workflow_step,
+        step_name: getWorkflowStepName(doc.workflow_step),
+        title: doc.title,
+        creator_name: creator?.full_name ?? null,
+        creator_email: creator?.email ?? '',
+        created_at: doc.created_at,
+        updated_at: doc.updated_at,
+      };
+    }),
+  };
+
+  return json(response);
+});

@@ -4,7 +4,7 @@ import type { Viewport } from 'next';
 import "./globals.css";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { AuthProvider } from "@/contexts/AuthContext";
-import { NotificationProvider } from "@/context/NotificationContext";
+import { NotificationProvider } from "@/contexts/NotificationContext";
 import { ViewportProvider } from "@/contexts/ViewportContext";
 import { App as AntApp } from 'antd'; // Ant Design의 App 컴포넌트 임포트
 import ClientLayoutContent from "./ClientLayoutContent";

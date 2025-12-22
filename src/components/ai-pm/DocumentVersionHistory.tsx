@@ -27,7 +27,7 @@ interface DocumentVersionHistoryProps {
   currentVersion: number;
   isOpen: boolean;
   onClose: () => void;
-  onPreviewVersion: (version: DocumentVersion) => void;
+  onPreviewVersion?: (version: DocumentVersion) => void;
   onRestoreVersion?: (versionId: string) => Promise<void>;
   className?: string;
 }
@@ -79,7 +79,7 @@ export default function DocumentVersionHistory({
   // Handle version preview
   const handlePreviewVersion = (version: DocumentVersion) => {
     setSelectedVersion(version);
-    onPreviewVersion(version);
+    onPreviewVersion?.(version);
   };
 
   // Handle version restore

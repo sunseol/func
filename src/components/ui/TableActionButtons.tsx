@@ -238,7 +238,7 @@ export function createTableActionColumn<T>(
 // Preset action configurations for common use cases
 export const ACTION_PRESETS = {
   // Basic CRUD actions
-  crud: <T>(
+  crud: <T,>(
     onView: (record: T) => void,
     onEdit: (record: T) => void,
     onDelete: (record: T) => void
@@ -249,7 +249,7 @@ export const ACTION_PRESETS = {
   ],
 
   // Document management actions
-  document: <T>(
+  document: <T,>(
     onView: (record: T) => void,
     onEdit: (record: T) => void,
     onShare: (record: T) => void,
@@ -264,7 +264,7 @@ export const ACTION_PRESETS = {
   ],
 
   // Approval workflow actions
-  approval: <T>(
+  approval: <T,>(
     onView: (record: T) => void,
     onApprove: (record: T) => void,
     onReject: (record: T) => void
@@ -275,7 +275,7 @@ export const ACTION_PRESETS = {
   ],
 
   // User management actions
-  user: <T>(
+  user: <T,>(
     onView: (record: T) => void,
     onEdit: (record: T) => void,
     onArchive: (record: T) => void

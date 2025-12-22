@@ -226,7 +226,7 @@ const antdTheme = {
 // src/app/api/groq/route.ts
 export async function POST(request: Request) {
   const groq = new Groq({
-    apiKey: process.env.NEXT_PUBLIC_GROQ_API_KEY,
+    apiKey: process.env.GROQ_API_KEY,
   });
   
   // API 로직
@@ -257,7 +257,7 @@ const { data, error } = await supabase
 ### 필수 환경 변수
 ```bash
 # GROQ API
-NEXT_PUBLIC_GROQ_API_KEY=your_groq_api_key_here
+GROQ_API_KEY=your_groq_api_key_here
 
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url_here

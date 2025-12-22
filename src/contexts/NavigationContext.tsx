@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { ProjectWithCreator } from '@/types/ai-pm';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface NavigationState {
   // Current navigation context
@@ -49,6 +50,7 @@ interface NavigationProviderProps {
 export function NavigationProvider({ children }: NavigationProviderProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const { isAdmin, projectMemberships } = useAuth();
   
   const [state, setState] = useState<NavigationState>({
     currentProjectId: null,
@@ -144,23 +146,22 @@ export function NavigationProvider({ children }: NavigationProviderProps) {
   }, []);
 
   // Route guards
-  const canAccessProject = useCallback((projectId: string): boolean => {
-    // TODO: Implement project access validation based on user permissions
-    // For now, allow access if user is authenticated
-    return !!projectId;
-  }, []);
+  const canAccessProject = useCallback(
+    (projectId: string): boolean => {
+      if (!projectId) return false;
+      if (isAdmin) return true;
+      return projectMemberships.some((membership) => membership.project_id === projectId);
+    },
+    [isAdmin, projectMemberships],
+  );
 
-  const canAccessWorkflowStep = useCallback((projectId: string, step: number): boolean => {
-    // Validate step range
-    if (step < 1 || step > 9) return false;
-    
-    // Check project access
-    if (!canAccessProject(projectId)) return false;
-    
-    // TODO: Add more sophisticated step access logic based on project progress
-    // For now, allow access to all steps
-    return true;
-  }, [canAccessProject]);
+  const canAccessWorkflowStep = useCallback(
+    (projectId: string, step: number): boolean => {
+      if (step < 1 || step > 9) return false;
+      return canAccessProject(projectId);
+    },
+    [canAccessProject],
+  );
 
   const contextValue: NavigationContextType = useMemo(() => ({
     state,

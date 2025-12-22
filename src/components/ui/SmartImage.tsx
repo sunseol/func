@@ -13,7 +13,8 @@ import {
   globalImagePreloader
 } from '@/lib/image-formats';
 
-interface SmartImageProps extends Omit<ImageProps, 'src' | 'alt' | 'width' | 'height'> {
+interface SmartImageProps
+  extends Omit<ImageProps, 'src' | 'alt' | 'width' | 'height' | 'onLoad' | 'onError' | 'onLoadStart'> {
   src: string;
   alt: string;
   width?: number;

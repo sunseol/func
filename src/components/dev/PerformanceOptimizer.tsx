@@ -34,10 +34,10 @@ const PerformanceOptimizer: React.FC<PerformanceOptimizerProps> = ({
   const { isMobile } = useBreakpoint();
   const { metrics, alerts } = useMobilePerformanceMonitor(enableMonitoring && isMobile);
   
-  const cleanupTimeoutRef = useRef<NodeJS.Timeout>();
+  const cleanupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const renderOptimizationRef = useRef<boolean>(false);
   const lastCleanupRef = useRef<number>(0);
-  const observerRef = useRef<IntersectionObserver>();
+  const observerRef = useRef<IntersectionObserver | null>(null);
 
   // 메모리 정리 최적화
   const performMemoryCleanup = useCallback(() => {

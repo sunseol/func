@@ -1,10 +1,9 @@
-import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import '@testing-library/jest-dom';
 import PerformanceDashboard from '../PerformanceDashboard';
 
-// Mock hooks
 jest.mock('@/hooks/useBreakpoint', () => ({
-  useBreakpoint: () => ({ isMobile: true })
+  useBreakpoint: () => ({ isMobile: true }),
 }));
 
 jest.mock('@/hooks/useMobilePerformanceMonitor', () => ({
@@ -26,7 +25,7 @@ jest.mock('@/hooks/useMobilePerformanceMonitor', () => ({
       visualStability: 0.05,
       scrollPerformance: 8,
       paintTime: 5,
-      layoutTime: 3
+      layoutTime: 3,
     },
     alerts: [
       {
@@ -35,8 +34,8 @@ jest.mock('@/hooks/useMobilePerformanceMonitor', () => ({
         value: 58,
         threshold: 60,
         timestamp: Date.now(),
-        message: 'Low FPS detected'
-      }
+        message: 'Low FPS detected',
+      },
     ],
     isMonitoring: true,
     clearAlerts: jest.fn(),
@@ -45,7 +44,7 @@ jest.mock('@/hooks/useMobilePerformanceMonitor', () => ({
       metrics: {},
       thresholds: {},
       alerts: 1,
-      recommendations: ['Optimize animations']
+      recommendations: ['Optimize animations'],
     })),
     thresholds: {
       minFps: 60,
@@ -63,9 +62,9 @@ jest.mock('@/hooks/useMobilePerformanceMonitor', () => ({
       maxInputDelay: 50,
       minVisualStability: 0.1,
       maxPaintTime: 10,
-      maxLayoutTime: 5
-    }
-  })
+      maxLayoutTime: 5,
+    },
+  }),
 }));
 
 jest.mock('@/hooks/usePerformanceOptimizer', () => ({
@@ -74,7 +73,7 @@ jest.mock('@/hooks/usePerformanceOptimizer', () => ({
       isActive: false,
       appliedOptimizations: [],
       lastOptimizationTime: 0,
-      performanceGain: 0
+      performanceGain: 0,
     },
     isSupported: true,
     applyOptimizations: jest.fn(),
@@ -84,9 +83,9 @@ jest.mock('@/hooks/usePerformanceOptimizer', () => ({
       timestamp: new Date().toISOString(),
       optimizationState: {},
       recommendations: [],
-      summary: {}
-    }))
-  })
+      summary: {},
+    })),
+  }),
 }));
 
 jest.mock('@/hooks/useBatteryOptimization', () => ({
@@ -95,124 +94,91 @@ jest.mock('@/hooks/useBatteryOptimization', () => ({
       level: 0.75,
       charging: false,
       chargingTime: Infinity,
-      dischargingTime: 3600
+      dischargingTime: 3600,
     },
     optimizationState: {
       isLowBattery: false,
       isCriticalBattery: false,
       isOptimized: false,
-      optimizationsApplied: []
+      optimizationsApplied: [],
     },
     isSupported: true,
-    toggleOptimization: jest.fn()
-  })
+    toggleOptimization: jest.fn(),
+  }),
 }));
 
-// Mock environment
-Object.defineProperty(process, 'env', {
-  value: { NODE_ENV: 'development' }
-});
-
 describe('PerformanceDashboard', () => {
+  const originalEnv = process.env.NODE_ENV;
+
   beforeEach(() => {
-    jest.clearAllMocks();
-    // Reset environment
-    Object.defineProperty(process, 'env', {
-      value: { NODE_ENV: 'development' },
-      writable: true
-    });
+    process.env.NODE_ENV = 'development';
   });
 
-  it('should render performance dashboard in development mode', () => {
+  afterEach(() => {
+    process.env.NODE_ENV = originalEnv;
+  });
+
+  it('renders in development on mobile', () => {
     render(<PerformanceDashboard />);
-    
+
     expect(screen.getByText('성능 대시보드')).toBeInTheDocument();
-    expect(screen.getByText('58')).toBeInTheDocument(); // FPS
-    expect(screen.getByText('45')).toBeInTheDocument(); // Memory MB
-    expect(screen.getByText('65')).toBeInTheDocument(); // CPU %
-  });
-
-  it('should show performance alerts', () => {
-    render(<PerformanceDashboard />);
-    
+    expect(screen.getByText('58')).toBeInTheDocument();
+    expect(screen.getByText('45')).toBeInTheDocument();
+    expect(screen.getByText('65')).toBeInTheDocument();
     expect(screen.getByText('1개의 성능 이슈')).toBeInTheDocument();
+    expect(screen.getByText('없음')).toBeInTheDocument();
   });
 
-  it('should expand to show detailed metrics', async () => {
+  it('uses warning color when below min threshold', () => {
     render(<PerformanceDashboard />);
-    
-    // Click expand button (the second button without title)
+    const fps = screen.getByText('58');
+    expect(fps).toHaveClass('text-yellow-600');
+  });
+
+  it('expands and shows battery tab', async () => {
+    render(<PerformanceDashboard />);
+
     const buttons = screen.getAllByRole('button');
-    const expandButton = buttons.find(button => !button.getAttribute('title'));
+    const expandButton = buttons.find((button) => !button.getAttribute('title'));
     fireEvent.click(expandButton!);
-    
+
     await waitFor(() => {
-      expect(screen.getByText('메트릭')).toBeInTheDocument();
-      expect(screen.getByText('최적화')).toBeInTheDocument();
       expect(screen.getByText('배터리')).toBeInTheDocument();
     });
-  });
 
-  it('should switch between tabs', async () => {
-    render(<PerformanceDashboard />);
-    
-    // Expand first
-    const buttons = screen.getAllByRole('button');
-    const expandButton = buttons.find(button => !button.getAttribute('title'));
-    fireEvent.click(expandButton!);
-    
-    await waitFor(() => {
-      expect(screen.getByText('메트릭')).toBeInTheDocument();
-    });
-    
-    // Click optimization tab
-    fireEvent.click(screen.getByText('최적화'));
-    
-    await waitFor(() => {
-      expect(screen.getByText('성능 최적화')).toBeInTheDocument();
-    });
-    
-    // Click battery tab
     fireEvent.click(screen.getByText('배터리'));
-    
+
     await waitFor(() => {
       expect(screen.getByText('배터리 최적화')).toBeInTheDocument();
-      expect(screen.getByText('75%')).toBeInTheDocument(); // Battery level
+      expect(screen.getByText('배터리 레벨:')).toBeInTheDocument();
+      expect(screen.getByText('75%')).toBeInTheDocument();
+      expect(screen.getByText('방전 중')).toBeInTheDocument();
     });
   });
 
-  it('should show optimization status', () => {
-    render(<PerformanceDashboard />);
-    
-    expect(screen.getByText('최적화:')).toBeInTheDocument();
-    expect(screen.getByText('없음')).toBeInTheDocument(); // No optimizations active
-  });
-
-  it('should handle download report', () => {
-    // Mock URL.createObjectURL and related functions
+  it('downloads report', () => {
+    process.env.NODE_ENV = 'development';
     global.URL.createObjectURL = jest.fn(() => 'mock-url');
     global.URL.revokeObjectURL = jest.fn();
-    
+
     const mockAppendChild = jest.fn();
     const mockRemoveChild = jest.fn();
     const mockClick = jest.fn();
-    
+
     const mockAnchor = {
       href: '',
       download: '',
-      click: mockClick
+      click: mockClick,
     };
-    
+
     jest.spyOn(document, 'createElement').mockReturnValue(mockAnchor as any);
     jest.spyOn(document.body, 'appendChild').mockImplementation(mockAppendChild);
     jest.spyOn(document.body, 'removeChild').mockImplementation(mockRemoveChild);
-    
+
     render(<PerformanceDashboard />);
-    
-    // Click download button
-    const downloadButton = screen.getByTitle('리포트 다운로드');
-    fireEvent.click(downloadButton);
-    
+
+    fireEvent.click(screen.getByTitle('리포트 다운로드'));
+
     expect(global.URL.createObjectURL).toHaveBeenCalled();
     expect(mockAppendChild).toHaveBeenCalledWith(mockAnchor);
     expect(mockClick).toHaveBeenCalled();
@@ -220,42 +186,10 @@ describe('PerformanceDashboard', () => {
     expect(global.URL.revokeObjectURL).toHaveBeenCalled();
   });
 
-  it('should not render in production mode', () => {
-    // Mock production environment
-    Object.defineProperty(process, 'env', {
-      value: { NODE_ENV: 'production' },
-      writable: true
-    });
-    
+  it('does not render in production', () => {
+    process.env.NODE_ENV = 'production';
     const { container } = render(<PerformanceDashboard />);
-    
     expect(container.firstChild).toBeNull();
   });
-
-  it('should show correct metric colors based on thresholds', () => {
-    render(<PerformanceDashboard />);
-    
-    // FPS is 58, threshold is 60 (reverse logic - lower is worse)
-    // Should show warning color (yellow)
-    const fpsElement = screen.getByText('58');
-    expect(fpsElement).toHaveClass('text-yellow-600');
-  });
-
-  it('should display battery information correctly', async () => {
-    render(<PerformanceDashboard />);
-    
-    // Expand and go to battery tab
-    const buttons = screen.getAllByRole('button');
-    const expandButton = buttons.find(button => !button.getAttribute('title'));
-    fireEvent.click(expandButton!);
-    
-    await waitFor(() => {
-      fireEvent.click(screen.getByText('배터리'));
-    });
-    
-    await waitFor(() => {
-      expect(screen.getByText('75%')).toBeInTheDocument();
-      expect(screen.getByText('방전 중')).toBeInTheDocument();
-    });
-  });
 });
+

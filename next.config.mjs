@@ -1,10 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // 환경 변수 설정
-  env: {
-    NEXT_PUBLIC_GROQ_API_KEY: process.env.NEXT_PUBLIC_GROQ_API_KEY,
-  },
-
   // 성능 최적화 설정
   experimental: {
     optimizePackageImports: ['@heroicons/react', 'antd'],
@@ -164,10 +160,6 @@ const nextConfig = {
   poweredByHeader: false,
 
   // TypeScript 에러 무시 (개발 중)
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-
 
 
   // 개발 환경 설정

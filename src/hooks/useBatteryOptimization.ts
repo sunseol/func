@@ -47,8 +47,13 @@ export const useBatteryOptimization = (
   const finalConfig = { ...DEFAULT_CONFIG, ...config };
   const batteryRef = useRef<any>(null);
   const optimizationStyleRef = useRef<HTMLStyleElement | null>(null);
-  const intervalIdsRef = useRef<Set<number>>(new Set());
-  const timeoutIdsRef = useRef<Set<number>>(new Set());
+  const originalTimersRef = useRef<{
+    setInterval: typeof window.setInterval;
+    setTimeout: typeof window.setTimeout;
+    fetch: typeof window.fetch;
+    requestAnimationFrame: typeof window.requestAnimationFrame;
+    Worker: typeof window.Worker;
+  } | null>(null);
 
   // 배터리 정보 업데이트
   const updateBatteryInfo = useCallback((battery: any) => {
@@ -119,25 +124,32 @@ export const useBatteryOptimization = (
     if (!finalConfig.enableBackgroundTaskReduction) return;
 
     if (enable) {
-      // 기존 interval과 timeout 저장 및 정리
-      const originalSetInterval = window.setInterval;
-      const originalSetTimeout = window.setTimeout;
+      if (!originalTimersRef.current) {
+        originalTimersRef.current = {
+          setInterval: window.setInterval,
+          setTimeout: window.setTimeout,
+          fetch: window.fetch,
+          requestAnimationFrame: window.requestAnimationFrame,
+          Worker: window.Worker,
+        };
+      }
 
-      window.setInterval = function(callback: Function, delay: number, ...args: any[]) {
+      const originalSetInterval = originalTimersRef.current.setInterval;
+      const originalSetTimeout = originalTimersRef.current.setTimeout;
+
+      window.setInterval = ((handler: TimerHandler, timeout?: number, ...args: any[]) => {
         // 배터리 절약 모드에서는 interval 주기를 늘림
+        const delay = typeof timeout === 'number' ? timeout : 0;
         const optimizedDelay = Math.max(delay * 2, 5000);
-        const id = originalSetInterval.call(this, callback, optimizedDelay, ...args);
-        intervalIdsRef.current.add(id);
-        return id;
-      };
+        return originalSetInterval(handler, optimizedDelay, ...args);
+      }) as typeof window.setInterval;
 
-      window.setTimeout = function(callback: Function, delay: number, ...args: any[]) {
+      window.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: any[]) => {
         // 짧은 timeout은 지연시킴
+        const delay = typeof timeout === 'number' ? timeout : 0;
         const optimizedDelay = delay < 1000 ? Math.max(delay * 2, 1000) : delay;
-        const id = originalSetTimeout.call(this, callback, optimizedDelay, ...args);
-        timeoutIdsRef.current.add(id);
-        return id;
-      };
+        return originalSetTimeout(handler, optimizedDelay, ...args);
+      }) as typeof window.setTimeout;
 
       // Service Worker 메시지 최적화
       if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
@@ -147,9 +159,10 @@ export const useBatteryOptimization = (
         });
       }
     } else {
-      // 원래 함수 복원
-      window.setInterval = window.setInterval;
-      window.setTimeout = window.setTimeout;
+      if (originalTimersRef.current) {
+        window.setInterval = originalTimersRef.current.setInterval;
+        window.setTimeout = originalTimersRef.current.setTimeout;
+      }
 
       if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
         navigator.serviceWorker.controller.postMessage({
@@ -165,8 +178,18 @@ export const useBatteryOptimization = (
     if (!finalConfig.enableNetworkOptimization) return;
 
     if (enable) {
+      if (!originalTimersRef.current) {
+        originalTimersRef.current = {
+          setInterval: window.setInterval,
+          setTimeout: window.setTimeout,
+          fetch: window.fetch,
+          requestAnimationFrame: window.requestAnimationFrame,
+          Worker: window.Worker,
+        };
+      }
+
       // 이미지 품질 최적화
-      const images = document.querySelectorAll('img');
+      const images = document.querySelectorAll<HTMLImageElement>('img');
       images.forEach(img => {
         if (img.src && !img.dataset.originalSrc) {
           img.dataset.originalSrc = img.src;
@@ -179,8 +202,8 @@ export const useBatteryOptimization = (
       });
 
       // 불필요한 네트워크 요청 차단
-      const originalFetch = window.fetch;
-      window.fetch = function(input: RequestInfo | URL, init?: RequestInit) {
+      const originalFetch = originalTimersRef.current.fetch;
+      window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
         const url = typeof input === 'string' ? input : input.toString();
         
         // 분석 및 추적 요청 차단
@@ -188,11 +211,11 @@ export const useBatteryOptimization = (
           return Promise.reject(new Error('Request blocked for battery optimization'));
         }
         
-        return originalFetch.call(this, input, init);
-      };
+        return originalFetch(input, init);
+      }) as typeof window.fetch;
     } else {
       // 원본 이미지 복원
-      const images = document.querySelectorAll('img[data-original-src]');
+      const images = document.querySelectorAll<HTMLImageElement>('img[data-original-src]');
       images.forEach(img => {
         if (img.dataset.originalSrc) {
           img.src = img.dataset.originalSrc;
@@ -201,7 +224,9 @@ export const useBatteryOptimization = (
       });
 
       // 원래 fetch 복원
-      window.fetch = window.fetch;
+      if (originalTimersRef.current) {
+        window.fetch = originalTimersRef.current.fetch;
+      }
     }
   }, [finalConfig.enableNetworkOptimization]);
 
@@ -210,29 +235,43 @@ export const useBatteryOptimization = (
     if (!finalConfig.enableCPUThrottling) return;
 
     if (enable) {
+      if (!originalTimersRef.current) {
+        originalTimersRef.current = {
+          setInterval: window.setInterval,
+          setTimeout: window.setTimeout,
+          fetch: window.fetch,
+          requestAnimationFrame: window.requestAnimationFrame,
+          Worker: window.Worker,
+        };
+      }
+
       // requestAnimationFrame 최적화
-      const originalRAF = window.requestAnimationFrame;
+      const originalRAF = originalTimersRef.current.requestAnimationFrame;
       let rafThrottle = 0;
       
-      window.requestAnimationFrame = function(callback: FrameRequestCallback) {
+      window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
         rafThrottle++;
         // 매 3번째 프레임만 실행 (20fps로 제한)
         if (rafThrottle % 3 === 0) {
-          return originalRAF.call(this, callback);
+          return originalRAF(callback);
         }
-        return originalRAF.call(this, () => {});
-      };
+        return originalRAF(() => {});
+      }) as typeof window.requestAnimationFrame;
 
       // Web Worker 사용 제한
-      const originalWorker = window.Worker;
-      window.Worker = function(scriptURL: string | URL, options?: WorkerOptions) {
-        console.warn('Worker creation blocked for battery optimization');
-        throw new Error('Worker blocked for battery optimization');
-      };
+      const OriginalWorker = originalTimersRef.current.Worker;
+      window.Worker = class {
+        constructor(scriptURL: string | URL, options?: WorkerOptions) {
+          console.warn('Worker creation blocked for battery optimization');
+          throw new Error('Worker blocked for battery optimization');
+        }
+      } as unknown as typeof window.Worker;
     } else {
       // 원래 함수들 복원
-      window.requestAnimationFrame = window.requestAnimationFrame;
-      window.Worker = window.Worker;
+      if (originalTimersRef.current) {
+        window.requestAnimationFrame = originalTimersRef.current.requestAnimationFrame;
+        window.Worker = originalTimersRef.current.Worker;
+      }
     }
   }, [finalConfig.enableCPUThrottling]);
 
@@ -321,10 +360,6 @@ export const useBatteryOptimization = (
   // 정리
   useEffect(() => {
     return () => {
-      // 모든 interval과 timeout 정리
-      intervalIdsRef.current.forEach(id => clearInterval(id));
-      timeoutIdsRef.current.forEach(id => clearTimeout(id));
-      
       // 최적화 해제
       optimizeAnimations(false);
       optimizeBackgroundTasks(false);

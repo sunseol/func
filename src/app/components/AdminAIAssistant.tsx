@@ -188,7 +188,7 @@ ${dataContext}
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ messages: [{ role: 'user', content: prompt }] }),
       });
 
       if (!response.ok) {

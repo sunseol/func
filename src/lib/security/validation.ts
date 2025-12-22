@@ -57,7 +57,7 @@ export function sanitizeHtml(dirty: string, options?: {
     SAFE_FOR_TEMPLATES: true
   };
 
-  return DOMPurify.sanitize(dirty, config);
+  return String(DOMPurify.sanitize(dirty, config) as any);
 }
 
 // 입력값 검증 함수

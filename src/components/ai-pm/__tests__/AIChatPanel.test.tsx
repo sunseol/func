@@ -17,8 +17,17 @@ jest.mock('@/contexts/AuthContext', () => ({
 jest.mock('@/contexts/ToastContext', () => ({
   useToast: () => ({
     success: jest.fn(),
-    error: jest.fn()
-  })
+    error: jest.fn(),
+    info: jest.fn(),
+    warning: jest.fn(),
+  }),
+  useApiError: () => ({
+    handleApiError: jest.fn(),
+  }),
+}));
+
+jest.mock('@/contexts/ViewportContext', () => ({
+  useViewport: () => ({ isMobile: false, isTablet: false }),
 }));
 
 describe('AIChatPanel', () => {
@@ -26,7 +35,12 @@ describe('AIChatPanel', () => {
     jest.clearAllMocks();
   });
 
-  it('renders chat panel with initial welcome message', () => {
+  it('renders chat panel with initial welcome message', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ conversation: { messages: [] } }),
+    });
+
     render(
       <AIChatPanel 
         projectId="test-project" 
@@ -34,7 +48,7 @@ describe('AIChatPanel', () => {
       />
     );
 
-    expect(screen.getByText(/컨셉 정의 단계에서 도움을 드리겠습니다/)).toBeInTheDocument();
+    expect(await screen.findByText(/컨셉 정의 단계에서 도움을 드리겠습니다/)).toBeInTheDocument();
   });
 
   it('displays workflow step suggestions', () => {

@@ -49,7 +49,7 @@ npm install
 ```bash
 cp .env.local.example .env.local
 # .env.local 파일을 편집하여 다음 값들을 입력:
-# - NEXT_PUBLIC_GROQ_API_KEY: GROQ API 키
+# - GROQ_API_KEY: GROQ API 키
 # - NEXT_PUBLIC_SUPABASE_URL: Supabase 프로젝트 URL
 # - NEXT_PUBLIC_SUPABASE_ANON_KEY: Supabase 익명 키
 ```
@@ -94,7 +94,7 @@ src/
 
 | 변수명 | 설명 | 기본값 |
 |--------|------|--------|
-| NEXT_PUBLIC_GROQ_API_KEY | GROQ API 키 | 없음 (필수) |
+| GROQ_API_KEY | GROQ API 키 | 없음 (필수) |
 | NEXT_PUBLIC_SUPABASE_URL | Supabase 프로젝트 URL | 없음 (필수) |
 | NEXT_PUBLIC_SUPABASE_ANON_KEY | Supabase 익명 키 | 없음 (필수) |
 

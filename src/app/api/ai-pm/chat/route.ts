@@ -1,154 +1,131 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+﻿import { NextRequest } from 'next/server';
+import { ApiError, json, parseJson, withApi } from '@/lib/http';
 import { getAIService } from '@/lib/ai-pm/ai-service';
 import { getConversationManager } from '@/lib/ai-pm/conversation-manager';
-import { 
-  SendMessageRequest, 
-  ConversationResponse, 
-  AIpmErrorType,
-  isValidWorkflowStep,
-  AIChatMessage
-} from '@/types/ai-pm';
-import { checkAuth } from '@/lib/ai-pm/auth-middleware';
+import { getSupabase, requireAuth, requireProjectAccess } from '@/lib/ai-pm/auth';
+import { requireMaxLength, requireString, requireUuid, requireWorkflowStep } from '@/lib/ai-pm/validators';
+import { AIChatMessage, AIpmErrorType, ConversationResponse, SendMessageRequest } from '@/types/ai-pm';
 
+export const POST = withApi(async (request: NextRequest) => {
+  const supabase = await getSupabase();
+  const auth = await requireAuth(supabase);
 
-// This file handles non-streaming chat interactions
+  const body = await parseJson<SendMessageRequest>(request);
+  const message = requireMaxLength(requireString(body.message, 'message'), 'message', 5000);
+  const workflowStep = requireWorkflowStep(body.workflow_step, 'workflow_step');
 
-export async function POST(request: NextRequest) {
+  const url = new URL(request.url);
+  const projectId = requireUuid(requireString(url.searchParams.get('projectId'), 'projectId'), 'projectId');
+
+  await requireProjectAccess(supabase, auth, projectId);
+
+  const conversationManager = getConversationManager(supabase);
+  const aiService = getAIService();
+
+  await conversationManager.addMessage(projectId, workflowStep, auth.user.id, {
+    role: 'user',
+    content: message,
+  });
+
+  const messages = await conversationManager.getCurrentMessages(projectId, workflowStep, auth.user.id);
+
+  const { data: project } = await supabase
+    .from('projects')
+    .select('name, description')
+    .eq('id', projectId)
+    .single();
+
+  const projectContext = project
+    ? `Project: ${project.name}\nDescription: ${project.description || 'N/A'}`
+    : undefined;
+
+  let aiResponse: string;
   try {
-    const supabase = await createClient();
-    const authResult = await checkAuth();
-    if ('error' in authResult) {
-      return NextResponse.json(authResult, { status: 401 });
-    }
-    const { user } = authResult;
-
-    const body: SendMessageRequest = await request.json();
-    const { message, workflow_step } = body;
-
-    const url = new URL(request.url);
-    const projectId = url.searchParams.get('projectId');
-
-    if (!projectId) {
-      return NextResponse.json({ error: AIpmErrorType.INVALID_PROJECT_ID, message: '프로젝트 ID가 필요합니다.' }, { status: 400 });
-    }
-    if (!isValidWorkflowStep(workflow_step)) {
-      return NextResponse.json({ error: AIpmErrorType.INVALID_WORKFLOW_STEP, message: '유효하지 않은 워크플로우 단계입니다.' }, { status: 400 });
-    }
-    if (!message || message.trim().length === 0) {
-      return NextResponse.json({ error: AIpmErrorType.VALIDATION_ERROR, message: '메시지 내용이 필요합니다.' }, { status: 400 });
-    }
-
-    const conversationManager = getConversationManager(supabase);
-    const aiService = getAIService();
-
-    await conversationManager.addMessage(projectId, workflow_step, user.id, {
-      role: 'user',
-      content: message.trim()
-    });
-
-    const messages = await conversationManager.getCurrentMessages(projectId, workflow_step, user.id);
-
-    const { data: project } = await supabase
-      .from('projects')
-      .select('name, description')
-      .eq('id', projectId)
-      .single();
-
-    const projectContext = project 
-      ? `프로젝트명: ${project.name}\n프로젝트 설명: ${project.description || '없음'}`
-      : undefined;
-
-    const aiResponse = await aiService.generateResponse(messages, workflow_step, projectContext);
-
-    await conversationManager.addMessage(projectId, workflow_step, user.id, {
-      role: 'assistant',
-      content: aiResponse
-    });
-
-    await conversationManager.forceSave(projectId, workflow_step, user.id);
-    const conversation = await conversationManager.loadConversation(projectId, workflow_step, user.id);
-
-    if (!conversation) {
-      return NextResponse.json({ error: AIpmErrorType.INTERNAL_ERROR, message: '대화를 저장하는 중 오류가 발생했습니다.' }, { status: 500 });
-    }
-
-    return NextResponse.json({ conversation } as ConversationResponse);
-
+    aiResponse = await aiService.generateResponse(messages, workflowStep, projectContext);
   } catch (error) {
-    console.error('Chat API Error:', error);
     const typedError = error as any;
-    if (typedError.error && typedError.message) {
-      const statusCode = typedError.error === AIpmErrorType.UNAUTHORIZED ? 401 : 500;
-      return NextResponse.json(error, { status: statusCode });
+    if (typedError?.error === AIpmErrorType.AI_SERVICE_ERROR) {
+      throw new ApiError(500, typedError.error, typedError.message, typedError.details);
     }
-    return NextResponse.json({ error: AIpmErrorType.INTERNAL_ERROR, message: '서버 오류가 발생했습니다.'}, { status: 500 });
+    throw new ApiError(500, AIpmErrorType.AI_SERVICE_ERROR, 'Failed to generate AI response');
   }
-}
 
-export async function GET(request: NextRequest) {
-  try {
-    const supabase = await createClient();
-    const authResult = await checkAuth();
-    if ('error' in authResult) {
-        return NextResponse.json(authResult, { status: 401 });
-    }
-    const { user } = authResult;
-    
-    const url = new URL(request.url);
-    const projectId = url.searchParams.get('projectId');
-    const workflowStepParam = url.searchParams.get('workflowStep');
+  await conversationManager.addMessage(projectId, workflowStep, auth.user.id, {
+    role: 'assistant',
+    content: aiResponse,
+  });
 
-    if (!projectId || !workflowStepParam) {
-      return NextResponse.json({ error: AIpmErrorType.VALIDATION_ERROR, message: '프로젝트 ID와 워크플로우 단계가 필요합니다.' }, { status: 400 });
-    }
+  await conversationManager.forceSave(projectId, workflowStep, auth.user.id);
+  return json({ response: aiResponse });
+});
 
-    const workflowStep = parseInt(workflowStepParam);
-    if (!isValidWorkflowStep(workflowStep)) {
-      return NextResponse.json({ error: AIpmErrorType.INVALID_WORKFLOW_STEP, message: '유효하지 않은 워크플로우 단계입니다.' }, { status: 400 });
-    }
+export const GET = withApi(async (request: NextRequest) => {
+  const supabase = await getSupabase();
+  const auth = await requireAuth(supabase);
 
-    const conversationManager = getConversationManager(supabase);
-    const conversation = await conversationManager.loadConversation(projectId, workflowStep, user.id);
+  const url = new URL(request.url);
+  const projectId = requireUuid(requireString(url.searchParams.get('projectId'), 'projectId'), 'projectId');
+  const workflowStep = requireWorkflowStep(
+    Number(requireString(url.searchParams.get('workflowStep'), 'workflowStep')),
+    'workflowStep',
+  );
 
-    if (!conversation) {
-        const emptyConversation = {
-            id: '', project_id: projectId, workflow_step: workflowStep, user_id: user.id,
-            messages: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString()
-        };
-        return NextResponse.json({ conversation: emptyConversation } as ConversationResponse);
-    }
-    
-    return NextResponse.json({ conversation } as ConversationResponse);
+  await requireProjectAccess(supabase, auth, projectId);
 
-  } catch (error) {
-    console.error('Get Conversation API Error:', error);
-    return NextResponse.json({ error: AIpmErrorType.INTERNAL_ERROR, message: '대화 내용을 불러오는 중 오류가 발생했습니다.'}, { status: 500 });
+  const conversationManager = getConversationManager(supabase);
+  const conversation = await conversationManager.loadConversation(projectId, workflowStep, auth.user.id);
+
+  if (!conversation) {
+    const emptyConversation = {
+      id: '',
+      project_id: projectId,
+      workflow_step: workflowStep,
+      user_id: auth.user.id,
+      messages: [],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    return json({ conversation: emptyConversation } as ConversationResponse);
   }
-}
 
-export async function PUT(request: NextRequest) {
-    try {
-      const supabase = await createClient();
-      const authResult = await checkAuth();
-      if ('error' in authResult) {
-        return NextResponse.json(authResult, { status: 401 });
-      }
-      const { user } = authResult;
-  
-      const { messages, workflow_step, projectId } = await request.json();
-  
-      if (!projectId || !workflow_step || !Array.isArray(messages)) {
-        return NextResponse.json({ error: AIpmErrorType.VALIDATION_ERROR, message: '잘못된 요청입니다.' }, { status: 400 });
-      }
-  
-      const conversationManager = getConversationManager(supabase);
-      await conversationManager.updateConversationMessages(projectId, workflow_step, user.id, messages as AIChatMessage[]);
-      
-      return NextResponse.json({ message: '대화가 성공적으로 저장되었습니다.' });
-  
-    } catch (error) {
-      console.error('Update Conversation API Error:', error);
-      return NextResponse.json({ error: AIpmErrorType.INTERNAL_ERROR, message: '대화 저장 중 오류가 발생했습니다.'}, { status: 500 });
-    }
-}
+  return json({ conversation } as ConversationResponse);
+});
+
+export const PUT = withApi(async (request: NextRequest) => {
+  const supabase = await getSupabase();
+  const auth = await requireAuth(supabase);
+
+  const body = await parseJson<{ messages?: AIChatMessage[]; workflow_step?: number; projectId?: string }>(request);
+  const projectId = requireUuid(requireString(body.projectId, 'projectId'), 'projectId');
+  const workflowStep = requireWorkflowStep(body.workflow_step, 'workflow_step');
+
+  if (!Array.isArray(body.messages)) {
+    throw new ApiError(400, AIpmErrorType.VALIDATION_ERROR, 'messages must be an array');
+  }
+
+  await requireProjectAccess(supabase, auth, projectId);
+
+  const conversationManager = getConversationManager(supabase);
+  await conversationManager.updateConversationMessages(projectId, workflowStep, auth.user.id, body.messages);
+
+  return json({ message: 'Conversation updated' });
+});
+
+export const DELETE = withApi(async (request: NextRequest) => {
+  const supabase = await getSupabase();
+  const auth = await requireAuth(supabase);
+
+  const url = new URL(request.url);
+  const projectId = requireUuid(requireString(url.searchParams.get('projectId'), 'projectId'), 'projectId');
+  const workflowStep = requireWorkflowStep(
+    Number(requireString(url.searchParams.get('workflowStep'), 'workflowStep')),
+    'workflowStep',
+  );
+
+  await requireProjectAccess(supabase, auth, projectId);
+
+  const conversationManager = getConversationManager(supabase);
+  await conversationManager.clearConversation(projectId, workflowStep, auth.user.id);
+
+  return json({ message: 'OK' });
+});

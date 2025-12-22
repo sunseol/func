@@ -210,7 +210,7 @@ export const useKeyboardAvoidance = (options: UseKeyboardAvoidanceOptions = {}) 
 /**
  * Hook specifically for form containers that need keyboard avoidance
  */
-export const useFormKeyboardAvoidance = (formRef: React.RefObject<HTMLElement>) => {
+export const useFormKeyboardAvoidance = <T extends HTMLElement>(formRef: React.RefObject<T | null>) => {
   const keyboardAvoidance = useKeyboardAvoidance();
   const { isMobile } = useBreakpoint();
 
@@ -263,5 +263,3 @@ export const KeyboardAvoidanceWrapper: React.FC<KeyboardAvoidanceWrapperProps> =
     </div>
   );
 };
-
-

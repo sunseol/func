@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { Form, Input, Button, DatePicker, Card, Space, Popconfirm } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
-import { Project, TaskItem, ReportData } from '../api/grop';
+import type { Project, ReportDraft, TaskItem } from '@/features/reports/types';
 import dayjs from 'dayjs'; // Dayjs import
 import 'dayjs/locale/ko'; // 한국어 로케일
 dayjs.locale('ko'); // 로케일 설정
@@ -23,7 +23,7 @@ interface InputFormProps {
     projects: Project[];
     miscTasks: TaskItem[];
   }) => void;
-  initialData: ReportData; // 초기 데이터 prop 추가
+  initialData: ReportDraft; // 초기 데이터 prop 추가
 }
 
   // 협업자 정보 포맷팅 ('/w' 자동 추가)
@@ -41,7 +41,7 @@ export default function InputForm({ onDataChange, initialData }: InputFormProps)
     form.setFieldsValue({
       userName: initialData.userName,
       // 날짜 문자열을 Dayjs 객체로 변환, 유효하지 않으면 null (형식 지정)
-      date: initialData.date ? dayjs(initialData.date, 'YYYY-MM-DD dddd') : null, 
+      date: initialData.date ? dayjs(initialData.date, 'YYYY-MM-DD') : null, 
       projects: initialData.projects || [],
       miscTasks: initialData.miscTasks || [],
     });
@@ -57,7 +57,7 @@ export default function InputForm({ onDataChange, initialData }: InputFormProps)
       const month = (allValues.date.month() + 1).toString().padStart(2, '0'); // month()는 0부터 시작
       const day = allValues.date.date().toString().padStart(2, '0');
       const dayOfWeek = allValues.date.format('dddd'); // 'ko' 로케일 사용 시 '월요일', '화요일' 등
-      formattedDateString = `${year}-${month}-${day} ${dayOfWeek}`;
+      formattedDateString = allValues.date.format('YYYY-MM-DD');
     }
 
     onDataChange({
@@ -174,7 +174,7 @@ export default function InputForm({ onDataChange, initialData }: InputFormProps)
                             <Button icon={<DeleteOutlined />} onClick={() => removeTask(taskName)} type="text" danger />
                           </Space>
                         ))}
-                        <Button type="dashed" onClick={() => addTask({ description: '', collaborator: '', status: '진행 중' })} block icon={<PlusOutlined />}>
+                        <Button type="dashed" onClick={() => addTask({ description: '', collaborator: '' })} block icon={<PlusOutlined />}>
                           업무 추가
                         </Button>
                       </Space>
@@ -182,7 +182,7 @@ export default function InputForm({ onDataChange, initialData }: InputFormProps)
                   </Form.List>
                 </Card>
               ))}
-              <Button type="dashed" onClick={() => add({ name: '', tasks: [{ description: '', collaborator: '', status: '진행 중' }] })} block icon={<PlusOutlined />}>
+              <Button type="dashed" onClick={() => add({ name: '', tasks: [{ description: '', collaborator: '' }] })} block icon={<PlusOutlined />}>
                 프로젝트 추가
               </Button>
             </Space>
@@ -221,7 +221,7 @@ export default function InputForm({ onDataChange, initialData }: InputFormProps)
                   <Button icon={<DeleteOutlined />} onClick={() => remove(name)} type="text" danger />
                 </Space>
               ))}
-              <Button type="dashed" onClick={() => add({ description: '', collaborator: '', status: '진행 중' })} block icon={<PlusOutlined />}>
+              <Button type="dashed" onClick={() => add({ description: '', collaborator: '' })} block icon={<PlusOutlined />}>
                 기타 업무 추가
               </Button>
             </Space>

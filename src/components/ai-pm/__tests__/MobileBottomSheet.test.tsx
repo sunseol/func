@@ -56,7 +56,7 @@ describe('MobileBottomSheet', () => {
     render(<MobileBottomSheet {...defaultProps} />);
     
     // The backdrop should be present
-    const backdrop = document.querySelector('.fixed.inset-0.bg-black.bg-opacity-50');
+    const backdrop = document.querySelector('.fixed.inset-0.z-40');
     expect(backdrop).toBeInTheDocument();
   });
 });

@@ -30,7 +30,7 @@ export default function RouteGuard({
 }: RouteGuardProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, profile, loading: authLoading, canAccessProject, getProjectRole } = useAuth();
+  const { user, profile, loading: authLoading, isAdmin, projectMemberships } = useAuth();
   const { canAccessProject: navCanAccessProject } = useNavigation();
   
   const [guardState, setGuardState] = useState<GuardState>({
@@ -59,7 +59,7 @@ export default function RouteGuard({
         }
 
         // Check admin requirement
-        if (requireAdmin && profile?.role !== 'admin') {
+        if (requireAdmin && !isAdmin) {
           setGuardState({
             isChecking: false,
             hasAccess: false,
@@ -71,8 +71,9 @@ export default function RouteGuard({
 
         // Check project access
         if (requiredProjectId) {
-          const hasProjectAccess = canAccessProject(requiredProjectId) && 
-                                  navCanAccessProject(requiredProjectId);
+          const membership = projectMemberships.find((m) => m.project_id === requiredProjectId);
+          const hasProjectAccess =
+            (isAdmin || !!membership) && navCanAccessProject(requiredProjectId);
           
           if (!hasProjectAccess) {
             setGuardState({
@@ -86,7 +87,7 @@ export default function RouteGuard({
 
           // Check role requirements for project
           if (allowedRoles.length > 0) {
-            const userRole = getProjectRole(requiredProjectId);
+            const userRole = isAdmin ? 'admin' : membership?.role;
             const hasRoleAccess = userRole && allowedRoles.includes(userRole);
             
             if (!hasRoleAccess) {
@@ -121,7 +122,9 @@ export default function RouteGuard({
     checkAccess();
   }, [
     user, 
-    profile, 
+    profile,
+    isAdmin,
+    projectMemberships,
     authLoading, 
     requireAuth, 
     requireAdmin, 
@@ -130,8 +133,6 @@ export default function RouteGuard({
     pathname,
     router,
     fallbackPath,
-    canAccessProject,
-    getProjectRole,
     navCanAccessProject
   ]);
 

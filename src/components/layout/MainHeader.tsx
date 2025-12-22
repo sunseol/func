@@ -2,12 +2,11 @@
 
 import React, { useCallback } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { Layout, Button, Space, Switch, Typography, Drawer, Divider } from 'antd';
 import { SunOutlined, MoonOutlined, BellOutlined, MenuOutlined } from '@ant-design/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/app/components/ThemeProvider';
-import { useNotification } from '@/context/NotificationContext';
+import { useNotification } from '@/contexts/NotificationContext';
 import { useRouter } from 'next/navigation';
 
 const { Header } = Layout;
@@ -34,13 +33,12 @@ export default function MainHeader() {
     >
       <div className="flex items-center justify-between w-full gap-2">
         <Link href="/landing" className="flex items-center gap-2 min-w-0 max-w-full" aria-label="FunCommute Home">
-          <Image
+          <img
             src="/logo-funcommute.svg"
             alt="FunCommute"
             width={28}
             height={28}
             className="h-7 w-7 sm:h-8 sm:w-8"
-            priority
           />
           <span className="text-white font-semibold tracking-wide text-base sm:text-lg truncate">
             FunCommute
@@ -105,6 +103,11 @@ export default function MainHeader() {
                 )}
               </Button>
             </Link>
+            <Link href="/profile">
+                 <Button type="link" size="small" className="px-2 text-white hidden sm:inline-block">
+                 ???
+                 </Button>
+            </Link>
             {(user.email === 'jakeseol99@keduall.com' || user.user_metadata?.role === 'admin') && (
               <Link href="/admin">
                 <Button type="link" size="small" style={{ padding: '0 8px', color: 'white' }}>
@@ -152,6 +155,7 @@ export default function MainHeader() {
             <Link href="/my-reports"><Button block type="text">내 보고서</Button></Link>
             <Link href="/report-generator"><Button block type="text">리포트 요약</Button></Link>
             <Link href="/notifications"><Button block type="text" icon={<BellOutlined />}>알림{unreadCount ? ` (${unreadCount})` : ''}</Button></Link>
+            <Link href="/profile"><Button block type="text">???</Button></Link>
             {(user.email === 'jakeseol99@keduall.com' || user.user_metadata?.role === 'admin') && (
               <Link href="/admin"><Button block type="text">관리자</Button></Link>
             )}

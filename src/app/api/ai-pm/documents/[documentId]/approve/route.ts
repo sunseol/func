@@ -1,46 +1,67 @@
-import { createClient } from '@/lib/supabase/server';
-import { checkAuthWithMemberships } from '@/lib/ai-pm/auth-middleware';
-import { NextResponse } from 'next/server';
+﻿import { NextRequest } from 'next/server';
+import { ApiError, json, withApi } from '@/lib/http';
+import { getSupabase, requireAuth } from '@/lib/ai-pm/auth';
+import { requireUuid } from '@/lib/ai-pm/validators';
+import { AIpmErrorType } from '@/types/ai-pm';
 
-export async function POST(
-  request: Request,
-  { params }: { params: { documentId: string } }
-) {
-    const { documentId } = params;
-  if (!documentId) {
-    return NextResponse.json({ message: 'Document ID is required' }, { status: 400 });
+export const dynamic = 'force-dynamic';
+
+type Context = { params: { documentId: string } };
+
+export const POST = withApi(async (_request: NextRequest, { params }: Context) => {
+  const supabase = await getSupabase();
+  const auth = await requireAuth(supabase, { requireAdmin: true });
+  const documentId = requireUuid(params.documentId, 'documentId');
+
+  const { data: document, error: docError } = await supabase
+    .from('planning_documents')
+    .select('*')
+    .eq('id', documentId)
+    .single();
+
+  if (docError || !document) {
+    throw new ApiError(404, AIpmErrorType.DOCUMENT_NOT_FOUND, 'Document not found', docError);
   }
 
-  const supabase = await createClient();
-  const { user, error: authError } = await checkAuthWithMemberships(supabase);
-
-  if (authError) {
-    return NextResponse.json({ message: authError.message }, { status: authError.status });
+  if (document.status !== 'pending_approval') {
+    throw new ApiError(400, AIpmErrorType.VALIDATION_ERROR, 'Only pending documents can be approved');
   }
 
-  try {
-    // Changed from .single() to handle SETOF functions more safely
-    const { data: updatedDocuments, error: rpcError } = await supabase.rpc(
-      'approve_document_and_demote_old_official',
-      {
-        p_document_id: documentId,
-        p_user_id: user.id
-      }
-    ).select();
+  const previousStatus = document.status;
+  const now = new Date().toISOString();
 
-    if (rpcError) {
-      console.error('RPC Error approving document:', rpcError);
-      return NextResponse.json({ message: 'Database error while approving document.', details: rpcError.message }, { status: 500 });
-    }
+  const { data: updatedDoc, error: updateError } = await supabase
+    .from('planning_documents')
+    .update({
+      status: 'official',
+      approved_by: auth.user.id,
+      approved_at: now,
+      updated_at: now,
+    })
+    .eq('id', documentId)
+    .select('*')
+    .single();
 
-    if (!updatedDocuments || updatedDocuments.length === 0) {
-      return NextResponse.json({ message: 'Document not found or no changes were made.' }, { status: 404 });
-    }
-
-    // Return the first document from the result array
-    return NextResponse.json({ document: updatedDocuments[0], message: '문서가 공식 문서로 승인되었습니다.' });
-  } catch (err: any) {
-    console.error('Error in approve route:', err);
-    return NextResponse.json({ message: err.message || 'An unexpected error occurred.' }, { status: 500 });
+  if (updateError || !updatedDoc) {
+    throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to approve document', updateError);
   }
-}
+
+  const { error: historyError } = await supabase
+    .from('approval_history')
+    .insert({
+      document_id: documentId,
+      user_id: auth.user.id,
+      action: 'approved',
+      previous_status: previousStatus,
+      new_status: 'official',
+      created_at: now,
+    })
+    .select()
+    .single();
+
+  if (historyError) {
+    throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to write approval history', historyError);
+  }
+
+  return json({ document: updatedDoc });
+});

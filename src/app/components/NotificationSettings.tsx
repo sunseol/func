@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Card, Switch, TimePicker, Button, Space, Typography, Divider, List, Badge, App } from 'antd';
 import { BellOutlined, SettingOutlined, CheckOutlined } from '@ant-design/icons';
-import { useNotification } from '@/context/NotificationContext';
+import { useNotification } from '@/contexts/NotificationContext';
 import { useTheme } from '@/app/components/ThemeProvider';
 import dayjs from 'dayjs';
 

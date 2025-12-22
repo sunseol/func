@@ -1,6 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
-import { motion } from 'framer-motion';
+import { motion, type Variants } from 'framer-motion';
 import { Container } from '../components/Container';
 import { FaRegSadTear, FaSearch, FaRegTired } from 'react-icons/fa';
 
@@ -53,7 +53,7 @@ const ProblemDescription = styled.p`
   line-height: 1.6;
 `;
 
-const cardVariants = {
+const cardVariants: Variants = {
   offscreen: {
     y: 50,
     opacity: 0,

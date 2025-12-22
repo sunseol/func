@@ -585,6 +585,26 @@ const LoadingSkeletons = {
   
   // Page layouts
   Page: PageLoadingSkeleton,
+
+  Modal: () => (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg w-full max-w-md p-6">
+        <div className="space-y-4">
+          <Skeleton height={24} width="70%" animate={true} />
+          <Skeleton height={16} width="50%" animate={true} />
+          <div className="space-y-3">
+            {[...Array(4)].map((_, i) => (
+              <Skeleton key={i} height={44} width="100%" animate={true} />
+            ))}
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Skeleton height={40} width={96} animate={true} />
+            <Skeleton height={40} width={96} animate={true} />
+          </div>
+        </div>
+      </div>
+    </div>
+  ),
   
   // Mobile optimized
   MobileCard: MobileCardSkeleton,
@@ -629,6 +649,20 @@ const LoadingSkeletons = {
         {[...Array(3)].map((_, i) => (
           <Skeleton key={i} height={44} width="100%" animate={true} />
         ))}
+      </div>
+    </div>
+  ),
+
+  Sidebar: () => (
+    <div className="h-full w-80 bg-white border-r border-gray-200 p-4">
+      <div className="space-y-4">
+        <Skeleton height={24} width="60%" animate={true} />
+        <Skeleton height={16} width="80%" animate={true} />
+        <div className="space-y-2 pt-2">
+          {[...Array(8)].map((_, i) => (
+            <Skeleton key={i} height={40} width="100%" animate={true} />
+          ))}
+        </div>
       </div>
     </div>
   ),

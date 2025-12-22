@@ -5,9 +5,9 @@ import { TableColumn } from '@/components/ui/ResponsiveTable';
  */
 
 export interface ColumnPriorityConfig {
-  high: string[]; // Always visible columns
-  medium: string[]; // Visible on tablet and desktop
-  low: string[]; // Only visible on desktop
+  high: readonly string[]; // Always visible columns
+  medium: readonly string[]; // Visible on tablet and desktop
+  low: readonly string[]; // Only visible on desktop
 }
 
 /**
@@ -209,9 +209,12 @@ export function createMobileActionColumn<T>(
       return {
         type: 'mobile-actions',
         actions: enabledActions.map(action => ({
-          ...action,
-          onClick: () => action.onClick(record)
-        }))
+          key: action.key,
+          label: action.label,
+          icon: action.icon,
+          danger: action.danger,
+          onClick: () => action.onClick(record),
+        })),
       };
     }
   };

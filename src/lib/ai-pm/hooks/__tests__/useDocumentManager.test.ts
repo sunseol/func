@@ -17,7 +17,7 @@ const mockAutoSaveManager = {
   cleanup: jest.fn(),
 };
 
-jest.mock('../document-sync', () => ({
+jest.mock('../../document-sync', () => ({
   DocumentSyncService: jest.fn().mockImplementation(() => mockDocumentSyncService),
   AutoSaveManager: jest.fn().mockImplementation(() => mockAutoSaveManager),
 }));

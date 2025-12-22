@@ -116,7 +116,8 @@ const ReportGeneratorPageInternal: React.FC = () => {
       setFileList(newFileList);
     },
     beforeUpload: (file: UploadFile) => {
-      const isAllowedType = ['application/pdf', 'text/plain', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'].includes(file.type);
+      const allowedTypes = ['application/pdf', 'text/plain', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+      const isAllowedType = allowedTypes.includes(file.type ?? '');
       if (!isAllowedType) {
         messageApi.error('PDF, TXT, DOCX 파일만 업로드할 수 있습니다.');
         return Upload.LIST_IGNORE;

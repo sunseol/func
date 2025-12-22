@@ -1,165 +1,63 @@
-import { cookies } from 'next/headers';
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+﻿import { NextRequest } from 'next/server';
+import { ApiError, json, parseJson, withApi } from '@/lib/http';
 import { getAIService } from '@/lib/ai-pm/ai-service';
 import { getConversationManager } from '@/lib/ai-pm/conversation-manager';
-import { 
-  DocumentResponse,
-  AIpmErrorType,
-  isValidWorkflowStep,
-  getWorkflowStepName
-} from '@/types/ai-pm';
+import { getSupabase, requireAuth, requireProjectAccess } from '@/lib/ai-pm/auth';
+import { requireString, requireUuid, requireWorkflowStep } from '@/lib/ai-pm/validators';
+import { AIpmErrorType, DocumentResponse, getWorkflowStepName } from '@/types/ai-pm';
 
-export async function POST(request: NextRequest) {
-  try {
-    const cookieStore = cookies();
-    const supabase = await createClient();
-    
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: AIpmErrorType.UNAUTHORIZED, message: '인증이 필요합니다.' },
-        { status: 401 }
-      );
-    }
+export const dynamic = 'force-dynamic';
 
-    // Parse request body
-    const body: { workflow_step: number } = await request.json();
-    const { workflow_step } = body;
+export const POST = withApi(async (request: NextRequest) => {
+  const supabase = await getSupabase();
+  const auth = await requireAuth(supabase);
 
-    // Get project ID from URL
-    const url = new URL(request.url);
-    const projectId = url.searchParams.get('projectId');
+  const url = new URL(request.url);
+  const projectId = requireUuid(requireString(url.searchParams.get('projectId'), 'projectId'), 'projectId');
 
-    if (!projectId) {
-      return NextResponse.json(
-        { error: AIpmErrorType.INVALID_PROJECT_ID, message: '프로젝트 ID가 필요합니다.' },
-        { status: 400 }
-      );
-    }
+  const body = await parseJson<{ workflow_step?: number }>(request);
+  const workflowStep = requireWorkflowStep(body.workflow_step, 'workflow_step');
 
-    if (!isValidWorkflowStep(workflow_step)) {
-      return NextResponse.json(
-        { error: AIpmErrorType.INVALID_WORKFLOW_STEP, message: '유효하지 않은 워크플로우 단계입니다.' },
-        { status: 400 }
-      );
-    }
+  await requireProjectAccess(supabase, auth, projectId);
 
-    // Check project access
-    const { data: projectMember, error: memberError } = await supabase
-      .from('project_members')
-      .select('id')
-      .eq('project_id', projectId)
-      .eq('user_id', user.id)
-      .single();
+  const conversationManager = getConversationManager(supabase);
+  const aiService = getAIService();
 
-    if (memberError || !projectMember) {
-      // Check if user is admin
-      const { data: userProfile } = await supabase
-        .from('user_profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
+  const messages = await conversationManager.getCurrentMessages(projectId, workflowStep, auth.user.id);
 
-      if (!userProfile || userProfile.role !== 'admin') {
-        return NextResponse.json(
-          { error: AIpmErrorType.FORBIDDEN, message: '프로젝트에 접근할 권한이 없습니다.' },
-          { status: 403 }
-        );
-      }
-    }
+  const { data: project } = await supabase
+    .from('projects')
+    .select('name, description')
+    .eq('id', projectId)
+    .single();
 
-    // Get conversation manager and AI service
-    const conversationManager = getConversationManager(supabase);
-    const aiService = getAIService();
+  const projectContext = project
+    ? `Project: ${project.name}\nDescription: ${project.description || 'N/A'}`
+    : undefined;
 
-    // Get conversation history
-    const messages = await conversationManager.getCurrentMessages(projectId, workflow_step, user.id);
+  const documentContent = await aiService.generateDocument(messages, workflowStep, projectContext, auth.user.id);
 
-    if (messages.length === 0) {
-      return NextResponse.json(
-        { error: AIpmErrorType.VALIDATION_ERROR, message: '문서를 생성하기 위한 대화 내용이 없습니다.' },
-        { status: 400 }
-      );
-    }
+  const stepName = getWorkflowStepName(workflowStep);
+  const documentTitle = `${stepName} - ${project?.name || 'Project plan'}`;
 
-    // Get project context for AI
-    const { data: project } = await supabase
-      .from('projects')
-      .select('name, description')
-      .eq('id', projectId)
-      .single();
+  const { data: savedDocument, error: saveError } = await supabase
+    .from('planning_documents')
+    .insert({
+      project_id: projectId,
+      workflow_step: workflowStep,
+      title: documentTitle,
+      content: documentContent,
+      status: 'private',
+      version: 1,
+      created_by: auth.user.id,
+    })
+    .select('*')
+    .single();
 
-    const projectContext = project 
-      ? `프로젝트명: ${project.name}\n프로젝트 설명: ${project.description || '없음'}`
-      : undefined;
-
-    // Generate document using AI
-    const documentContent = await aiService.generateDocument(messages, workflow_step, projectContext);
-
-    // Create document title
-    const stepName = getWorkflowStepName(workflow_step);
-    const documentTitle = `${stepName} - ${project?.name || '프로젝트'} 기획서`;
-
-    // Save document to database
-    const { data: savedDocument, error: saveError } = await supabase
-      .from('planning_documents')
-      .insert([{
-        project_id: projectId,
-        workflow_step: workflow_step,
-        title: documentTitle,
-        content: documentContent,
-        status: 'private',
-        version: 1,
-        created_by: user.id
-      }])
-      .select(`*`)
-      .single();
-
-    if (saveError) {
-      console.error('Error saving document:', saveError);
-      return NextResponse.json(
-        { error: AIpmErrorType.DATABASE_ERROR, message: '문서 저장 중 오류가 발생했습니다.' },
-        { status: 500 }
-      );
-    }
-
-    // Manually fetch user details
-    const { data: creatorProfile } = await supabase.from('user_profiles').select('id, full_name').eq('id', savedDocument.created_by).single();
-    const { data: creatorUser } = await supabase.from('users').select('id, email').eq('id', savedDocument.created_by).single();
-
-    // Format response
-    const documentWithUsers = {
-      ...savedDocument,
-      creator_email: creatorUser?.email || '',
-      creator_name: creatorProfile?.full_name || null,
-      approver_email: null,
-      approver_name: null,
-    };
-
-    const response: DocumentResponse = { document: documentWithUsers };
-    return NextResponse.json(response);
-
-  } catch (error) {
-    console.error('Generate Document API Error:', error);
-    
-    if (error.error && error.message) {
-      const statusCode = error.error === AIpmErrorType.UNAUTHORIZED ? 401 :
-                        error.error === AIpmErrorType.FORBIDDEN ? 403 :
-                        error.error === AIpmErrorType.RATE_LIMITED ? 429 :
-                        500;
-      
-      return NextResponse.json(error, { status: statusCode });
-    }
-
-    return NextResponse.json(
-      { 
-        error: AIpmErrorType.INTERNAL_ERROR, 
-        message: '서버 오류가 발생했습니다.',
-        details: process.env.NODE_ENV === 'development' ? (error as Error).message : undefined
-      },
-      { status: 500 }
-    );
+  if (saveError || !savedDocument) {
+    throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to save document', saveError);
   }
-}
+
+  const response: DocumentResponse = { document: savedDocument };
+  return json(response, { status: 201 });
+});

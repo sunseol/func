@@ -1,22 +1,48 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CloseOutlined } from '@ant-design/icons';
 import { CreateProjectRequest } from '@/types/ai-pm';
 import { KeyboardAwareForm } from '@/components/ui/KeyboardAwareForm';
 
 interface CreateProjectModalProps {
+  isOpen?: boolean;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-export default function CreateProjectModal({ onClose, onSuccess }: CreateProjectModalProps) {
+export default function CreateProjectModal({ isOpen = true, onClose, onSuccess }: CreateProjectModalProps) {
+  if (!isOpen) return null;
+
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
+
   const [formData, setFormData] = useState<CreateProjectRequest>({
     name: '',
     description: ''
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setFormData({ name: '', description: '' });
+    setError(null);
+    setLoading(false);
+    queueMicrotask(() => {
+      nameInputRef.current?.focus();
+    });
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,11 +96,15 @@ export default function CreateProjectModal({ onClose, onSuccess }: CreateProject
         <div 
           className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
           onClick={onClose}
+          data-testid="modal-overlay"
           aria-hidden="true"
         />
 
         {/* Modal panel */}
-        <div className="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6 relative z-10">
+        <div
+          className="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6 relative z-10"
+          data-testid="modal-content"
+        >
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
             <h3 id="modal-title" className="text-lg font-medium text-gray-900">
@@ -83,6 +113,7 @@ export default function CreateProjectModal({ onClose, onSuccess }: CreateProject
             <button
               onClick={onClose}
               className="text-gray-400 hover:text-gray-600 transition-colors"
+              aria-label="닫기"
               disabled={loading}
             >
               <CloseOutlined style={{ fontSize: 24 }} />
@@ -105,6 +136,7 @@ export default function CreateProjectModal({ onClose, onSuccess }: CreateProject
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[48px] text-base text-[16px] sm:px-3 sm:py-2 sm:text-sm sm:min-h-[40px]"
                 disabled={loading}
                 maxLength={255}
+                ref={nameInputRef}
               />
             </div>
 
@@ -148,7 +180,7 @@ export default function CreateProjectModal({ onClose, onSuccess }: CreateProject
               <button
                 type="submit"
                 className="px-6 py-3 text-base font-medium text-white bg-blue-600 border border-transparent rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px] sm:px-4 sm:py-2 sm:text-sm sm:min-h-[40px]"
-                disabled={loading || !formData.name.trim()}
+                disabled={loading}
               >
                 {loading ? (
                   <div className="flex items-center">

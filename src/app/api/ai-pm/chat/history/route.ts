@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { checkAuth } from '@/lib/ai-pm/auth-middleware';
+﻿import { NextRequest } from 'next/server';
+import { ApiError, json, withApi } from '@/lib/http';
+import { getSupabase, requireAuth, requireProjectAccess } from '@/lib/ai-pm/auth';
+import { requireString, requireUuid } from '@/lib/ai-pm/validators';
 import { AIpmErrorType, WorkflowStep } from '@/types/ai-pm';
 
 interface ConversationSummary {
@@ -19,53 +20,31 @@ interface ConversationStats {
   recent_activity_count: number;
 }
 
-export async function GET(request: NextRequest) {
-  try {
-    const supabase = await createClient();
-    const authResult = await checkAuth();
+export const GET = withApi(async (request: NextRequest) => {
+  const supabase = await getSupabase();
+  const auth = await requireAuth(supabase);
 
-    if ('error' in authResult) {
-      return NextResponse.json(authResult, { status: 401 });
-    }
-    const { user } = authResult;
+  const url = new URL(request.url);
+  const projectId = requireUuid(requireString(url.searchParams.get('projectId'), 'projectId'), 'projectId');
 
-    const url = new URL(request.url);
-    const projectId = url.searchParams.get('projectId');
+  await requireProjectAccess(supabase, auth, projectId);
 
-    if (!projectId) {
-      return NextResponse.json(
-        { error: AIpmErrorType.INVALID_PROJECT_ID, message: '프로젝트 ID가 필요합니다.' },
-        { status: 400 }
-      );
-    }
+  const { data: summaries, error } = await supabase.rpc('get_conversation_summaries', {
+    p_project_id: projectId,
+    p_user_id: auth.user.id,
+  });
 
-    const { data: summaries, error } = await supabase.rpc('get_conversation_summaries', {
-      p_project_id: projectId,
-      p_user_id: user.id,
-    });
-
-    if (error) {
-      throw error;
-    }
-
-    const conversationSummaries: ConversationSummary[] = summaries || [];
-
-    return NextResponse.json({
-      conversations: conversationSummaries,
-      stats: generateStats(conversationSummaries),
-    });
-  } catch (error) {
-    console.error('Conversation History API Error:', error);
-    return NextResponse.json(
-      {
-        error: AIpmErrorType.INTERNAL_ERROR,
-        message: '서버 오류가 발생했습니다.',
-        details: process.env.NODE_ENV === 'development' ? (error as Error).message : undefined,
-      },
-      { status: 500 }
-    );
+  if (error) {
+    throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to fetch conversation summaries', error);
   }
-}
+
+  const conversationSummaries: ConversationSummary[] = summaries || [];
+
+  return json({
+    conversations: conversationSummaries,
+    stats: generateStats(conversationSummaries),
+  });
+});
 
 function generateStats(summaries: ConversationSummary[]): ConversationStats {
   const activityByStep: Record<WorkflowStep, number> = {} as Record<WorkflowStep, number>;
@@ -88,7 +67,7 @@ function generateStats(summaries: ConversationSummary[]): ConversationStats {
   for (const [step, count] of Object.entries(activityByStep)) {
     if (count > maxActivity) {
       maxActivity = count;
-      mostActiveStep = parseInt(step) as WorkflowStep;
+      mostActiveStep = parseInt(step, 10) as WorkflowStep;
     }
   }
 

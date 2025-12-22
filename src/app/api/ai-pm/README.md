@@ -503,7 +503,7 @@ AI 대화 시스템은 AIPM.md에 정의된 9단계 워크플로우를 지원합
 AI 대화 시스템을 사용하기 위해서는 다음 환경 변수가 필요합니다:
 
 ```bash
-NEXT_PUBLIC_GROQ_API_KEY=your_groq_api_key_here
+GROQ_API_KEY=your_groq_api_key_here
 ```
 
 ## 데이터베이스 스키마

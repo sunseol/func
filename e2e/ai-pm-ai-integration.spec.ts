@@ -150,9 +150,10 @@ test.describe('AI PM AI Integration Tests', () => {
     // Verify final response is complete
     const finalResponse = await page.locator('[data-testid="ai-response"]').last();
     const responseText = await finalResponse.textContent();
-    expect(responseText.length).toBeGreaterThan(500); // Should be comprehensive
-    expect(responseText).toContain('핀테크');
-    expect(responseText).toContain('결제');
+    expect(responseText).not.toBeNull();
+    expect((responseText ?? '').length).toBeGreaterThan(500); // Should be comprehensive
+    expect(responseText ?? '').toContain('핀테크');
+    expect(responseText ?? '').toContain('결제');
   });
 
   test('AI error handling and recovery', async ({ page }) => {

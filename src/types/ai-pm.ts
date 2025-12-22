@@ -1,7 +1,8 @@
-// AI PM Feature Type Definitions
+﻿// AI-PM domain types
 
-// Base types
-export type ProjectRole = '콘텐츠기획' | '서비스기획' | 'UIUX기획' | '개발자';
+export const PROJECT_ROLES = ['content_planning', 'service_planning', 'ux_planning', 'developer'] as const;
+
+export type ProjectRole = (typeof PROJECT_ROLES)[number];
 export type DocumentStatus = 'private' | 'pending_approval' | 'official';
 export type WorkflowStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 
@@ -106,7 +107,7 @@ export interface AIChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  timestamp: Date;
+  timestamp: string | Date;
 }
 
 export interface AIConversation {
@@ -151,9 +152,7 @@ export interface UpdateDocumentRequest {
   status?: DocumentStatus;
 }
 
-// Type aliases for API requests that only use URL parameters
 export type RequestApprovalRequest = Record<string, never>;
-
 export type ApproveDocumentRequest = Record<string, never>;
 
 export interface RejectDocumentRequest {
@@ -244,7 +243,7 @@ export enum AIpmErrorType {
   RATE_LIMITED = 'RATE_LIMITED',
   SESSION_EXPIRED = 'SESSION_EXPIRED',
   REAUTH_REQUIRED = 'REAUTH_REQUIRED',
-  SECURITY_VIOLATION = 'SECURITY_VIOLATION'
+  SECURITY_VIOLATION = 'SECURITY_VIOLATION',
 }
 
 export interface AIpmError {
@@ -253,45 +252,49 @@ export interface AIpmError {
   details?: any;
 }
 
-// Workflow step definitions
+// Workflow step labels
 export const WORKFLOW_STEPS: Record<WorkflowStep, string> = {
-  1: '서비스 개요 및 목표 설정',
-  2: '타겟 사용자 분석',
-  3: '핵심 기능 정의',
-  4: '사용자 경험 설계',
-  5: '기술 스택 및 아키텍처',
-  6: '개발 일정 및 마일스톤',
-  7: '리스크 분석 및 대응 방안',
-  8: '성과 지표 및 측정 방법',
-  9: '런칭 및 마케팅 전략'
+  1: 'Discovery',
+  2: 'Research',
+  3: 'Requirements',
+  4: 'Information architecture',
+  5: 'Interaction design',
+  6: 'Visual design',
+  7: 'Implementation plan',
+  8: 'Review',
+  9: 'Delivery',
 };
 
-// Role descriptions
+export const ROLE_LABELS: Record<ProjectRole, string> = {
+  content_planning: 'Content planning',
+  service_planning: 'Service planning',
+  ux_planning: 'UX planning',
+  developer: 'Developer',
+};
+
 export const ROLE_DESCRIPTIONS: Record<ProjectRole, string> = {
-  '콘텐츠기획': '콘텐츠 전략 및 기획 담당',
-  '서비스기획': '서비스 기획 및 비즈니스 로직 담당',
-  'UIUX기획': 'UI/UX 디자인 및 사용자 경험 담당',
-  '개발자': '기술 구현 및 개발 담당'
+  content_planning: 'Owns content strategy and planning.',
+  service_planning: 'Owns service planning and business logic.',
+  ux_planning: 'Owns UX flows and UI planning.',
+  developer: 'Owns implementation and engineering delivery.',
 };
 
-// Document status descriptions
 export const STATUS_DESCRIPTIONS: Record<DocumentStatus, string> = {
-  'private': '개인 작업 중',
-  'pending_approval': '승인 대기 중',
-  'official': '공식 승인됨'
+  private: 'Draft',
+  pending_approval: 'Pending approval',
+  official: 'Official',
 };
 
-// Utility functions
 export function isValidProjectRole(role: string): role is ProjectRole {
-  return ['콘텐츠기획', '서비스기획', 'UIUX기획', '개발자'].includes(role);
+  return (PROJECT_ROLES as readonly string[]).includes(role);
 }
 
 export function isValidDocumentStatus(status: string): status is DocumentStatus {
-  return ['private', 'pending_approval', 'official'].includes(status);
+  return status === 'private' || status === 'pending_approval' || status === 'official';
 }
 
 export function isValidWorkflowStep(step: number): step is WorkflowStep {
-  return step >= 1 && step <= 9;
+  return Number.isInteger(step) && step >= 1 && step <= 9;
 }
 
 export function getWorkflowStepName(step: WorkflowStep): string {

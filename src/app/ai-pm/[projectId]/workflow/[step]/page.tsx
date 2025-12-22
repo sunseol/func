@@ -308,8 +308,6 @@ export default function WorkflowStepPage() {
                   <DocumentManager
                     projectId={projectId}
                     workflowStep={step}
-                    onDocumentCreated={handleDocumentCreated}
-                    onDocumentUpdated={handleDocumentUpdated}
                     onDocumentSelect={handleDocumentSelect}
                   />
                 </div>
@@ -328,8 +326,6 @@ export default function WorkflowStepPage() {
                     <DocumentManager
                       projectId={projectId}
                       workflowStep={step}
-                      onDocumentCreated={handleDocumentCreated}
-                      onDocumentUpdated={handleDocumentUpdated}
                       onDocumentSelect={(doc) => { setShowDocManager(false); handleDocumentSelect(doc); }}
                     />
                   </div>
@@ -371,7 +367,7 @@ export default function WorkflowStepPage() {
           )}
           {activeTab === 'guide' && (
             <div className="h-full p-6 overflow-y-auto">
-              <WorkflowGuide step={step} />
+              <WorkflowGuide currentStep={step} />
             </div>
           )}
         </div>

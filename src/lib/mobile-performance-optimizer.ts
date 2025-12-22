@@ -25,7 +25,7 @@ class MobilePerformanceOptimizer {
   private config: OptimizationConfig;
   private state: OptimizationState;
   private optimizationStyleSheet: HTMLStyleElement | null = null;
-  private originalFunctions: Map<string, Function> = new Map();
+  private originalFunctions: Map<string, unknown> = new Map();
   private performanceObserver: PerformanceObserver | null = null;
   private optimizationInterval: number | null = null;
 
@@ -336,9 +336,9 @@ class MobilePerformanceOptimizer {
   }
 
   private optimizeImages() {
-    const images = document.querySelectorAll('img:not(.optimized)');
-    
-    images.forEach((img: HTMLImageElement) => {
+    const images = document.querySelectorAll<HTMLImageElement>('img:not(.optimized)');
+     
+    images.forEach((img) => {
       // 원본 src 저장
       if (!img.dataset.originalSrc) {
         img.dataset.originalSrc = img.src;
@@ -363,9 +363,9 @@ class MobilePerformanceOptimizer {
   }
 
   private restoreImages() {
-    const images = document.querySelectorAll('img.optimized');
-    
-    images.forEach((img: HTMLImageElement) => {
+    const images = document.querySelectorAll<HTMLImageElement>('img.optimized');
+     
+    images.forEach((img) => {
       if (img.dataset.originalSrc) {
         img.src = img.dataset.originalSrc;
         delete img.dataset.originalSrc;
@@ -426,9 +426,10 @@ class MobilePerformanceOptimizer {
   private optimizeEventListeners() {
     // 스크롤 이벤트 쓰로틀링
     if (!this.originalFunctions.has('addEventListener')) {
-      this.originalFunctions.set('addEventListener', Element.prototype.addEventListener);
-      
-      Element.prototype.addEventListener = function(type: string, listener: any, options?: any) {
+      const originalAddEventListener = Element.prototype.addEventListener;
+      this.originalFunctions.set('addEventListener', originalAddEventListener);
+       
+      Element.prototype.addEventListener = function (type: string, listener: any, options?: any) {
         if (type === 'scroll' || type === 'resize') {
           let throttled = false;
           const throttledListener = (...args: any[]) => {
@@ -440,26 +441,27 @@ class MobilePerformanceOptimizer {
               }, 16); // 60fps
             }
           };
-          
-          return this.originalFunctions.get('addEventListener')!.call(this, type, throttledListener, options);
+           
+          return originalAddEventListener.call(this, type, throttledListener, options);
         }
         
-        return this.originalFunctions.get('addEventListener')!.call(this, type, listener, options);
+        return originalAddEventListener.call(this, type, listener, options);
       };
     }
   }
 
   private restoreEventListeners() {
     if (this.originalFunctions.has('addEventListener')) {
-      Element.prototype.addEventListener = this.originalFunctions.get('addEventListener')!;
+      Element.prototype.addEventListener = this.originalFunctions.get('addEventListener') as typeof Element.prototype.addEventListener;
       this.originalFunctions.delete('addEventListener');
     }
   }
 
   private optimizeNetworkRequests() {
     if (!this.originalFunctions.has('fetch')) {
-      this.originalFunctions.set('fetch', window.fetch);
-      
+      const originalFetch = window.fetch;
+      this.originalFunctions.set('fetch', originalFetch);
+       
       window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = typeof input === 'string' ? input : input.toString();
         
@@ -477,17 +479,17 @@ class MobilePerformanceOptimizer {
               'Accept': 'image/webp,image/avif,image/*,*/*;q=0.8'
             }
           };
-          return this.originalFunctions.get('fetch')!.call(this, input, newInit);
+          return originalFetch(input, newInit);
         }
         
-        return this.originalFunctions.get('fetch')!.call(this, input, init);
+        return originalFetch(input, init);
       };
     }
   }
 
   private restoreNetworkRequests() {
     if (this.originalFunctions.has('fetch')) {
-      window.fetch = this.originalFunctions.get('fetch')!;
+      window.fetch = this.originalFunctions.get('fetch') as typeof window.fetch;
       this.originalFunctions.delete('fetch');
     }
   }
@@ -495,17 +497,18 @@ class MobilePerformanceOptimizer {
   private optimizeRendering() {
     // requestAnimationFrame 최적화
     if (!this.originalFunctions.has('requestAnimationFrame')) {
-      this.originalFunctions.set('requestAnimationFrame', window.requestAnimationFrame);
-      
+      const originalRaf = window.requestAnimationFrame;
+      this.originalFunctions.set('requestAnimationFrame', originalRaf);
+       
       let rafQueue: FrameRequestCallback[] = [];
       let rafScheduled = false;
-      
+       
       window.requestAnimationFrame = (callback: FrameRequestCallback) => {
         rafQueue.push(callback);
         
         if (!rafScheduled) {
           rafScheduled = true;
-          this.originalFunctions.get('requestAnimationFrame')!.call(window, () => {
+          originalRaf(() => {
             const callbacks = rafQueue.slice();
             rafQueue = [];
             rafScheduled = false;
@@ -528,7 +531,7 @@ class MobilePerformanceOptimizer {
 
   private restoreRendering() {
     if (this.originalFunctions.has('requestAnimationFrame')) {
-      window.requestAnimationFrame = this.originalFunctions.get('requestAnimationFrame')!;
+      window.requestAnimationFrame = this.originalFunctions.get('requestAnimationFrame') as typeof window.requestAnimationFrame;
       this.originalFunctions.delete('requestAnimationFrame');
     }
   }
@@ -536,25 +539,29 @@ class MobilePerformanceOptimizer {
   private optimizeJavaScript() {
     // setTimeout/setInterval 최적화
     if (!this.originalFunctions.has('setTimeout')) {
-      this.originalFunctions.set('setTimeout', window.setTimeout);
-      this.originalFunctions.set('setInterval', window.setInterval);
-      
-      window.setTimeout = (callback: Function, delay: number, ...args: any[]) => {
+      const originalSetTimeout = window.setTimeout;
+      const originalSetInterval = window.setInterval;
+      this.originalFunctions.set('setTimeout', originalSetTimeout);
+      this.originalFunctions.set('setInterval', originalSetInterval);
+       
+      window.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: any[]) => {
+        const delay = typeof timeout === 'number' ? timeout : 0;
         const optimizedDelay = Math.max(delay * 1.5, 100); // 최소 100ms
-        return this.originalFunctions.get('setTimeout')!.call(window, callback, optimizedDelay, ...args);
-      };
-      
-      window.setInterval = (callback: Function, delay: number, ...args: any[]) => {
+        return originalSetTimeout(handler, optimizedDelay, ...args);
+      }) as typeof window.setTimeout;
+       
+      window.setInterval = ((handler: TimerHandler, timeout?: number, ...args: any[]) => {
+        const delay = typeof timeout === 'number' ? timeout : 0;
         const optimizedDelay = Math.max(delay * 2, 1000); // 최소 1초
-        return this.originalFunctions.get('setInterval')!.call(window, callback, optimizedDelay, ...args);
-      };
+        return originalSetInterval(handler, optimizedDelay, ...args);
+      }) as typeof window.setInterval;
     }
   }
 
   private restoreJavaScript() {
     if (this.originalFunctions.has('setTimeout')) {
-      window.setTimeout = this.originalFunctions.get('setTimeout')!;
-      window.setInterval = this.originalFunctions.get('setInterval')!;
+      window.setTimeout = this.originalFunctions.get('setTimeout') as typeof window.setTimeout;
+      window.setInterval = this.originalFunctions.get('setInterval') as typeof window.setInterval;
       this.originalFunctions.delete('setTimeout');
       this.originalFunctions.delete('setInterval');
     }

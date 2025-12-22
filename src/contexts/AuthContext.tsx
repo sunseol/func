@@ -3,8 +3,12 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { User, Session, AuthApiError } from '@supabase/supabase-js';
+import type { User, Session } from '@supabase/supabase-js';
 import { ProjectRole } from '@/types/ai-pm';
+
+function isSupabaseAuthApiError(error: unknown): error is { status?: number; message?: string } {
+  return typeof error === 'object' && error !== null && 'status' in error;
+}
 
 // User profile interface
 interface UserProfile {
@@ -168,7 +172,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (error) {
-        if (error instanceof AuthApiError && error.status === 400) {
+        if (isSupabaseAuthApiError(error) && error.status === 400) {
           return { error: '아이디 혹은 비밀번호가 틀렸습니다. 다시 확인해주세요.' };
         }
         return { error: error.message };
@@ -176,7 +180,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       return {};
     } catch (error) {
-      if (error instanceof AuthApiError && error.status === 400) {
+      if (isSupabaseAuthApiError(error) && error.status === 400) {
         return { error: '아이디 혹은 비밀번호가 틀렸습니다. 다시 확인해주세요.' };
       }
       return { error: '로그인 중 오류가 발생했습니다.' };

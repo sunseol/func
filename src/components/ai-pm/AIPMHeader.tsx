@@ -221,7 +221,6 @@ export default function AIPMHeader() {
         {!state.currentProject && (
           <div className="sm:hidden pb-2">
             <Breadcrumb 
-              projectName={state.currentProject?.name || undefined}
               className="text-xs"
             />
           </div>

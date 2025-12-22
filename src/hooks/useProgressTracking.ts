@@ -65,7 +65,7 @@ export function useProgressTracking(options: ProgressTrackingOptions) {
   // Update step
   const updateStep = useCallback((
     stepId: string, 
-    updates: Partial<Pick<ProgressStep, 'status' | 'progress' | 'error'>>
+    updates: Partial<Pick<ProgressStep, 'status' | 'progress' | 'error' | 'startTime' | 'endTime'>>
   ) => {
     setSteps(prevSteps => {
       const updatedSteps = prevSteps.map(step => {

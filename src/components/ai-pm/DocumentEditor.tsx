@@ -205,19 +205,19 @@ export default function DocumentEditor({
       if (editorRef.current.requestFullscreen) {
         editorRef.current.requestFullscreen().catch(console.error);
       }
-    } else if (isMobile && isFullscreen && document.fullscreenElement) {
-      document.exitFullscreen().catch(console.error);
+    } else if (isMobile && isFullscreen && window.document.fullscreenElement) {
+      window.document.exitFullscreen().catch(console.error);
     }
   }, [isFullscreen, isMobile]);
 
   // Handle fullscreen changes
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      setIsFullscreen(!!window.document.fullscreenElement);
     };
 
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    window.document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => window.document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
   // Auto-save on mobile when switching away from edit mode

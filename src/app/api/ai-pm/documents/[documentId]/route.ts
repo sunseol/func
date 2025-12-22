@@ -1,281 +1,102 @@
-import { cookies } from 'next/headers';
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { 
-  UpdateDocumentRequest,
-  DocumentResponse,
-  AIpmErrorType,
-  isValidDocumentStatus
-} from '@/types/ai-pm';
+﻿import { NextRequest } from 'next/server';
+import { ApiError, json, parseJson, withApi } from '@/lib/http';
+import { getSupabase, requireAuth, requireDocumentAccess } from '@/lib/ai-pm/auth';
+import { requireDocumentStatus, requireMaxLength, requireString, requireUuid, sanitizeText } from '@/lib/ai-pm/validators';
+import { AIpmErrorType, DocumentResponse, UpdateDocumentRequest } from '@/types/ai-pm';
 
-// GET /api/ai-pm/documents/[documentId] - Get a specific document
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { documentId: string } }
-) {
-  try {
-    const cookieStore = cookies();
-    const supabase = await createClient();
-    
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: AIpmErrorType.UNAUTHORIZED, message: '인증이 필요합니다.' },
-        { status: 401 }
-      );
-    }
+export const dynamic = 'force-dynamic';
 
-    const { documentId } = params;
+type Context = { params: Promise<{ documentId: string }> };
 
-    // Get document
-    const { data: document, error: queryError } = await supabase
-      .from('planning_documents')
-      .select(`*`)
-      .eq('id', documentId)
-      .single();
+export const GET = withApi(async (_request: NextRequest, { params }: Context) => {
+  const supabase = await getSupabase();
+  const auth = await requireAuth(supabase);
+  const { documentId } = await params;
+  const safeDocumentId = requireUuid(documentId, 'documentId');
 
-    if (queryError || !document) {
-      return NextResponse.json(
-        { error: AIpmErrorType.DOCUMENT_NOT_FOUND, message: '문서를 찾을 수 없습니다.' },
-        { status: 404 }
-      );
-    }
-    
-    // Manually fetch user details
-    const userIds = [document.created_by, document.approved_by].filter(Boolean);
-    let userMap = new Map();
-    if (userIds.length > 0) {
-      const { data: profiles } = await supabase.from('user_profiles').select('id, full_name').in('id', userIds);
-      const { data: users } = await supabase.from('users').select('id, email').in('id', userIds);
-      if (profiles) profiles.forEach(p => userMap.set(p.id, { ...userMap.get(p.id), full_name: p.full_name }));
-      if (users) users.forEach(u => userMap.set(u.id, { ...userMap.get(u.id), email: u.email }));
-    }
+  const { document } = await requireDocumentAccess(supabase, auth, safeDocumentId);
+  const response: DocumentResponse = { document };
+  return json(response);
+});
 
-    // Get document versions if requested
-    const url = new URL(request.url);
-    const includeVersions = url.searchParams.get('includeVersions') === 'true';
-    
-    let versions = undefined;
-    if (includeVersions) {
-      const { data: versionData } = await supabase
-        .from('document_versions')
-        .select('*')
-        .eq('document_id', documentId)
-        .order('version', { ascending: false });
-      
-      versions = versionData || [];
-    }
+export const PUT = withApi(async (request: NextRequest, { params }: Context) => {
+  const supabase = await getSupabase();
+  const auth = await requireAuth(supabase);
+  const { documentId } = await params;
+  const safeDocumentId = requireUuid(documentId, 'documentId');
 
-    // Format response
-    const documentWithUsers = {
-      ...document,
-      creator_email: userMap.get(document.created_by)?.email || '',
-      creator_name: userMap.get(document.created_by)?.full_name || null,
-      approver_email: userMap.get(document.approved_by)?.email || null,
-      approver_name: userMap.get(document.approved_by)?.full_name || null,
-    };
+  const body = await parseJson<UpdateDocumentRequest>(request);
+  const { document: existing, canModify } = await requireDocumentAccess(supabase, auth, safeDocumentId);
 
-    const response: DocumentResponse = { 
-      document: documentWithUsers,
-      versions
-    };
-    return NextResponse.json(response);
-
-  } catch (error) {
-    console.error('Get Document API Error:', error);
-    return NextResponse.json(
-      { 
-        error: AIpmErrorType.INTERNAL_ERROR, 
-        message: '서버 오류가 발생했습니다.',
-        details: process.env.NODE_ENV === 'development' ? (error as Error).message : undefined
-      },
-      { status: 500 }
-    );
+  if (!canModify) {
+    throw new ApiError(403, AIpmErrorType.FORBIDDEN, 'Document update not allowed');
   }
-}
 
-// PUT /api/ai-pm/documents/[documentId] - Update a document
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { documentId: string } }
-) {
-  try {
-    const cookieStore = cookies();
-    const supabase = await createClient();
-    
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: AIpmErrorType.UNAUTHORIZED, message: '인증이 필요합니다.' },
-        { status: 401 }
-      );
-    }
+  const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
-    const { documentId } = params;
-    const body: UpdateDocumentRequest = await request.json();
-    const { title, content, status } = body;
-
-    // Get existing document
-    const { data: existingDocument, error: queryError } = await supabase
-      .from('planning_documents')
-      .select('*')
-      .eq('id', documentId)
-      .single();
-
-    if (queryError || !existingDocument) {
-      return NextResponse.json(
-        { error: AIpmErrorType.DOCUMENT_NOT_FOUND, message: '문서를 찾을 수 없습니다.' },
-        { status: 404 }
-      );
-    }
-
-    if (status && !isValidDocumentStatus(status)) {
-      return NextResponse.json(
-        { error: AIpmErrorType.VALIDATION_ERROR, message: '유효하지 않은 문서 상태입니다.' },
-        { status: 400 }
-      );
-    }
-
-    const updateData: any = {
-      updated_at: new Date().toISOString()
-    };
-
-    if (title !== undefined) updateData.title = title;
-    if (content !== undefined) updateData.content = content;
-    if (status !== undefined) updateData.status = status;
-
-    let shouldCreateVersion = false;
-    if (content !== undefined && content !== existingDocument.content) {
-      updateData.version = existingDocument.version + 1;
-      shouldCreateVersion = true;
-    }
-
-    if (status === 'official' && existingDocument.status !== 'official') {
-      updateData.approved_by = user.id;
-      updateData.approved_at = new Date().toISOString();
-    } else if (status !== 'official' && existingDocument.status === 'official') {
-      updateData.approved_by = null;
-      updateData.approved_at = null;
-    }
-
-    const { data: updatedDoc, error: updateError } = await supabase
-      .from('planning_documents')
-      .update(updateData)
-      .eq('id', documentId)
-      .select(`*`)
-      .single();
-
-    if (updateError) {
-      console.error('Error updating document:', updateError);
-      return NextResponse.json(
-        { error: AIpmErrorType.DATABASE_ERROR, message: '문서 업데이트 중 오류가 발생했습니다.' },
-        { status: 500 }
-      );
-    }
-    
-    if (shouldCreateVersion) {
-      await supabase
-        .from('document_versions')
-        .insert([{
-          document_id: documentId,
-          version: existingDocument.version,
-          content: existingDocument.content,
-          created_by: existingDocument.created_by
-        }]);
-    }
-    
-    // Manually fetch user details
-    const userIds = [updatedDoc.created_by, updatedDoc.approved_by].filter(Boolean);
-    let userMap = new Map();
-    if (userIds.length > 0) {
-      const { data: profiles } = await supabase.from('user_profiles').select('id, full_name').in('id', userIds);
-      const { data: users } = await supabase.from('users').select('id, email').in('id', userIds);
-      if (profiles) profiles.forEach(p => userMap.set(p.id, { ...userMap.get(p.id), full_name: p.full_name }));
-      if (users) users.forEach(u => userMap.set(u.id, { ...userMap.get(u.id), email: u.email }));
-    }
-
-    const documentWithUsers = {
-      ...updatedDoc,
-      creator_email: userMap.get(updatedDoc.created_by)?.email || '',
-      creator_name: userMap.get(updatedDoc.created_by)?.full_name || null,
-      approver_email: userMap.get(updatedDoc.approved_by)?.email || null,
-      approver_name: userMap.get(updatedDoc.approved_by)?.full_name || null,
-    };
-
-    const response: DocumentResponse = { document: documentWithUsers };
-    return NextResponse.json(response);
-
-  } catch (error) {
-    console.error('Update Document API Error:', error);
-    return NextResponse.json(
-      { 
-        error: AIpmErrorType.INTERNAL_ERROR, 
-        message: '서버 오류가 발생했습니다.',
-        details: process.env.NODE_ENV === 'development' ? (error as Error).message : undefined
-      },
-      { status: 500 }
-    );
+  if (body.title !== undefined) {
+    updateData.title = requireMaxLength(requireString(body.title, 'title'), 'title', 255);
+    updateData.title = sanitizeText(updateData.title);
   }
-}
 
-// DELETE /api/ai-pm/documents/[documentId] - Delete a document
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { documentId: string } }
-) {
-  try {
-    const cookieStore = cookies();
-    const supabase = await createClient();
-    
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: AIpmErrorType.UNAUTHORIZED, message: '인증이 필요합니다.' },
-        { status: 401 }
-      );
+  if (body.status !== undefined) {
+    const status = requireDocumentStatus(body.status, 'status');
+    if (status === 'official' && existing.status !== 'official') {
+      throw new ApiError(400, AIpmErrorType.VALIDATION_ERROR, 'Use approval endpoint for official status');
     }
+    updateData.status = status;
+  }
 
-    const { documentId } = params;
-
-    const { data: existingDocument, error: queryError } = await supabase
-      .from('planning_documents')
-      .select('*')
-      .eq('id', documentId)
+  if (body.content !== undefined && body.content !== existing.content) {
+    const { error: versionError } = await supabase
+      .from('document_versions')
+      .insert({
+        document_id: safeDocumentId,
+        version: existing.version,
+        content: existing.content,
+        created_by: auth.user.id,
+      })
+      .select()
       .single();
 
-    if (queryError || !existingDocument) {
-      return NextResponse.json(
-        { error: AIpmErrorType.DOCUMENT_NOT_FOUND, message: '문서를 찾을 수 없습니다.' },
-        { status: 404 }
-      );
+    if (versionError) {
+      throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to create version history', versionError);
     }
 
-    const { error: deleteError } = await supabase
-      .from('planning_documents')
-      .delete()
-      .eq('id', documentId);
-
-    if (deleteError) {
-      console.error('Error deleting document:', deleteError);
-      return NextResponse.json(
-        { error: AIpmErrorType.DATABASE_ERROR, message: '문서 삭제 중 오류가 발생했습니다.' },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ message: '문서가 성공적으로 삭제되었습니다.' });
-
-  } catch (error) {
-    console.error('Delete Document API Error:', error);
-    return NextResponse.json(
-      { 
-        error: AIpmErrorType.INTERNAL_ERROR, 
-        message: '서버 오류가 발생했습니다.',
-        details: process.env.NODE_ENV === 'development' ? (error as Error).message : undefined
-      },
-      { status: 500 }
-    );
+    updateData.content = body.content;
+    updateData.version = existing.version + 1;
   }
-}
+
+  const { data: updated, error: updateError } = await supabase
+    .from('planning_documents')
+    .update(updateData)
+    .eq('id', safeDocumentId)
+    .select('*')
+    .single();
+
+  if (updateError || !updated) {
+    throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to update document', updateError);
+  }
+
+  const response: DocumentResponse = { document: updated };
+  return json(response);
+});
+
+export const DELETE = withApi(async (_request: NextRequest, { params }: Context) => {
+  const supabase = await getSupabase();
+  const auth = await requireAuth(supabase);
+  const { documentId } = await params;
+  const safeDocumentId = requireUuid(documentId, 'documentId');
+
+  const { canModify } = await requireDocumentAccess(supabase, auth, safeDocumentId);
+  if (!canModify) {
+    throw new ApiError(403, AIpmErrorType.FORBIDDEN, 'Document delete not allowed');
+  }
+
+  const { error: deleteError } = await supabase.from('planning_documents').delete().eq('id', safeDocumentId);
+  if (deleteError) {
+    throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to delete document', deleteError);
+  }
+
+  return json({ message: 'OK' });
+});

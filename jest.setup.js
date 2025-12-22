@@ -3,7 +3,7 @@ import '@testing-library/jest-dom';
 // 환경 변수 모킹
 process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://test.supabase.co';
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key';
-process.env.NEXT_PUBLIC_GROQ_API_KEY = 'test-groq-key';
+process.env.GROQ_API_KEY = 'test-groq-key';
 
 // Supabase 모킹
 jest.mock('@/lib/supabase/client', () => ({

@@ -95,9 +95,10 @@ export function useNetworkStatus(): NetworkStatusHookReturn {
     }
 
     const newStatus: NetworkStatus = {
+      ...DEFAULT_NETWORK_STATUS,
       ...networkInfo,
       isOnline: actuallyOnline,
-      isSlowConnection: networkInfo.isSlowConnection || false
+      isSlowConnection: networkInfo.isSlowConnection ?? false,
     };
 
     setNetworkStatus(newStatus);

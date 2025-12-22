@@ -12,23 +12,19 @@ export interface ConversationManagerConfig {
   autoSaveInterval?: number;
 }
 
-// Define a global symbol to store our manager instances
 const CONVERSATION_MANAGER_SYMBOL = Symbol.for('app.ai-pm.conversationManager');
 
-// Augment the NodeJS.Global interface to include our symbol
-declare global {
-  namespace NodeJS {
-    interface Global {
-      [CONVERSATION_MANAGER_SYMBOL]?: Map<string, ConversationManager>;
-    }
-  }
-}
+type ConversationManagerStore = WeakMap<SupabaseClient, ConversationManager>;
+type GlobalWithConversationManagers = typeof globalThis & {
+  [CONVERSATION_MANAGER_SYMBOL]?: ConversationManagerStore;
+};
 
-function getManagerInstances(): Map<string, ConversationManager> {
-  if (!global[CONVERSATION_MANAGER_SYMBOL]) {
-    global[CONVERSATION_MANAGER_SYMBOL] = new Map<string, ConversationManager>();
+function getManagerInstances(): ConversationManagerStore {
+  const g = globalThis as GlobalWithConversationManagers;
+  if (!g[CONVERSATION_MANAGER_SYMBOL]) {
+    g[CONVERSATION_MANAGER_SYMBOL] = new WeakMap<SupabaseClient, ConversationManager>();
   }
-  return global[CONVERSATION_MANAGER_SYMBOL]!;
+  return g[CONVERSATION_MANAGER_SYMBOL]!;
 }
 
 
@@ -73,7 +69,7 @@ export class ConversationManager {
       if (!data) return null;
 
       const messages: AIChatMessage[] = Array.isArray(data.messages)
-        ? data.messages.map(msg => ({ ...msg, timestamp: new Date(msg.timestamp) }))
+        ? data.messages.map((msg: any) => ({ ...msg, timestamp: new Date(msg.timestamp) }))
         : [];
 
       return { ...data, messages };
@@ -87,15 +83,24 @@ export class ConversationManager {
     projectId: string,
     workflowStep: WorkflowStep,
     userId: string,
-    message: AIChatMessage
+    message: Pick<AIChatMessage, 'role' | 'content'> & Partial<Pick<AIChatMessage, 'id' | 'timestamp'>>
   ): Promise<void> {
     const conversationKey = `${projectId}-${workflowStep}-${userId}`;
     if (!this.pendingMessages.has(conversationKey)) {
         this.pendingMessages.set(conversationKey, []);
     }
+
+    const id =
+      message.id ??
+      (typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+
     this.pendingMessages.get(conversationKey)!.push({
-        ...message,
-        timestamp: new Date()
+      id,
+      role: message.role,
+      content: message.content,
+      timestamp: message.timestamp ? new Date(message.timestamp) : new Date(),
     });
   }
 
@@ -104,8 +109,11 @@ export class ConversationManager {
     workflowStep: WorkflowStep,
     userId: string
   ): Promise<AIChatMessage[]> {
+    const conversationKey = `${projectId}-${workflowStep}-${userId}`;
     const conversation = await this.loadConversation(projectId, workflowStep, userId);
-    return conversation?.messages || [];
+    const existingMessages = conversation?.messages || [];
+    const pendingMessages = this.pendingMessages.get(conversationKey) || [];
+    return [...existingMessages, ...pendingMessages];
   }
 
   async forceSave(
@@ -195,12 +203,10 @@ export class ConversationManager {
 
 export function getConversationManager(supabaseClient: SupabaseClient): ConversationManager {
   const managerInstances = getManagerInstances();
-  const instanceKey = supabaseClient.supabaseUrl;
+  const existing = managerInstances.get(supabaseClient);
+  if (existing) return existing;
 
-  if (!managerInstances.has(instanceKey)) {
-    console.log(`Creating new ConversationManager instance for ${instanceKey}`);
-    managerInstances.set(instanceKey, new ConversationManager(supabaseClient));
-  }
-  
-  return managerInstances.get(instanceKey)!;
+  const created = new ConversationManager(supabaseClient);
+  managerInstances.set(supabaseClient, created);
+  return created;
 }

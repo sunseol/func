@@ -1,8 +1,9 @@
 import Groq from 'groq-sdk';
 import { validateAiPmPrompt, logSecurityEvent } from '@/lib/security/promptInjection';
+import { requireEnv } from '@/lib/env';
 
 const getGroqClient = () => new Groq({
-  apiKey: process.env.NEXT_PUBLIC_GROQ_API_KEY,
+  apiKey: requireEnv('GROQ_API_KEY'),
 });
 
 /**

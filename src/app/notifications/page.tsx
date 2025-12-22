@@ -1,19 +1,14 @@
 'use client';
 
 import React from 'react';
-import { Layout, Typography, Button, Space, Switch, Avatar } from 'antd';
-import { LogoutOutlined, UserOutlined, SunOutlined, MoonOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import { Layout } from 'antd';
 import { useTheme } from '@/app/components/ThemeProvider';
-import { useAuth } from '@/contexts/AuthContext';
 import NotificationSettings from '@/app/components/NotificationSettings';
-import Link from 'next/link';
 
-const { Header, Content } = Layout;
-const { Title } = Typography;
+const { Content } = Layout;
 
 export default function NotificationsPage() {
   const { isDarkMode, setIsDarkMode } = useTheme();
-  const { user, handleLogout } = useAuth();
 
   return (
     <Layout style={{ minHeight: '100vh', backgroundColor: isDarkMode ? '#001529' : '#f0f2f5' }}>

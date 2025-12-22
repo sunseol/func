@@ -1,22 +1,21 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { ProjectMemberWithProfile, ProjectRole } from '@/types/ai-pm';
-import { Modal, Select, Button, Form, Alert, Avatar, Card, Space, Typography, Popconfirm, App } from 'antd';
-import { UserOutlined, TeamOutlined, PlusOutlined, DeleteOutlined, UsergroupAddOutlined, EditOutlined } from '@ant-design/icons';
+import { useEffect, useState } from 'react';
+import { PROJECT_ROLES, ProjectMemberWithProfile, ProjectRole, ROLE_LABELS } from '@/types/ai-pm';
+import { App, Avatar, Button, Card, Form, Modal, Popconfirm, Select, Space, Typography } from 'antd';
+import { DeleteOutlined, PlusOutlined, UserOutlined, UsergroupAddOutlined } from '@ant-design/icons';
 
 const { Option } = Select;
 const { Text, Title } = Typography;
 
-// Helper function to get role color
 const getRoleColor = (role: ProjectRole): string => {
-  const colors = {
-    '콘텐츠기획': '#1890ff',
-    '서비스기획': '#52c41a', 
-    'UIUX기획': '#fa8c16',
-    '개발자': '#722ed1'
-  };
-  return colors[role] || '#1890ff';
+  const colors = new Map<ProjectRole, string>([
+    [PROJECT_ROLES[0], '#1890ff'],
+    [PROJECT_ROLES[1], '#52c41a'],
+    [PROJECT_ROLES[2], '#fa8c16'],
+    [PROJECT_ROLES[3], '#722ed1'],
+  ]);
+  return colors.get(role) ?? '#1890ff';
 };
 
 interface AddMemberModalProps {
@@ -29,23 +28,21 @@ interface AddMemberModalProps {
 function AddMemberModal({ projectId, currentMembers, onClose, onSuccess }: AddMemberModalProps) {
   const [form] = Form.useForm();
   const { message } = App.useApp();
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
-
-  const roles: ProjectRole[] = ['콘텐츠기획', '서비스기획', 'UIUX기획', '개발자'];
 
   useEffect(() => {
     const loadUsers = async () => {
       try {
         setLoadingUsers(true);
         const response = await fetch('/api/ai-pm/users/search', { cache: 'no-store' });
-        if (!response.ok) throw new Error('사용자 목록을 불러오는데 실패했습니다.');
-        
+        if (!response.ok) throw new Error('사용자 목록을 불러오지 못했습니다.');
+
         const data = await response.json();
         const availableUsers = (data.users || []).filter(
-          (user: any) => !currentMembers.some(member => member.user_id === user.id)
+          (user: any) => !currentMembers.some((member) => member.user_id === user.id),
         );
         setAllUsers(availableUsers);
       } catch (err) {
@@ -54,14 +51,15 @@ function AddMemberModal({ projectId, currentMembers, onClose, onSuccess }: AddMe
         setLoadingUsers(false);
       }
     };
+
     loadUsers();
   }, [currentMembers]);
 
-  const handleSubmit = async (values: { userId: string, role: ProjectRole }) => {
+  const handleSubmit = async (values: { userId: string; role: ProjectRole }) => {
     try {
-      setLoading(true);
+      setSubmitting(true);
       setError(null);
-      
+
       const response = await fetch(`/api/ai-pm/projects/${projectId}/members`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -69,47 +67,38 @@ function AddMemberModal({ projectId, currentMembers, onClose, onSuccess }: AddMe
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || '멤버 추가에 실패했습니다.');
       }
 
-      message.success('멤버가 성공적으로 추가되었습니다.');
+      message.success('멤버가 추가되었습니다.');
       onSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.');
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
-  
+
   return (
-    <Modal
-      title="새 멤버 추가"
-      open={true}
-      onCancel={onClose}
-      footer={null}
-      width={400}
-      centered
-    >
+    <Modal title="새 멤버 추가" open onCancel={onClose} footer={null} width={420} centered>
       <Form
         form={form}
         layout="vertical"
         onFinish={handleSubmit}
         style={{ marginTop: 24 }}
-        initialValues={{ role: '콘텐츠기획' }}
+        initialValues={{ role: PROJECT_ROLES[0] as ProjectRole }}
       >
         <Form.Item
           name="userId"
           label="사용자 선택"
-          rules={[{ required: true, message: '추가할 사용자를 선택해주세요.' }]}
+          rules={[{ required: true, message: '추가할 사용자를 선택해 주세요.' }]}
         >
           <Select
             placeholder="사용자를 검색하고 선택하세요"
             loading={loadingUsers}
             showSearch
-            filterOption={(input, option) =>
-              String(option?.children).toLowerCase().includes(input.toLowerCase())
-            }
+            filterOption={(input, option) => String(option?.children).toLowerCase().includes(input.toLowerCase())}
           >
             {allUsers.map((user) => (
               <Option key={user.id} value={user.id}>
@@ -119,29 +108,24 @@ function AddMemberModal({ projectId, currentMembers, onClose, onSuccess }: AddMe
           </Select>
         </Form.Item>
 
-        <Form.Item
-          name="role"
-          label="역할 선택"
-          rules={[{ required: true, message: '멤버의 역할을 선택해주세요.' }]}
-        >
+        <Form.Item name="role" label="역할" rules={[{ required: true, message: '역할을 선택해 주세요.' }]}>
           <Select>
-            {roles.map((r) => (
-              <Option key={r} value={r}>
-                <Space>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: getRoleColor(r) }} />
-                  {r}
-                </Space>
+            {PROJECT_ROLES.map((role) => (
+              <Option key={role} value={role}>
+                {ROLE_LABELS[role]}
               </Option>
             ))}
           </Select>
         </Form.Item>
 
-        {error && <Alert message={error} type="error" showIcon style={{ marginBottom: 16 }} />}
+        {error && <div style={{ color: '#ff4d4f', marginBottom: 12 }}>{error}</div>}
 
         <Form.Item style={{ marginBottom: 0, marginTop: 24 }}>
           <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
-            <Button onClick={onClose} disabled={loading}>취소</Button>
-            <Button type="primary" htmlType="submit" loading={loading} icon={<UserOutlined />}>
+            <Button onClick={onClose} disabled={submitting}>
+              취소
+            </Button>
+            <Button type="primary" htmlType="submit" loading={submitting} icon={<UserOutlined />}>
               멤버 추가
             </Button>
           </Space>
@@ -160,34 +144,27 @@ interface MemberManagementProps {
 export default function MemberManagement({ projectId, members, onMembersUpdate }: MemberManagementProps) {
   const { message } = App.useApp();
   const [showAddModal, setShowAddModal] = useState(false);
-  const [loadingState, setLoadingState] = useState<{ [key: string]: boolean }>({});
+  const [loadingState, setLoadingState] = useState<Record<string, boolean>>({});
 
   const handleRemoveMember = async (memberId: string) => {
-    setLoadingState(prev => ({ ...prev, [memberId]: true }));
+    setLoadingState((prev) => ({ ...prev, [memberId]: true }));
     try {
-      const response = await fetch(`/api/ai-pm/projects/${projectId}/members`, {
+      const response = await fetch(`/api/ai-pm/projects/${projectId}/members?memberId=${memberId}`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ memberId }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || '멤버 제거에 실패했습니다.');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || '멤버 삭제에 실패했습니다.');
       }
-      
-      message.success('멤버가 성공적으로 제거되었습니다.');
+
+      message.success('멤버가 삭제되었습니다.');
       onMembersUpdate();
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '멤버 제거 중 오류가 발생했습니다.');
+      message.error(error instanceof Error ? error.message : '멤버 삭제 중 오류가 발생했습니다.');
     } finally {
-      setLoadingState(prev => ({ ...prev, [memberId]: false }));
+      setLoadingState((prev) => ({ ...prev, [memberId]: false }));
     }
-  };
-
-  const handleAddSuccess = () => {
-    setShowAddModal(false);
-    onMembersUpdate();
   };
 
   return (
@@ -204,7 +181,7 @@ export default function MemberManagement({ projectId, members, onMembersUpdate }
           <div className="p-6 text-center text-gray-500">
             <UsergroupAddOutlined style={{ fontSize: 48, color: '#d1d5db' }} />
             <p className="mt-2">프로젝트에 멤버가 없습니다.</p>
-            <p className="text-sm">새로운 멤버를 추가해보세요.</p>
+            <p className="text-sm">새 멤버를 추가해 보세요.</p>
           </div>
         ) : (
           <div className="divide-y divide-gray-200">
@@ -218,24 +195,26 @@ export default function MemberManagement({ projectId, members, onMembersUpdate }
                     <Text type="secondary">{member.email}</Text>
                   </div>
                 </Space>
-                
+
                 <Space>
-                  <div style={{ padding: '2px 8px', borderRadius: '12px', backgroundColor: getRoleColor(member.role), color: 'white', fontSize: 12 }}>
-                    {member.role}
+                  <div
+                    style={{
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      backgroundColor: getRoleColor(member.role),
+                      color: 'white',
+                      fontSize: 12,
+                    }}
+                  >
+                    {ROLE_LABELS[member.role]}
                   </div>
                   <Popconfirm
-                    title="정말로 이 멤버를 제거하시겠습니까?"
+                    title="정말로 멤버를 삭제하시겠습니까?"
                     onConfirm={() => handleRemoveMember(member.id)}
-                    okText="제거"
+                    okText="삭제"
                     cancelText="취소"
                   >
-                    <Button
-                      type="text"
-                      danger
-                      size="small"
-                      icon={<DeleteOutlined />}
-                      loading={loadingState[member.id]}
-                    />
+                    <Button type="text" danger size="small" icon={<DeleteOutlined />} loading={loadingState[member.id]} />
                   </Popconfirm>
                 </Space>
               </div>
@@ -249,7 +228,10 @@ export default function MemberManagement({ projectId, members, onMembersUpdate }
           projectId={projectId}
           currentMembers={members}
           onClose={() => setShowAddModal(false)}
-          onSuccess={handleAddSuccess}
+          onSuccess={() => {
+            setShowAddModal(false);
+            onMembersUpdate();
+          }}
         />
       )}
     </div>

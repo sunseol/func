@@ -54,12 +54,11 @@ const PerformanceDashboard: React.FC<PerformanceDashboardProps> = ({
   } = useBatteryOptimization();
 
   // 성능 대시보드는 비활성화
-  return null;
+  if (process.env.NODE_ENV !== 'development' || !isMobile) {
+    return null;
+  }
 
   // 개발 환경/모바일 조건부 렌더는 비활성화된 상태에서 의미 없음
-  /* if (process.env.NODE_ENV !== 'development' || !isMobile) {
-    return null;
-  } */
 
   const positionClasses = {
     'top-left': 'top-4 left-4',
@@ -68,8 +67,8 @@ const PerformanceDashboard: React.FC<PerformanceDashboardProps> = ({
     'bottom-right': 'bottom-4 right-4'
   };
 
-  const getMetricColor = (value: number, threshold: number, isReverse = false) => {
-    const isGood = isReverse ? value < threshold : value > threshold;
+  const getMetricColor = (value: number, threshold: number, mode: 'min' | 'max' = 'max') => {
+    const isGood = mode === 'min' ? value >= threshold : value <= threshold;
     if (isGood) return 'text-green-600 dark:text-green-400';
     if (Math.abs(value - threshold) / threshold < 0.2) return 'text-yellow-600 dark:text-yellow-400';
     return 'text-red-600 dark:text-red-400';
@@ -178,7 +177,7 @@ const PerformanceDashboard: React.FC<PerformanceDashboardProps> = ({
         <div className="p-3">
           <div className="grid grid-cols-3 gap-2 text-xs">
             <div className="text-center">
-              <div className={`text-lg font-bold ${getMetricColor(metrics.fps, thresholds.minFps, true)}`}>
+              <div className={`text-lg font-bold ${getMetricColor(metrics.fps, thresholds.minFps, 'min')}`}>
                 {Math.round(metrics.fps)}
               </div>
               <div className="text-gray-500 dark:text-gray-400">FPS</div>
@@ -302,13 +301,13 @@ const PerformanceDashboard: React.FC<PerformanceDashboardProps> = ({
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600 dark:text-gray-400">캐시율:</span>
-                      <span className={getMetricColor(metrics.cacheHitRate, thresholds.minCacheHitRate, true)}>
+                      <span className={getMetricColor(metrics.cacheHitRate, thresholds.minCacheHitRate, 'min')}>
                         {formatValue(metrics.cacheHitRate, '%')}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600 dark:text-gray-400">CLS:</span>
-                      <span className={getMetricColor(metrics.visualStability, thresholds.minVisualStability)}>
+                      <span className={getMetricColor(metrics.visualStability, thresholds.minVisualStability, 'min')}>
                         {formatValue(metrics.visualStability, '')}
                       </span>
                     </div>
@@ -363,7 +362,7 @@ const PerformanceDashboard: React.FC<PerformanceDashboardProps> = ({
                     <span className="text-sm font-medium text-gray-900 dark:text-white">배터리 최적화</span>
                     {batterySupported && (
                       <button
-                        onClick={toggleBatteryOptimization}
+                        onClick={() => toggleBatteryOptimization()}
                         className={`px-3 py-1 text-xs rounded ${
                           batteryState.isOptimized
                             ? 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300'
@@ -375,7 +374,7 @@ const PerformanceDashboard: React.FC<PerformanceDashboardProps> = ({
                     )}
                   </div>
 
-                  {batterySupported && batteryInfo ? (
+                  {batterySupported && batteryInfo !== null ? (
                     <div className="space-y-2 text-xs">
                       <div className="flex justify-between">
                         <span className="text-gray-600 dark:text-gray-400">배터리 레벨:</span>
