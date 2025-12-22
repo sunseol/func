@@ -3,7 +3,7 @@
 import React, { useCallback } from 'react';
 import Link from 'next/link';
 import { Layout, Button, Space, Switch, Typography, Drawer, Divider } from 'antd';
-import { SunOutlined, MoonOutlined, BellOutlined, MenuOutlined } from '@ant-design/icons';
+import { SunOutlined, MoonOutlined, BellOutlined, MenuOutlined, UserOutlined } from '@ant-design/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/app/components/ThemeProvider';
 import { useNotification } from '@/contexts/NotificationContext';
@@ -55,6 +55,14 @@ export default function MainHeader() {
               onClick={() => setMobileMenuOpen(true)}
             />
           </span>
+
+          {/* 프로필 바로가기: 모바일/데스크톱 공통 */}
+          {!authLoading && user && (
+            <Link href="/profile" aria-label="프로필로 이동">
+              <Button type="text" className="text-white" icon={<UserOutlined />} />
+            </Link>
+          )}
+
           {/* 다크 토글: 데스크톱에서만 */}
           <Switch
             checkedChildren={<MoonOutlined />}
@@ -102,11 +110,6 @@ export default function MainHeader() {
                   </span>
                 )}
               </Button>
-            </Link>
-            <Link href="/profile">
-                 <Button type="link" size="small" className="px-2 text-white hidden sm:inline-block">
-                 프로필
-                 </Button>
             </Link>
             {(user.email === 'jakeseol99@keduall.com' || user.user_metadata?.role === 'admin') && (
               <Link href="/admin">
