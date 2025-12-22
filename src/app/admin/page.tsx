@@ -67,6 +67,15 @@ interface UserProfile {
   last_sign_in_at?: string;
 }
 
+// `user_profiles` 테이블 row 형태(관리자 페이지에서 조회용)
+interface UserProfileRow {
+  id: string;
+  email: string;
+  full_name: string | null;
+  role: string | null;
+  created_at: string;
+}
+
 interface AdminStats {
   totalUsers: number;
   totalReports: number;
@@ -126,9 +135,9 @@ export default function AdminPage() {
     try {
       console.log('1. 보고서 데이터 조회 시작...');
       // 모든 보고서 가져오기
-      const { data: reportsData, error: reportsError } = await supabase
+      const { data: reportsDataRaw, error: reportsError } = await supabase
         .from('daily_reports')
-        .select<'*', DailyReport>('*')
+        .select('*')
         .order('created_at', { ascending: false });
       
       if (reportsError) {
@@ -136,21 +145,22 @@ export default function AdminPage() {
         throw new Error(`보고서 조회 실패: ${reportsError.message}`);
       }
       
+      const reportsData = (reportsDataRaw || []) as DailyReport[];
       console.log('보고서 데이터 조회 성공:', reportsData?.length || 0, '개');
-      setReports(reportsData || []);
+      setReports(reportsData);
 
       // 사용자 통계 계산
       const today = new Date().toISOString().split('T')[0];
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       
-      const reportsToday = reportsData?.filter(r => r.report_date === today).length || 0;
-      const reportsThisWeek = reportsData?.filter(r => r.report_date >= weekAgo).length || 0;
+      const reportsToday = reportsData.filter(r => r.report_date === today).length;
+      const reportsThisWeek = reportsData.filter(r => r.report_date >= weekAgo).length;
 
       console.log('2. 사용자 프로필 데이터 조회 시작...');
       
       // 먼저 user_profiles 테이블 시도
-      let profilesData = null;
-      let profilesError = null;
+      let profilesData: UserProfileRow[] | null = null;
+      let profilesError: unknown = null;
       
       try {
         const result = await supabase
@@ -158,7 +168,7 @@ export default function AdminPage() {
           .select('*')
           .order('created_at', { ascending: false });
         
-        profilesData = result.data;
+        profilesData = (result.data as UserProfileRow[] | null) ?? null;
         profilesError = result.error;
       } catch (err) {
         console.log('user_profiles 테이블 접근 실패, 대체 방법 사용');
@@ -173,7 +183,7 @@ export default function AdminPage() {
         const uniqueUsers = new Map();
         
         // 보고서에서 사용자 정보 추출
-        reportsData?.forEach(report => {
+        reportsData.forEach(report => {
           if (!uniqueUsers.has(report.user_id)) {
             uniqueUsers.set(report.user_id, {
               id: report.user_id,
@@ -218,12 +228,12 @@ export default function AdminPage() {
         console.log('사용자 프로필 데이터 조회 성공:', profilesData?.length || 0, '개');
         
         // user_profiles 데이터를 UserProfile 형식으로 변환
-        const formattedUsers = profilesData.map(profile => ({
+        const formattedUsers = profilesData.map((profile) => ({
           id: profile.id,
           email: profile.email,
           user_metadata: { 
-            full_name: profile.full_name,
-            role: profile.role 
+            full_name: profile.full_name ?? undefined,
+            role: profile.role ?? undefined,
           },
           created_at: profile.created_at,
           last_sign_in_at: undefined // user_profiles 테이블에는 없는 정보
@@ -232,8 +242,8 @@ export default function AdminPage() {
         
         // 통계 업데이트 (실제 사용자 수 사용)
         setStats({
-          totalUsers: profilesData?.length || 1,
-          totalReports: reportsData?.length || 0,
+          totalUsers: profilesData.length,
+          totalReports: reportsData.length,
           reportsToday,
           reportsThisWeek
         });

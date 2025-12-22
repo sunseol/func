@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 export const GET = withApi(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url);
-  const email = searchParams.get('email');
+  const email = searchParams.get('email')?.trim().toLowerCase();
   if (!email) {
     throw new ApiError(400, 'INVALID_EMAIL', 'Email is required');
   }
@@ -21,10 +21,17 @@ export const GET = withApi(async (request: NextRequest) => {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  const { data, error } = await supabaseAdmin.auth.admin.getUserByEmail(email);
+  // supabase-js 버전에 따라 admin.getUserByEmail이 없을 수 있어,
+  // 서비스 롤로 auth.users를 직접 조회합니다.
+  const { data, error } = await supabaseAdmin
+    .schema('auth')
+    .from('users')
+    .select('id')
+    .eq('email', email)
+    .maybeSingle();
   if (error) {
     throw new ApiError(500, 'SUPABASE_ERROR', 'Failed to check email', error);
   }
 
-  return json({ exists: !!data?.user });
+  return json({ exists: !!data });
 });

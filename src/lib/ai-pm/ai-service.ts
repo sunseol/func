@@ -264,11 +264,14 @@ Return JSON:
     return `Document structure: ${sections.join(', ')}`;
   }
 
-  private convertToGroqMessages(messages: AIChatMessage[], systemPrompt: string) {
+  private convertToGroqMessages(
+    messages: AIChatMessage[],
+    systemPrompt: string,
+  ): Array<{ role: 'system' | 'user' | 'assistant'; content: string }> {
     return [
       { role: 'system', content: systemPrompt },
       ...messages.map((message) => ({
-        role: message.role === 'user' ? 'user' : 'assistant',
+        role: (message.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
         content: message.content,
       })),
     ];

@@ -72,13 +72,14 @@ export default function MyReportsPage() {
     setLoading(true);
     setError(null);
     try {
-      const { data, error: dbError } = await supabase
+      const { data: dataRaw, error: dbError } = await supabase
         .from('daily_reports')
-        .select<'*', DailyReport>('*')
+        .select('*')
         .eq('user_id', user.id)
         .order('report_date', { ascending: false });
       if (dbError) throw dbError;
-      setReports(data || []);
+      const data = (dataRaw || []) as DailyReport[];
+      setReports(data);
     } catch (err: unknown) {
       let errorMessage = '보고서를 불러오는 중 오류가 발생했습니다.';
       if (err instanceof Error) {

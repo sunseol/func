@@ -75,13 +75,16 @@ export default function ReportSummary({ onSummaryGenerated }: ReportSummaryProps
           .select('user_id, user_name_snapshot')
           .order('created_at', { ascending: false });
 
-        if (reportsData) {
-          const uniqueUsers = new Map();
-          reportsData.forEach(report => {
+        type UserSnapshotRow = { user_id: string; user_name_snapshot: string };
+        const rows = (reportsData ?? []) as UserSnapshotRow[];
+
+        if (rows.length > 0) {
+          const uniqueUsers = new Map<string, { id: string; name: string }>();
+          rows.forEach((report) => {
             if (!uniqueUsers.has(report.user_id)) {
               uniqueUsers.set(report.user_id, {
                 id: report.user_id,
-                name: report.user_name_snapshot
+                name: report.user_name_snapshot,
               });
             }
           });

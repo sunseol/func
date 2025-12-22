@@ -6,17 +6,18 @@ import { AIpmErrorType } from '@/types/ai-pm';
 
 export const dynamic = 'force-dynamic';
 
-type Context = { params: { documentId: string } };
+type Context = { params: Promise<{ documentId: string }> };
 
 export const POST = withApi(async (_request: NextRequest, { params }: Context) => {
   const supabase = await getSupabase();
   const auth = await requireAuth(supabase, { requireAdmin: true });
-  const documentId = requireUuid(params.documentId, 'documentId');
+  const { documentId } = await params;
+  const safeDocumentId = requireUuid(documentId, 'documentId');
 
   const { data: document, error: docError } = await supabase
     .from('planning_documents')
     .select('*')
-    .eq('id', documentId)
+    .eq('id', safeDocumentId)
     .single();
 
   if (docError || !document) {
@@ -38,7 +39,7 @@ export const POST = withApi(async (_request: NextRequest, { params }: Context) =
       approved_at: now,
       updated_at: now,
     })
-    .eq('id', documentId)
+    .eq('id', safeDocumentId)
     .select('*')
     .single();
 
@@ -49,7 +50,7 @@ export const POST = withApi(async (_request: NextRequest, { params }: Context) =
   const { error: historyError } = await supabase
     .from('approval_history')
     .insert({
-      document_id: documentId,
+      document_id: safeDocumentId,
       user_id: auth.user.id,
       action: 'approved',
       previous_status: previousStatus,

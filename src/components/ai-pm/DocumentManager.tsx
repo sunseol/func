@@ -46,7 +46,7 @@ export default function DocumentManager({
   workflowStep,
   onDocumentSelect,
 }: DocumentManagerProps) {
-  const { user, projectMemberships } = useAuth();
+  const { user, projectMemberships, isAdmin } = useAuth();
   const { success, error: showError } = useToast();
   const [documents, setDocuments] = useState<PlanningDocumentWithUsers[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -136,7 +136,7 @@ export default function DocumentManager({
       });
     }
 
-    if (doc.status === 'pending_approval' && doc.created_by !== user?.id && userRole === '서비스기획') {
+    if (doc.status === 'pending_approval' && doc.created_by !== user?.id && isAdmin) {
         items.push({ 
             key: 'approve', 
             label: '승인', 

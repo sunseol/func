@@ -100,7 +100,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       .limit(50);
     if (error) throw error;
 
-    setNotifications((data ?? []).filter((item) => item.id));
+    const rows = (data ?? []) as NotificationHistory[];
+    setNotifications(rows.filter((item) => item.id));
   }, [supabase, user]);
 
   useEffect(() => {
@@ -214,9 +215,11 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       .eq('report_date', today);
     if (error) throw error;
 
+    type TodayReportRow = { report_type: 'morning' | 'evening'; report_date: string };
+    const rows = (data ?? []) as TodayReportRow[];
     return {
-      morning: (data ?? []).some((r) => r.report_type === 'morning'),
-      evening: (data ?? []).some((r) => r.report_type === 'evening'),
+      morning: rows.some((r) => r.report_type === 'morning'),
+      evening: rows.some((r) => r.report_type === 'evening'),
     };
   }, [supabase, user]);
 

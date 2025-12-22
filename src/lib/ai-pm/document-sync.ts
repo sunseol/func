@@ -52,9 +52,9 @@ export class DocumentSyncService {
           table: 'planning_documents',
           filter
         },
-        (payload) => this.handleDocumentChange(payload)
+        (payload: any) => this.handleDocumentChange(payload)
       )
-      .subscribe((status) => {
+      .subscribe((status: any) => {
         if (status === 'SUBSCRIBED') {
           console.log(`Document sync started for ${subscriptionKey}`);
         } else if (status === 'CHANNEL_ERROR') {
@@ -125,12 +125,14 @@ export class DocumentSyncService {
     
     // Manually fetch user details
     const userIds = [data.created_by, data.approved_by].filter(Boolean);
-    let userMap = new Map();
+    const userMap = new Map<string, { email?: string; full_name?: string | null }>();
     if(userIds.length > 0) {
         const { data: profiles } = await this.supabase.from('user_profiles').select('id, full_name').in('id', userIds);
         const { data: users } = await this.supabase.from('users').select('id, email').in('id', userIds);
-        if(profiles) profiles.forEach(p => userMap.set(p.id, { ...userMap.get(p.id), full_name: p.full_name }));
-        if(users) users.forEach(u => userMap.set(u.id, { ...userMap.get(u.id), email: u.email }));
+        const profileRows = (profiles ?? []) as Array<{ id: string; full_name: string | null }>;
+        const userRows = (users ?? []) as Array<{ id: string; email: string }>;
+        profileRows.forEach((p) => userMap.set(p.id, { ...userMap.get(p.id), full_name: p.full_name }));
+        userRows.forEach((u) => userMap.set(u.id, { ...userMap.get(u.id), email: u.email }));
     }
 
     // Format response
@@ -218,25 +220,33 @@ export class DocumentVersionManager {
         throw new Error('문서 버전 조회에 실패했습니다.');
       }
 
-      if (!versions || versions.length === 0) {
+      type VersionRow = { created_by: string | null } & Record<string, any>;
+      const versionRows = (versions ?? []) as VersionRow[];
+
+      if (versionRows.length === 0) {
         return [];
       }
 
-      const userIds = [...new Set(versions.map(v => v.created_by).filter(Boolean))];
-      let userMap = new Map();
+      const userIds = [...new Set(versionRows.map((v) => v.created_by).filter(Boolean))] as string[];
+      const userMap = new Map<string, { email?: string; full_name?: string | null }>();
 
       if (userIds.length > 0) {
           const { data: profiles } = await this.supabase.from('user_profiles').select('id, full_name').in('id', userIds);
           const { data: users } = await this.supabase.from('users').select('id, email').in('id', userIds);
-          if(profiles) profiles.forEach(p => userMap.set(p.id, { ...userMap.get(p.id), full_name: p.full_name }));
-          if(users) users.forEach(u => userMap.set(u.id, { ...userMap.get(u.id), email: u.email }));
+          const profileRows = (profiles ?? []) as Array<{ id: string; full_name: string | null }>;
+          const userRows = (users ?? []) as Array<{ id: string; email: string }>;
+          profileRows.forEach((p) => userMap.set(p.id, { ...userMap.get(p.id), full_name: p.full_name }));
+          userRows.forEach((u) => userMap.set(u.id, { ...userMap.get(u.id), email: u.email }));
       }
 
-      return versions.map(version => ({
-        ...version,
-        creator_email: userMap.get(version.created_by)?.email || '',
-        creator_name: userMap.get(version.created_by)?.full_name || null
-      }));
+      return versionRows.map((version) => {
+        const creator = version.created_by ? userMap.get(version.created_by) : undefined;
+        return {
+          ...version,
+          creator_email: creator?.email || '',
+          creator_name: creator?.full_name ?? null,
+        };
+      });
     } catch (error) {
       console.error('Error fetching document versions:', error);
       throw error;

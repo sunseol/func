@@ -6,14 +6,15 @@ import { AIpmErrorType } from '@/types/ai-pm';
 
 export const dynamic = 'force-dynamic';
 
-type Context = { params: { documentId: string } };
+type Context = { params: Promise<{ documentId: string }> };
 
 export const POST = withApi(async (_request: NextRequest, { params }: Context) => {
   const supabase = await getSupabase();
   const auth = await requireAuth(supabase);
-  const documentId = requireUuid(params.documentId, 'documentId');
+  const { documentId } = await params;
+  const safeDocumentId = requireUuid(documentId, 'documentId');
 
-  const { document } = await requireDocumentAccess(supabase, auth, documentId);
+  const { document } = await requireDocumentAccess(supabase, auth, safeDocumentId);
 
   if (auth.profile.role !== 'admin' && document.created_by !== auth.user.id) {
     throw new ApiError(403, AIpmErrorType.FORBIDDEN, 'Approval request not allowed');
@@ -29,7 +30,7 @@ export const POST = withApi(async (_request: NextRequest, { params }: Context) =
   const { data: updatedDoc, error: updateError } = await supabase
     .from('planning_documents')
     .update({ status: 'pending_approval', updated_at: updatedAt })
-    .eq('id', documentId)
+    .eq('id', safeDocumentId)
     .select('*')
     .single();
 
@@ -40,7 +41,7 @@ export const POST = withApi(async (_request: NextRequest, { params }: Context) =
   const { error: historyError } = await supabase
     .from('approval_history')
     .insert({
-      document_id: documentId,
+      document_id: safeDocumentId,
       user_id: auth.user.id,
       action: 'requested',
       previous_status: previousStatus,

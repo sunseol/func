@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import type { User, Session } from '@supabase/supabase-js';
+import type { AuthChangeEvent, User, Session } from '@supabase/supabase-js';
 import { ProjectRole } from '@/types/ai-pm';
 
 function isSupabaseAuthApiError(error: unknown): error is { status?: number; message?: string } {
@@ -132,7 +132,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // 이후 인증 이벤트: UI를 막지 않고 백그라운드로 재검증
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      async (_event: AuthChangeEvent, session: Session | null) => {
         setSession(session);
         const currentUser = session?.user ?? null;
         setUser(currentUser);
