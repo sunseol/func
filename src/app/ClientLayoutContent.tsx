@@ -3,9 +3,10 @@
 import '@ant-design/v5-patch-for-react-19';
 
 import React, { useEffect } from 'react';
+import { Layout } from 'antd';
 import { useTheme } from './components/ThemeProvider';
 import { useComponentPreloader } from '@/hooks/useComponentPreloader';
-import MainHeader from '@/components/layout/MainHeader';
+import AppSidebar from '@/components/layout/AppSidebar';
 import { usePathname } from 'next/navigation';
 
 export default function ClientLayoutContent({ children }: { children: React.ReactNode }) {
@@ -34,10 +35,14 @@ export default function ClientLayoutContent({ children }: { children: React.Reac
   }, [isDarkMode]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-transparent dark:bg-transparent">
-      {!isLanding && <MainHeader />}
-      <main className="flex-1" style={{ padding: '0' }}>{children}</main>
-    </div>
+    <Layout className="min-h-screen bg-transparent dark:bg-transparent">
+      {!isLanding && <AppSidebar />}
+      <Layout style={{ background: 'transparent' }}>
+        <main className="flex-1" style={{ padding: '0' }}>
+          {children}
+        </main>
+      </Layout>
+    </Layout>
   );
 }
 
