@@ -105,7 +105,7 @@ export default function MainHeader() {
             </Link>
             <Link href="/profile">
                  <Button type="link" size="small" className="px-2 text-white hidden sm:inline-block">
-                 ???
+                 프로필
                  </Button>
             </Link>
             {(user.email === 'jakeseol99@keduall.com' || user.user_metadata?.role === 'admin') && (
@@ -155,7 +155,7 @@ export default function MainHeader() {
             <Link href="/my-reports"><Button block type="text">내 보고서</Button></Link>
             <Link href="/report-generator"><Button block type="text">리포트 요약</Button></Link>
             <Link href="/notifications"><Button block type="text" icon={<BellOutlined />}>알림{unreadCount ? ` (${unreadCount})` : ''}</Button></Link>
-            <Link href="/profile"><Button block type="text">???</Button></Link>
+            <Link href="/profile"><Button block type="text">프로필</Button></Link>
             {(user.email === 'jakeseol99@keduall.com' || user.user_metadata?.role === 'admin') && (
               <Link href="/admin"><Button block type="text">관리자</Button></Link>
             )}

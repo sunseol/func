@@ -154,6 +154,24 @@ const ReportLink = styled(NextLink)`
   }
 `;
 
+const ProfileLink = styled(NextLink)`
+  padding: 0.5rem 1.1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: ${props => props.theme.colors.text};
+  background: transparent;
+  border: 1px solid ${props => props.theme.colors.border};
+  border-radius: ${props => props.theme.radii.pill};
+  cursor: pointer;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  margin-left: 0.75rem;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.25);
+  }
+`;
+
 const Header = () => {
   const [isOpen, setIsOpen] = useState(false);
   const { user, signOut } = useAuth();
@@ -192,6 +210,7 @@ const Header = () => {
           ) : (
             <ReportLink href="/login">보고서 작성</ReportLink>
           )}
+          {user && <ProfileLink href="/profile">프로필</ProfileLink>}
           {user ? (
             <LoginButton onClick={handleSignOut}>로그아웃</LoginButton>
           ) : (
@@ -222,6 +241,7 @@ const Header = () => {
         ) : (
           <ReportLink href="/login" onClick={closeMenu}>보고서 작성</ReportLink>
         )}
+        {user && <ProfileLink href="/profile" onClick={closeMenu}>프로필</ProfileLink>}
         {user ? (
           <LoginButton onClick={() => { handleSignOut(); closeMenu(); }}>로그아웃</LoginButton>
         ) : (
