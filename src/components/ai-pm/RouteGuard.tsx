@@ -4,6 +4,7 @@ import React, { useEffect, useState, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigation } from '@/contexts/NavigationContext';
+import { buildLoginRedirect, getRequestedPath } from '@/lib/auth/navigation';
 
 interface RouteGuardProps {
   children: ReactNode;
@@ -54,7 +55,8 @@ export default function RouteGuard({
             hasAccess: false,
             errorMessage: '로그인이 필요합니다.'
           });
-          router.push(`/login?redirect=${encodeURIComponent(pathname)}`);
+          const search = typeof window !== 'undefined' ? window.location.search : '';
+          router.replace(buildLoginRedirect(getRequestedPath(pathname, search)));
           return;
         }
 

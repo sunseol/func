@@ -17,7 +17,7 @@ export interface Project {
 }
 
 export interface ProjectWithCreator extends Project {
-  readonly creator_email: string;
+  readonly creator_email: string | null;
   readonly creator_name: string | null;
   readonly member_count: number;
   readonly official_documents_count: number;
@@ -143,6 +143,7 @@ export interface CreateDocumentRequest {
 }
 
 export interface UpdateDocumentRequest {
+  readonly version: number;
   title?: string;
   content?: string;
   status?: DocumentStatus;
@@ -158,6 +159,9 @@ export interface RejectDocumentRequest {
 export interface SendMessageRequest {
   message: string;
   workflow_step: WorkflowStep;
+  readonly idempotency_key?: string;
+  readonly user_message_id?: string;
+  readonly assistant_message_id?: string;
 }
 
 // API Response types

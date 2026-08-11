@@ -9,7 +9,12 @@ import { getSupabase, requireAuth, requireProjectAccess, type AuthContext } from
 import { getConversationManager } from '@/lib/ai-pm/conversation-manager';
 import { AIpmErrorType } from '@/types/ai-pm';
 
-type AppendMessages = (projectId: string, workflowStep: number, messages: readonly unknown[]) => Promise<void>;
+type AppendMessages = (
+  projectId: string,
+  workflowStep: number,
+  messages: readonly unknown[],
+  options?: { readonly idempotencyKey?: string },
+) => Promise<void>;
 const mockAppendMessages = jest.fn<ReturnType<AppendMessages>, Parameters<AppendMessages>>(
   async (_projectId, _workflowStep, _messages) => {},
 );
@@ -76,9 +81,14 @@ describe('/api/ai-pm/chat/stream', () => {
   });
 
   it('persists one user/assistant pair through one atomic RPC after streaming succeeds', async () => {
+    const requestIdentity = {
+      idempotency_key: '33333333-3333-4333-8333-333333333333',
+      user_message_id: '44444444-4444-4444-8444-444444444444',
+      assistant_message_id: '55555555-5555-4555-8555-555555555555',
+    };
     const request = new NextRequest('http://localhost:3000/api/ai-pm/chat/stream?projectId=11111111-1111-4111-8111-111111111111', {
       method: 'POST',
-      body: JSON.stringify({ message: 'Hello', workflow_step: 1 }),
+      body: JSON.stringify({ message: 'Hello', workflow_step: 1, ...requestIdentity }),
     });
 
     const response = await POST(request, undefined);
@@ -86,6 +96,30 @@ describe('/api/ai-pm/chat/stream', () => {
 
     expect(mockAppendMessages).toHaveBeenCalledTimes(1);
     expect(mockAppendMessages.mock.calls[0]?.[2]).toHaveLength(2);
+    expect(mockAppendMessages.mock.calls[0]?.[2]?.[0]).toMatchObject({ id: requestIdentity.user_message_id });
+    expect(mockAppendMessages.mock.calls[0]?.[2]?.[1]).toMatchObject({ id: requestIdentity.assistant_message_id });
+    expect(mockAppendMessages.mock.calls[0]?.[3]).toEqual({ idempotencyKey: requestIdentity.idempotency_key });
+  });
+
+  it('reuses the same request and message identities when a response is replayed', async () => {
+    const body = {
+      message: 'Replay me',
+      workflow_step: 1,
+      idempotency_key: '66666666-6666-4666-8666-666666666666',
+      user_message_id: '77777777-7777-4777-8777-777777777777',
+      assistant_message_id: '88888888-8888-4888-8888-888888888888',
+    };
+    const request = () => new NextRequest('http://localhost:3000/api/ai-pm/chat/stream?projectId=11111111-1111-4111-8111-111111111111', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+
+    await (await POST(request(), undefined)).text();
+    await (await POST(request(), undefined)).text();
+
+    expect(mockAppendMessages).toHaveBeenCalledTimes(2);
+    expect(mockAppendMessages.mock.calls[0]?.[2]).toEqual(mockAppendMessages.mock.calls[1]?.[2]);
+    expect(mockAppendMessages.mock.calls[0]?.[3]).toEqual(mockAppendMessages.mock.calls[1]?.[3]);
   });
 
   it('does not expose internal stream errors in SSE output', async () => {

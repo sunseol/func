@@ -1,6 +1,9 @@
 import React from 'react';
+import { TextDecoder, TextEncoder } from 'node:util';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
+
+Object.assign(globalThis, { TextDecoder, TextEncoder });
 
 type MockButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & { loading?: boolean };
 type MockTextAreaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
@@ -129,6 +132,43 @@ describe('AIChatPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
 
     await waitFor(() => expect(screen.getByText('Hello')).toBeInTheDocument());
+  });
+
+  it('retries a failed stream without duplicating the user message', async () => {
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ conversation: { messages: [] } }),
+      })
+      .mockResolvedValueOnce({ ok: false, status: 503 })
+      .mockResolvedValueOnce({
+        ok: true,
+        body: {
+          getReader: () => ({
+            read: jest
+              .fn()
+              .mockResolvedValueOnce({
+                done: false,
+                value: Buffer.from('data: {"content":"Recovered"}\n\ndata: [DONE]\n\n'),
+              })
+              .mockResolvedValueOnce({ done: true, value: undefined }),
+          }),
+        },
+      });
+
+    render(<AIChatPanel projectId="test-project" workflowStep={1} />);
+    const input = await screen.findByPlaceholderText('Type your message...');
+    fireEvent.change(input, { target: { value: 'Retry me' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+
+    expect(await screen.findByTestId('ai-error-message')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+    await waitFor(() => expect((global.fetch as jest.Mock).mock.calls).toHaveLength(3));
+
+    await waitFor(() => expect(screen.getAllByTestId('ai-response').at(-1)).toHaveTextContent('Recovered'));
+    expect(screen.getAllByTestId('user-message')).toHaveLength(1);
+    expect(screen.getAllByTestId('ai-response').filter((element) => element.textContent === 'Recovered')).toHaveLength(1);
+    expect((global.fetch as jest.Mock).mock.calls.filter(([url]) => String(url).includes('/chat/stream')).length).toBe(2);
   });
 
   it('keeps local history when clearing fails', async () => {

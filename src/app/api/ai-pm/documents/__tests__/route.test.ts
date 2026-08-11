@@ -41,6 +41,7 @@ type RpcResult = {
 
 type SupabaseMockOptions = {
   readonly planningDocumentMissing?: boolean;
+  readonly updateConflict?: boolean;
   readonly membershipData?: Readonly<Record<string, unknown>> | null;
   readonly versionInsert?: jest.Mock;
 };
@@ -73,8 +74,12 @@ const createSupabaseMock = (
         })),
         update: jest.fn(() => ({
           eq: jest.fn(() => ({
-            select: jest.fn(() => ({
-              single: jest.fn(() => Promise.resolve({ data: { ...documents[0], content: 'Changed', version: 2 }, error: null })),
+            eq: jest.fn(() => ({
+              select: jest.fn(() => ({
+                single: jest.fn(() => Promise.resolve(options.updateConflict
+                  ? { data: null, error: { code: 'PGRST116' } }
+                  : { data: { ...documents[0], content: 'Changed', version: 2 }, error: null })),
+              })),
             })),
           })),
         })),
@@ -324,7 +329,7 @@ describe('/api/ai-pm/documents', () => {
     const response = await updateDocument(new NextRequest(`http://localhost/api/ai-pm/documents/${documentId}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ status: 'pending_approval' }),
+      body: JSON.stringify({ status: 'pending_approval', version: 1 }),
     }), { params: Promise.resolve({ documentId }) });
 
     expect(response.status).toBe(409);
@@ -347,7 +352,7 @@ describe('/api/ai-pm/documents', () => {
     const response = await updateDocument(new NextRequest(`http://localhost/api/ai-pm/documents/${documentId}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ status: 'private' }),
+      body: JSON.stringify({ status: 'private', version: 1 }),
     }), { params: Promise.resolve({ documentId }) });
 
     expect(response.status).toBe(409);
@@ -369,7 +374,7 @@ describe('/api/ai-pm/documents', () => {
     const response = await updateDocument(new NextRequest(`http://localhost/api/ai-pm/documents/${documentId}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ status: 'private' }),
+      body: JSON.stringify({ status: 'private', version: 1 }),
     }), { params: Promise.resolve({ documentId }) });
 
     expect(response.status).toBe(403);
@@ -409,7 +414,7 @@ describe('/api/ai-pm/documents', () => {
     const response = await updateDocument(new NextRequest(`http://localhost/api/ai-pm/documents/${documentId}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ status: 'private' }),
+      body: JSON.stringify({ status: 'private', version: 1 }),
     }), { params: Promise.resolve({ documentId }) });
 
     expect(response.status).toBe(200);
@@ -517,11 +522,71 @@ describe('/api/ai-pm/documents', () => {
     const response = await updateDocument(new NextRequest(`http://localhost/api/ai-pm/documents/${documentId}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ content: 'Changed' }),
+      body: JSON.stringify({ content: 'Changed', version: 1 }),
     }), { params: Promise.resolve({ documentId }) });
 
     expect(response.status).toBe(200);
     expect(versionInsert).not.toHaveBeenCalled();
+  });
+
+  it('returns a conflict when the expected version was already consumed', async () => {
+    const documentId = '11111111-1111-1111-8111-111111111111';
+    const supabase = createSupabaseMock([{ id: documentId, content: 'Changed', version: 2 }], null, { updateConflict: true });
+    mockGetSupabase.mockResolvedValue(asSupabase(supabase));
+    mockRequireAuth.mockResolvedValueOnce(asAuth({
+      user: { id: 'user-1', email: 'user@example.com' },
+      profile: { id: 'user-1', email: 'user@example.com', full_name: 'User', role: 'user', created_at: '', updated_at: '' },
+    }));
+    mockRequireDocumentAccess.mockResolvedValueOnce({
+      document: { id: documentId, created_by: 'user-1', project_id: 'project-1', status: 'private', workflow_step: 1, title: 'Draft', content: 'Original', version: 1, approved_by: null, created_at: '', updated_at: '', approved_at: null },
+      canModify: true,
+    });
+
+    const response = await updateDocument(new NextRequest(`http://localhost/api/ai-pm/documents/${documentId}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ content: 'Changed again', version: 1 }),
+    }), { params: Promise.resolve({ documentId }) });
+
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toBe(AIpmErrorType.APPROVAL_REQUIRED);
+  });
+
+  it('returns a conflict when a stale writer submits a title-only update', async () => {
+    const documentId = '11111111-1111-1111-8111-111111111111';
+    const supabase = createSupabaseMock([{ id: documentId, title: 'Current title', content: 'Original', version: 2 }], null, { updateConflict: true });
+    mockGetSupabase.mockResolvedValue(asSupabase(supabase));
+    mockRequireAuth.mockResolvedValueOnce(asAuth({
+      user: { id: 'user-1', email: 'user@example.com' },
+      profile: { id: 'user-1', email: 'user@example.com', full_name: 'User', role: 'user', created_at: '', updated_at: '' },
+    }));
+    mockRequireDocumentAccess.mockResolvedValueOnce({
+      document: { id: documentId, created_by: 'user-1', project_id: 'project-1', status: 'private', workflow_step: 1, title: 'Draft', content: 'Original', version: 1, approved_by: null, created_at: '', updated_at: '', approved_at: null },
+      canModify: true,
+    });
+
+    const response = await updateDocument(new NextRequest(`http://localhost/api/ai-pm/documents/${documentId}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Stale title', version: 1 }),
+    }), { params: Promise.resolve({ documentId }) });
+
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toBe(AIpmErrorType.APPROVAL_REQUIRED);
+  });
+
+  it('requires an expected version for document updates', async () => {
+    const documentId = '11111111-1111-1111-8111-111111111111';
+    mockGetSupabase.mockResolvedValue(asSupabase(createSupabaseMock()));
+
+    const response = await updateDocument(new NextRequest(`http://localhost/api/ai-pm/documents/${documentId}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ content: 'Missing version' }),
+    }), { params: Promise.resolve({ documentId }) });
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toBe(AIpmErrorType.VALIDATION_ERROR);
   });
 
   it('lists pending documents for authorized approvers without requiring admin', async () => {

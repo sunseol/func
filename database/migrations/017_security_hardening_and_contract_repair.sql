@@ -120,11 +120,11 @@ BEGIN
   SELECT role INTO member_role
   FROM public.project_members
   WHERE project_id = project_uuid AND user_id = auth.uid();
-  RETURN CASE workflow_step_num
-    WHEN 1, 2, 3, 6, 7, 8 THEN member_role = 'service_planning'
-    WHEN 4 THEN member_role = 'ux_planning'
-    WHEN 5 THEN member_role = 'developer'
-    WHEN 9 THEN member_role IN ('content_planning', 'service_planning')
+  RETURN CASE
+    WHEN workflow_step_num IN (1, 2, 3, 6, 7, 8) THEN member_role = 'service_planning'
+    WHEN workflow_step_num = 4 THEN member_role = 'ux_planning'
+    WHEN workflow_step_num = 5 THEN member_role = 'developer'
+    WHEN workflow_step_num = 9 THEN member_role IN ('content_planning', 'service_planning')
     ELSE FALSE
   END;
 END
@@ -321,7 +321,11 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 BEGIN
-  IF OLD.content IS DISTINCT FROM NEW.content THEN
+  IF OLD.title IS DISTINCT FROM NEW.title
+     OR OLD.content IS DISTINCT FROM NEW.content
+     OR OLD.status IS DISTINCT FROM NEW.status
+     OR OLD.approved_by IS DISTINCT FROM NEW.approved_by
+     OR OLD.approved_at IS DISTINCT FROM NEW.approved_at THEN
     NEW.version := COALESCE(OLD.version, 0) + 1;
     INSERT INTO public.document_versions (document_id, version, content, created_by)
     VALUES (NEW.id, NEW.version, NEW.content, COALESCE(auth.uid(), NEW.created_by))
@@ -469,23 +473,28 @@ AS $$
 DECLARE
   target_document public.planning_documents;
   project_uuid UUID;
+  workflow_step_num INTEGER;
 BEGIN
   IF auth.uid() IS NULL OR p_user_id IS DISTINCT FROM auth.uid() THEN
     RAISE EXCEPTION 'authenticated identity mismatch';
   END IF;
-  SELECT project_id INTO project_uuid
+  SELECT project_id, workflow_step
+  INTO project_uuid, workflow_step_num
   FROM public.planning_documents
   WHERE id = p_document_id;
   IF project_uuid IS NULL THEN
     RETURN;
   END IF;
-  PERFORM 1 FROM public.projects WHERE id = project_uuid FOR UPDATE;
-  SELECT * INTO target_document FROM public.planning_documents WHERE id = p_document_id FOR UPDATE;
-  IF target_document.id IS NULL OR target_document.status IS DISTINCT FROM 'pending_approval' THEN
+  IF NOT public.can_approve_document(auth.uid(), project_uuid, workflow_step_num) THEN
     RETURN;
   END IF;
-  IF NOT public.can_approve_document(auth.uid(), target_document.project_id, target_document.workflow_step) THEN
-    RAISE EXCEPTION 'document approval is not authorized';
+  PERFORM 1 FROM public.projects WHERE id = project_uuid FOR UPDATE;
+  SELECT * INTO target_document FROM public.planning_documents WHERE id = p_document_id FOR UPDATE;
+  IF target_document.id IS NULL THEN
+    RETURN;
+  END IF;
+  IF target_document.status IS DISTINCT FROM 'pending_approval' THEN
+    RETURN;
   END IF;
   UPDATE public.planning_documents
   SET status = 'private', updated_at = NOW()
@@ -513,26 +522,31 @@ AS $$
 DECLARE
   target_document public.planning_documents;
   project_uuid UUID;
+  creator_uuid UUID;
 BEGIN
   IF auth.uid() IS NULL OR p_user_id IS DISTINCT FROM auth.uid() THEN
     RAISE EXCEPTION 'authenticated identity mismatch';
   END IF;
-  SELECT project_id INTO project_uuid
+  SELECT project_id, created_by
+  INTO project_uuid, creator_uuid
   FROM public.planning_documents
   WHERE id = p_document_id;
   IF project_uuid IS NULL THEN
     RETURN;
   END IF;
-  PERFORM 1 FROM public.projects WHERE id = project_uuid FOR UPDATE;
-  SELECT * INTO target_document FROM public.planning_documents WHERE id = p_document_id FOR UPDATE;
-  IF target_document.id IS NULL OR target_document.status IS DISTINCT FROM 'pending_approval' THEN
-    RETURN;
-  END IF;
   IF NOT (
     public.is_admin()
-    OR (target_document.created_by = auth.uid() AND public.is_project_member(project_uuid))
+    OR (creator_uuid = auth.uid() AND public.is_project_member(project_uuid))
   ) THEN
-    RAISE EXCEPTION 'document withdrawal is not authorized';
+    RETURN;
+  END IF;
+  PERFORM 1 FROM public.projects WHERE id = project_uuid FOR UPDATE;
+  SELECT * INTO target_document FROM public.planning_documents WHERE id = p_document_id FOR UPDATE;
+  IF target_document.id IS NULL THEN
+    RETURN;
+  END IF;
+  IF target_document.status IS DISTINCT FROM 'pending_approval' THEN
+    RETURN;
   END IF;
   UPDATE public.planning_documents
   SET status = 'private', approved_by = NULL, approved_at = NULL, updated_at = NOW()

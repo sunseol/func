@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { useViewport } from '@/contexts/ViewportContext';
@@ -35,6 +36,7 @@ function countRecentActivity(projects: readonly UserProject[]): number {
 
 export default function AIPMPage() {
   const { user } = useAuth();
+  const router = useRouter();
   const { success, error: showError } = useToast();
   const { isMobile } = useViewport();
   
@@ -92,11 +94,10 @@ export default function AIPMPage() {
     }
   }, [user, loadProjects]);
 
-  const handleCreateProject = async () => {
-    // 프로젝트 생성 후 목록 새로고침
-    await loadProjects();
+  const handleCreateProject = async (projectId: string) => {
     setShowCreateModal(false);
     success('프로젝트 생성', '프로젝트가 성공적으로 생성되었습니다.');
+    router.push(`/ai-pm/${projectId}`);
   };
 
   const handleProjectDelete = async (projectId: string) => {
@@ -155,7 +156,7 @@ export default function AIPMPage() {
               <button
                 onClick={() => setShowCreateModal(true)}
                 aria-label="새 프로젝트"
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+                className="inline-flex min-h-[44px] items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors"
               >
                 <PlusIcon className="w-4 h-4 mr-2" />
                 새 프로젝트
@@ -242,7 +243,7 @@ export default function AIPMPage() {
                 <button
                   onClick={() => setShowCreateModal(true)}
                   aria-label="새 프로젝트"
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+                  className="inline-flex min-h-[44px] items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors"
                 >
                   <PlusIcon className="w-4 h-4 mr-2" />
                   새 프로젝트 생성

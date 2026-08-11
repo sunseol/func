@@ -20,8 +20,11 @@ export const POST = withApi(async (request: NextRequest) => {
   await requireProjectAccess(supabase, auth, projectId);
 
   const conversationManager = getConversationManager(supabase);
+  const idempotencyKey = body.idempotency_key ?? crypto.randomUUID();
+  const userMessageId = body.user_message_id ?? crypto.randomUUID();
+  const assistantMessageId = body.assistant_message_id ?? crypto.randomUUID();
   const userMessage = {
-    id: crypto.randomUUID(),
+    id: userMessageId,
     role: 'user',
     content: message,
     timestamp: new Date().toISOString(),
@@ -72,9 +75,10 @@ export const POST = withApi(async (request: NextRequest) => {
 
         if (!streamFailed && accumulatedResponse.trim()) {
           await conversationManager.appendMessages(projectId, workflowStep, [userMessage, {
+            id: assistantMessageId,
             role: 'assistant',
             content: accumulatedResponse.trim(),
-          }]);
+          }], { idempotencyKey });
         }
       } catch (error) {
         console.error('Streaming error', {

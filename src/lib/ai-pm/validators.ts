@@ -60,6 +60,13 @@ export function requireDocumentStatus(value: unknown, field = 'status') {
   return value as DocumentStatus;
 }
 
+export function requireDocumentVersion(value: unknown, field = 'version') {
+  if (!Number.isInteger(value) || (value as number) < 1) {
+    throw new ApiError(400, AIpmErrorType.VALIDATION_ERROR, `${field} must be a positive integer`);
+  }
+  return value as number;
+}
+
 export function sanitizeText(value: unknown) {
   if (typeof value !== 'string') {
     return '';

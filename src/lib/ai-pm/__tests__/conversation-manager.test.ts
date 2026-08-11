@@ -83,7 +83,7 @@ describe('ConversationManager atomic appends', () => {
       role: 'assistant',
       content: 'Hi',
       timestamp: '2026-08-04T00:00:01.000Z',
-    }]);
+    }], { idempotencyKey: '33333333-3333-4333-8333-333333333333' });
 
     expect(rpc).toHaveBeenCalledWith('append_ai_conversation_messages', {
       p_project_id: 'project-1',
@@ -102,6 +102,7 @@ describe('ConversationManager atomic appends', () => {
           timestamp: '2026-08-04T00:00:01.000Z',
         },
       ],
+      p_idempotency_key: '33333333-3333-4333-8333-333333333333',
     });
   });
 

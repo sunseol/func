@@ -8,6 +8,10 @@ jest.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'user-1', user_metadata: { role: 'user' } } }),
 }));
 
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: jest.fn() }),
+}));
+
 jest.mock('@/contexts/ToastContext', () => ({
   useToast: () => ({ success: jest.fn(), error: jest.fn() }),
 }));

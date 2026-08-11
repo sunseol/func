@@ -69,7 +69,7 @@ export const GET = withApi(async (_request: NextRequest) => {
     const project = projectById.get(projectId);
     if (!project || typeof project.id !== 'string' || typeof project.name !== 'string' ||
       typeof project.created_by !== 'string' || typeof project.created_at !== 'string' ||
-      typeof project.updated_at !== 'string' || typeof project.creator_email !== 'string') return [];
+      typeof project.updated_at !== 'string') return [];
     return [{
       id: project.id,
       name: project.name,
@@ -77,7 +77,7 @@ export const GET = withApi(async (_request: NextRequest) => {
       created_by: project.created_by,
       created_at: project.created_at,
       updated_at: project.updated_at,
-      creator_email: project.creator_email,
+      creator_email: typeof project.creator_email === 'string' ? project.creator_email : null,
       creator_name: typeof project.creator_name === 'string' ? project.creator_name : null,
       user_role: role,
       member_count: Number(project.member_count ?? 0),

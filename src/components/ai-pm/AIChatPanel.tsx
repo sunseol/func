@@ -34,6 +34,21 @@ interface ChatMessage extends AIChatMessage {
 
 type HistoryState = 'loading' | 'loaded' | 'new' | 'error';
 
+interface RetryRequest {
+  readonly prompt: string;
+  readonly idempotencyKey: string;
+  readonly userMessageId: string;
+  readonly assistantMessageId: string;
+  readonly assistantTimestamp: Date;
+}
+
+function createUuid(): string {
+  const randomUuid = globalThis.crypto?.randomUUID;
+  if (typeof randomUuid === 'function') return randomUuid.call(globalThis.crypto);
+  const randomHex = (length: number) => Array.from({ length }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+  return `00000000-0000-4000-8000-${randomHex(12)}`;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -84,10 +99,12 @@ export default function AIChatPanel({
   const [historyState, setHistoryState] = useState<HistoryState>('loading');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [retryRequest, setRetryRequest] = useState<RetryRequest | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const requestInFlightRef = useRef(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -174,36 +191,60 @@ export default function AIChatPanel({
     loadConversation();
   }, [workflowStep, projectId, showError]);
 
-  const sendMessage = async (content: string) => {
-    if (!content.trim() || isLoading || historyState === 'loading' || historyState === 'error') return;
+  const sendMessage = async (content: string, retry?: RetryRequest) => {
+    const trimmedContent = content.trim();
+    if (!trimmedContent || isLoading || requestInFlightRef.current || historyState === 'loading' || historyState === 'error') return;
 
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: content.trim(),
-      timestamp: new Date(),
-    };
+    requestInFlightRef.current = true;
+
+    const idempotencyKey = retry?.idempotencyKey ?? createUuid();
+    const userMessageId = retry?.userMessageId ?? createUuid();
     const aiMessage: ChatMessage = {
-      id: (Date.now() + 1).toString(),
+      id: retry?.assistantMessageId ?? createUuid(),
       role: 'assistant',
       content: '',
-      timestamp: new Date(),
+      timestamp: retry?.assistantTimestamp ?? new Date(),
       isLoading: true,
     };
 
-    setMessages((prev) => [...prev, userMessage, aiMessage]);
-    setInputMessage('');
+    if (retry) {
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === aiMessage.id ? { ...message, content: '', isLoading: true, error: undefined } : message,
+        ),
+      );
+    } else {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: userMessageId,
+          role: 'user',
+          content: trimmedContent,
+          timestamp: new Date(),
+        },
+        aiMessage,
+      ]);
+      setInputMessage('');
+    }
+    setRetryRequest(null);
     setIsLoading(true);
     setIsStreaming(true);
 
     try {
-      abortControllerRef.current = new AbortController();
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
 
       const response = await fetch(`/api/ai-pm/chat/stream?projectId=${projectId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: content.trim(), workflow_step: workflowStep }),
-        signal: abortControllerRef.current.signal,
+        body: JSON.stringify({
+          message: trimmedContent,
+          workflow_step: workflowStep,
+          idempotency_key: idempotencyKey,
+          user_message_id: userMessageId,
+          assistant_message_id: aiMessage.id,
+        }),
+        signal: abortController.signal,
       });
 
       if (!response.ok) throw new Error(`HTTP error ${response.status}`);
@@ -265,7 +306,7 @@ export default function AIChatPanel({
         content: accumulatedContent.trim(),
         timestamp: aiMessage.timestamp,
       });
-
+      setRetryRequest(null);
     } catch (error) {
       const aborted = error instanceof Error && error.name === 'AbortError';
       const errorMessage = aborted
@@ -279,6 +320,13 @@ export default function AIChatPanel({
       );
 
       if (!aborted) {
+        setRetryRequest({
+          prompt: trimmedContent,
+          idempotencyKey,
+          userMessageId,
+          assistantMessageId: aiMessage.id,
+          assistantTimestamp: aiMessage.timestamp,
+        });
         showError('Chat error', 'Unable to fetch AI response.');
       }
 
@@ -286,7 +334,12 @@ export default function AIChatPanel({
       setIsLoading(false);
       setIsStreaming(false);
       abortControllerRef.current = null;
+      requestInFlightRef.current = false;
     }
+  };
+
+  const retryMessage = (request: RetryRequest) => {
+    void sendMessage(request.prompt, request);
   };
 
   const stopStreaming = () => {
@@ -373,6 +426,18 @@ export default function AIChatPanel({
               >
                 {message.content}
               </div>
+              {message.error && retryRequest?.assistantMessageId === message.id && (
+                <Button
+                  type="link"
+                  size="small"
+                  aria-label="Retry message"
+                  data-testid="retry-ai-message"
+                  onClick={() => retryMessage(retryRequest)}
+                  disabled={isLoading}
+                >
+                  Retry
+                </Button>
+              )}
             </div>
           </div>
         ))}

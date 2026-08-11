@@ -5,6 +5,7 @@ import DocumentEditor from '../DocumentEditor';
 import type { PlanningDocumentWithUsers } from '@/types/ai-pm';
 
 let mockProfileRole: 'admin' | 'user' = 'admin';
+const mockSuccess = jest.fn();
 
 jest.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
@@ -23,7 +24,7 @@ jest.mock('@/contexts/AuthContext', () => ({
 
 jest.mock('@/contexts/ToastContext', () => ({
   useToast: () => ({
-    success: jest.fn(),
+    success: mockSuccess,
     error: jest.fn(),
     info: jest.fn(),
     warning: jest.fn(),
@@ -137,7 +138,24 @@ describe('DocumentEditor', () => {
 
     await waitFor(() => {
       expect(onSave).toHaveBeenCalledWith('# Hello\n\nWorld!!', 'Test Document');
+      expect(mockSuccess).toHaveBeenCalledTimes(1);
+      expect(mockSuccess).toHaveBeenCalledWith('문서 저장 완료', '변경사항이 성공적으로 저장되었습니다.');
     });
+  });
+
+  it('exposes a unique accessible name for the edit action', () => {
+    render(
+      <DocumentEditor
+        projectId="project-1"
+        workflowStep={1}
+        document={baseDocument}
+        onSave={async (content) => ({ ...baseDocument, content })}
+        onStatusChange={async () => {}}
+        onDelete={async () => {}}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /^문서 편집$/ })).toBeInTheDocument();
   });
 
   it('offers approval request for a private document without exposing direct approval', () => {

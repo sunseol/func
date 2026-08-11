@@ -23,8 +23,12 @@ export const POST = withApi(async (request: NextRequest) => {
   const conversationManager = getConversationManager(supabase);
   const aiService = getAIService();
 
+  const idempotencyKey = body.idempotency_key ?? crypto.randomUUID();
+  const userMessageId = body.user_message_id ?? crypto.randomUUID();
+  const assistantMessageId = body.assistant_message_id ?? crypto.randomUUID();
+
   const userMessage = {
-    id: crypto.randomUUID(),
+    id: userMessageId,
     role: 'user',
     content: message,
     timestamp: new Date().toISOString(),
@@ -59,9 +63,10 @@ export const POST = withApi(async (request: NextRequest) => {
   }
 
   await conversationManager.appendMessages(projectId, workflowStep, [userMessage, {
+    id: assistantMessageId,
     role: 'assistant',
     content: aiResponse,
-  }]);
+  }], { idempotencyKey });
   return json({ response: aiResponse });
 });
 

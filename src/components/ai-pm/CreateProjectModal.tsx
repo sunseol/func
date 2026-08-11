@@ -8,7 +8,7 @@ import { KeyboardAwareForm } from '@/components/ui/KeyboardAwareForm';
 interface CreateProjectModalProps {
   isOpen?: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (projectId: string) => void | Promise<void>;
 }
 
 export default function CreateProjectModal({ isOpen = true, onClose, onSuccess }: CreateProjectModalProps) {
@@ -65,12 +65,18 @@ export default function CreateProjectModal({ isOpen = true, onClose, onSuccess }
         }),
       });
 
+      const data: { readonly project?: { readonly id?: unknown }; readonly message?: unknown } = await response.json();
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || '프로젝트 생성에 실패했습니다.');
+        const message = typeof data.message === 'string' ? data.message : '프로젝트 생성에 실패했습니다.';
+        throw new Error(message);
       }
 
-      onSuccess();
+      const projectId = data.project?.id;
+      if (typeof projectId !== 'string' || projectId.length === 0) {
+        throw new Error('프로젝트 생성 응답이 올바르지 않습니다.');
+      }
+
+      await onSuccess(projectId);
     } catch (err) {
       setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.');
     } finally {
@@ -112,7 +118,7 @@ export default function CreateProjectModal({ isOpen = true, onClose, onSuccess }
             </h3>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
+              className="touch-target-44 text-gray-400 hover:text-gray-600 transition-colors"
               aria-label="닫기"
               disabled={loading}
             >
@@ -133,7 +139,7 @@ export default function CreateProjectModal({ isOpen = true, onClose, onSuccess }
                 value={formData.name}
                 onChange={(e) => handleInputChange('name', e.target.value)}
                 placeholder="예: 전자책 플랫폼 기획"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[48px] text-base text-[16px] sm:px-3 sm:py-2 sm:text-sm sm:min-h-[40px]"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[48px] text-base text-[16px] sm:px-3 sm:py-2 sm:text-sm sm:min-h-[44px]"
                 disabled={loading}
                 maxLength={255}
                 ref={nameInputRef}
@@ -151,7 +157,7 @@ export default function CreateProjectModal({ isOpen = true, onClose, onSuccess }
                 onChange={(e) => handleInputChange('description', e.target.value)}
                 placeholder="프로젝트에 대한 간단한 설명을 입력해주세요..."
                 rows={4}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none text-base text-[16px] sm:px-3 sm:py-2 sm:text-sm sm:rows-3"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none text-base text-[16px] sm:px-3 sm:py-2 sm:text-sm sm:rows-3 min-h-[44px]"
                 disabled={loading}
                 maxLength={1000}
               />
@@ -172,14 +178,14 @@ export default function CreateProjectModal({ isOpen = true, onClose, onSuccess }
               <button
                 type="button"
                 onClick={onClose}
-                className="px-6 py-3 text-base font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 min-h-[48px] sm:px-4 sm:py-2 sm:text-sm sm:min-h-[40px]"
+                className="px-6 py-3 text-base font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 min-h-[48px] sm:px-4 sm:py-2 sm:text-sm sm:min-h-[44px]"
                 disabled={loading}
               >
                 취소
               </button>
               <button
                 type="submit"
-                className="px-6 py-3 text-base font-medium text-white bg-blue-600 border border-transparent rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px] sm:px-4 sm:py-2 sm:text-sm sm:min-h-[40px]"
+                className="px-6 py-3 text-base font-medium text-white bg-blue-600 border border-transparent rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px] sm:px-4 sm:py-2 sm:text-sm sm:min-h-[44px]"
                 disabled={loading}
               >
                 {loading ? (

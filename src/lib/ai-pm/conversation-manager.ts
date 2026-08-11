@@ -16,6 +16,10 @@ type UserMessageInput = MessageInput & { readonly role: 'user' };
 type AssistantMessageInput = MessageInput & { readonly role: 'assistant' };
 type ConversationPair = readonly [UserMessageInput, AssistantMessageInput];
 
+export interface ConversationAppendOptions {
+  readonly idempotencyKey?: string;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -131,16 +135,19 @@ export class ConversationManager {
     projectId: string,
     workflowStep: WorkflowStep,
     messages: ConversationPair,
+    options: ConversationAppendOptions = {},
   ): Promise<AIConversation> {
     if (messages.length !== 2 || messages[0].role !== 'user' || messages[1].role !== 'assistant') {
       throw this.handleDatabaseError(new Error('Conversation append requires a user/assistant pair'));
     }
     const normalizedMessages = messages.map(normalizeMessage);
+    const idempotencyKey = options.idempotencyKey ?? createMessageId();
     try {
       const { data, error } = await this.supabase.rpc('append_ai_conversation_messages', {
         p_project_id: projectId,
         p_workflow_step: workflowStep,
         p_messages: normalizedMessages,
+        p_idempotency_key: idempotencyKey,
       });
       if (error) throw error;
       return parseRpcConversation(data);

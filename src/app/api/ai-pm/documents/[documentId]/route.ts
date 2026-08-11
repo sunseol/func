@@ -1,7 +1,7 @@
 ﻿import { NextRequest } from 'next/server';
 import { ApiError, json, parseJson, withApi } from '@/lib/http';
-import { getSupabase, requireAuth, requireDocumentAccess } from '@/lib/ai-pm/auth';
-import { requireDocumentStatus, requireMaxLength, requireString, requireUuid, sanitizeText } from '@/lib/ai-pm/validators';
+import { getSupabase, isSupabaseNoRows, requireAuth, requireDocumentAccess } from '@/lib/ai-pm/auth';
+import { requireDocumentStatus, requireDocumentVersion, requireMaxLength, requireString, requireUuid, sanitizeText } from '@/lib/ai-pm/validators';
 import { AIpmErrorType, type DocumentResponse, type UpdateDocumentRequest } from '@/types/ai-pm';
 import { fetchDocumentWithUsers } from '../document-response';
 
@@ -28,6 +28,7 @@ export const PUT = withApi(async (request: NextRequest, { params }: Context) => 
   const safeDocumentId = requireUuid(documentId, 'documentId');
 
   const body = await parseJson<UpdateDocumentRequest>(request, { maxBytes: 256_000, requireContentType: true });
+  const expectedVersion = requireDocumentVersion(body.version);
   const { document: existing, canModify } = await requireDocumentAccess(supabase, auth, safeDocumentId);
 
   if (!canModify) {
@@ -83,9 +84,13 @@ export const PUT = withApi(async (request: NextRequest, { params }: Context) => 
     .from('planning_documents')
     .update(updateData)
     .eq('id', safeDocumentId)
+    .eq('version', expectedVersion)
     .select('*')
     .single();
 
+  if (isSupabaseNoRows(updateError)) {
+    throw new ApiError(409, AIpmErrorType.APPROVAL_REQUIRED, 'Document changed since it was loaded; refresh before saving');
+  }
   if (updateError || !updated) {
     throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to update document', updateError);
   }

@@ -20,6 +20,8 @@ describe('CreateProjectModal', () => {
 
     const nameInput = screen.getByLabelText(/프로젝트 이름/);
     expect(nameInput).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '닫기' })).toHaveClass('touch-target-44');
+    expect(screen.getByRole('button', { name: '취소' })).toHaveClass('sm:min-h-[44px]');
 
     await waitFor(() => {
       expect(nameInput).toHaveFocus();
@@ -88,7 +90,7 @@ describe('CreateProjectModal', () => {
       });
     });
 
-    expect(onSuccess).toHaveBeenCalledTimes(1);
+    expect(onSuccess).toHaveBeenCalledWith('p1');
   });
 
   it('shows API error message', async () => {

@@ -297,8 +297,8 @@ CREATE POLICY "Conversation creators and admins can delete conversations" ON ai_
       SELECT 1 FROM user_profiles 
       WHERE id = auth.uid() AND role = 'admin'
     )
-  );-
-- 인덱스 생성으로 쿼리 성능 최적화
+  );
+-- 인덱스 생성으로 쿼리 성능 최적화
 
 -- projects 테이블 인덱스
 CREATE INDEX IF NOT EXISTS idx_projects_created_by ON projects(created_by);
@@ -340,8 +340,8 @@ CREATE INDEX IF NOT EXISTS idx_ai_conversations_updated_at ON ai_conversations(u
 -- 복합 인덱스: 프로젝트별 워크플로우 단계 대화 조회 최적화
 CREATE INDEX IF NOT EXISTS idx_ai_conversations_project_workflow ON ai_conversations(project_id, workflow_step);
 -- 복합 인덱스: 사용자별 대화 조회 최적화
-CREATE INDEX IF NOT EXISTS idx_ai_conversations_user_project ON ai_conversations(user_id, project_id);-
-- 트리거 함수 및 트리거 생성
+CREATE INDEX IF NOT EXISTS idx_ai_conversations_user_project ON ai_conversations(user_id, project_id);
+-- 트리거 함수 및 트리거 생성
 
 -- updated_at 자동 업데이트 함수 (이미 존재할 수 있으므로 IF NOT EXISTS 사용)
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -445,7 +445,7 @@ SELECT
     up.email as creator_email,
     up.full_name as creator_name
 FROM projects p
-JOIN user_profiles up ON p.created_by = up.id;
+LEFT JOIN user_profiles up ON p.created_by = up.id;
 
 -- 문서 상세 정보 뷰 (작성자 및 승인자 정보 포함)
 CREATE OR REPLACE VIEW planning_documents_with_users AS
@@ -482,8 +482,8 @@ RETURNS TABLE (
 BEGIN
     RETURN QUERY
     WITH workflow_steps AS (
-        SELECT generate_series(1, 9) as step_num,
-               CASE generate_series(1, 9)
+        SELECT workflow.step_num,
+               CASE workflow.step_num
                    WHEN 1 THEN '서비스 개요 및 목표 설정'
                    WHEN 2 THEN '타겟 사용자 분석'
                    WHEN 3 THEN '핵심 기능 정의'
@@ -494,6 +494,7 @@ BEGIN
                    WHEN 8 THEN '성과 지표 및 측정 방법'
                    WHEN 9 THEN '런칭 및 마케팅 전략'
                END as step_name
+        FROM generate_series(1, 9) AS workflow(step_num)
     ),
     document_stats AS (
         SELECT 

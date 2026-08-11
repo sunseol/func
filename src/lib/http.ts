@@ -13,6 +13,43 @@ export class ApiError extends Error {
   }
 }
 
+const REDACTED_DETAIL = '[REDACTED]';
+const SENSITIVE_DETAIL_KEY = /(?:token|secret|password|credential|authorization|cookie|api[-_]?key|access[-_]?key|refresh[-_]?token|email|sql|query|provider|payload|body|request|stack|hint)/i;
+const SENSITIVE_DETAIL_TEXT = [
+  /\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/,
+  /\b(?:bearer|basic)\s+[^\s]+/i,
+  /\b[a-z][a-z\d+.-]*:\/\/[^/\s:@]+:[^@\s]+@/i,
+  /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/,
+  /\b(?:select|insert|update|delete|drop|alter|create)\b[\s\S]*/i,
+  /\b(?:token|secret|password|credential|provider)\b/i,
+];
+
+function redactErrorDetails(
+  value: unknown,
+  key?: string,
+  seen: WeakSet<object> = new WeakSet<object>(),
+  depth = 0,
+): unknown {
+  if (depth > 6 || (key !== undefined && SENSITIVE_DETAIL_KEY.test(key))) return REDACTED_DETAIL;
+  if (typeof value === 'string') {
+    if (SENSITIVE_DETAIL_TEXT.some((pattern) => pattern.test(value))) return REDACTED_DETAIL;
+    return value.length > 512 ? `${value.slice(0, 512)}…` : value;
+  }
+  if (typeof value !== 'object' || value === null) return value;
+  if (seen.has(value)) return REDACTED_DETAIL;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.map((item) => redactErrorDetails(item, undefined, seen, depth + 1));
+  }
+
+  const redacted: Record<string, unknown> = {};
+  for (const [nestedKey, nestedValue] of Object.entries(value)) {
+    redacted[nestedKey] = redactErrorDetails(nestedValue, nestedKey, seen, depth + 1);
+  }
+  return redacted;
+}
+
 export function json<T>(data: T, init?: ResponseInit) {
   return NextResponse.json(data, init);
 }
@@ -90,16 +127,16 @@ export function withApi<RequestType extends Request, Context>(
 export function toErrorResponse(error: unknown) {
   if (error instanceof ApiError) {
     if (error.status >= 500) {
-      console.error('API error:', { status: error.status, code: error.code, details: error.details });
+      console.error('API error:', { status: error.status, code: error.code, messageClass: 'api_error' });
       return json({ error: error.code, message: error.message }, { status: error.status });
     }
     const response = error.details === undefined
       ? { error: error.code, message: error.message }
-      : { error: error.code, message: error.message, details: error.details };
+      : { error: error.code, message: error.message, details: redactErrorDetails(error.details) };
     return json(response, { status: error.status });
   }
 
-  console.error('Unhandled API error:', error);
+  console.error('Unhandled API error:', { status: 500, code: 'INTERNAL_ERROR', messageClass: 'unhandled_error' });
   return json(
     { error: 'INTERNAL_ERROR', message: 'Unexpected error' },
     { status: 500 },

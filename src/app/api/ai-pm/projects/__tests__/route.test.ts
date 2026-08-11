@@ -112,6 +112,19 @@ describe('/api/ai-pm/projects', () => {
     expect(data.projects[0]).toMatchObject({ user_role: 'service_planning', official_documents_count: 1, last_activity: '2025-01-01T00:00:00Z' });
   });
 
+  it('keeps a member project when the invoker cannot read its creator profile', async () => {
+    const supabase = createSupabaseMock([{ id: 'project-1', name: 'Member project', description: null, created_by: 'admin-1', created_at: '2024-01-01T00:00:00Z', updated_at: '2025-01-01T00:00:00Z', creator_email: null, creator_name: null, member_count: 1, official_document_count: 0 }]);
+    mockGetSupabase.mockResolvedValue(supabase);
+    mockRequireAuth.mockResolvedValueOnce(createAuth());
+
+    const response = await GET(new NextRequest('http://localhost:3000/api/ai-pm/projects'), undefined);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.projects).toHaveLength(1);
+    expect(data.projects[0]).toMatchObject({ id: 'project-1', creator_email: null, user_role: 'service_planning' });
+  });
+
   it('creates a project for admin', async () => {
     const mockProject = { id: 'project-1', name: 'Demo', created_at: new Date().toISOString() };
     mockGetSupabase.mockResolvedValue(createSupabaseMock([mockProject]));
