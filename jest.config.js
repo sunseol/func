@@ -17,6 +17,7 @@ const customJestConfig = {
     '<rootDir>/node_modules/',
     '<rootDir>/e2e/',
     '<rootDir>/database/migrations/',
+    '<rootDir>/scripts/e2e/local-supabase\\.test\\.mjs$',
     '<rootDir>/playwright-report/',
     '/\\._[^/]+$',
   ],

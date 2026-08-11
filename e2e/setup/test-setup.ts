@@ -1,13 +1,22 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type User } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://example.invalid';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? 'missing-test-service-role-key';
+
+export const E2E_SUPABASE_API_PORT = 55421;
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
+
+export const guardedSupabaseFetch: typeof fetch = (input, init) => {
+  requireLocalSupabaseMutation();
+  return fetch(input, init);
+};
 
 export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
   auth: {
     autoRefreshToken: false,
     persistSession: false
-  }
+  },
+  global: { fetch: guardedSupabaseFetch }
 });
 
 export interface TestUserData {
@@ -20,28 +29,28 @@ export interface TestUserData {
 
 export const TEST_USERS_DATA: Record<string, TestUserData> = {
   admin: {
-    id: '00000000-0000-0000-0000-000000000001',
+    id: '',
     email: 'admin@test.com',
     password: 'testpassword123',
     role: 'admin',
     name: 'Test Admin'
   },
   planner1: {
-    id: '00000000-0000-0000-0000-000000000002',
+    id: '',
     email: 'planner1@test.com',
     password: 'testpassword123',
     role: 'user',
     name: 'Content Planner'
   },
   planner2: {
-    id: '00000000-0000-0000-0000-000000000003',
+    id: '',
     email: 'planner2@test.com',
     password: 'testpassword123',
     role: 'user',
     name: 'Service Planner'
   },
   designer: {
-    id: '00000000-0000-0000-0000-000000000004',
+    id: '',
     email: 'designer@test.com',
     password: 'testpassword123',
     role: 'user',
@@ -49,7 +58,10 @@ export const TEST_USERS_DATA: Record<string, TestUserData> = {
   }
 };
 
-export const E2E_PROJECT_PREFIX = `E2E_${process.env.E2E_RUN_ID ?? `${process.pid}_${Date.now().toString(36)}`}_`;
+export const E2E_PROJECT_PREFIX = `E2E_AUDIT_${process.env.E2E_RUN_ID ?? `${process.pid}_${Date.now().toString(36)}`}_`;
+
+const AUTH_USERS_PAGE_SIZE = 1000;
+const authUserSeedPromises = new Map<string, Promise<string>>();
 
 export function scopeE2EProjectName(name: string): string {
   return name.startsWith(E2E_PROJECT_PREFIX)
@@ -57,40 +69,109 @@ export function scopeE2EProjectName(name: string): string {
     : `${E2E_PROJECT_PREFIX}${name.replace(/^E2E_/, '')}`;
 }
 
-function requireSupabaseEnvironment(): void {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    throw new Error('E2E requires NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
+export function isLoopbackSupabaseUrl(rawUrl: string | undefined): boolean {
+  if (!rawUrl) return false;
+
+  try {
+    const url = new URL(rawUrl);
+    const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    return (url.protocol === 'http:' || url.protocol === 'https:') &&
+      LOOPBACK_HOSTS.has(hostname) &&
+      url.port === String(E2E_SUPABASE_API_PORT);
+  } catch {
+    return false;
   }
 }
 
+export function isLocalSupabaseMutationEnvironment(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.E2E_LOCAL_SUPABASE === '1' &&
+    Boolean(env.SUPABASE_SERVICE_ROLE_KEY) &&
+    isLoopbackSupabaseUrl(env.NEXT_PUBLIC_SUPABASE_URL);
+}
+
+export function requireLocalSupabaseMutation(env: NodeJS.ProcessEnv = process.env): void {
+  if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error('E2E requires NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
+  }
+  if (env.E2E_LOCAL_SUPABASE !== '1') {
+    throw new Error('E2E service-role mutations require E2E_LOCAL_SUPABASE=1');
+  }
+  if (!isLoopbackSupabaseUrl(env.NEXT_PUBLIC_SUPABASE_URL)) {
+    throw new Error(`E2E service-role mutations require a loopback Supabase URL on port ${E2E_SUPABASE_API_PORT}`);
+  }
+}
+
+async function findAuthUserByEmail(email: string): Promise<User | undefined> {
+  const normalizedEmail = email.trim().toLowerCase();
+  for (let page = 1; ; page += 1) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({
+      page,
+      perPage: AUTH_USERS_PAGE_SIZE
+    });
+    if (error) {
+      throw new Error(`Failed to find existing test user ${email}: ${error.message}`);
+    }
+
+    const user = data.users.find((candidate) => candidate.email?.trim().toLowerCase() === normalizedEmail);
+    if (user) return user;
+    if (data.users.length < AUTH_USERS_PAGE_SIZE) return undefined;
+  }
+}
+
+async function configureAuthUser(userId: string, userData: TestUserData): Promise<string> {
+  const { data, error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+    password: userData.password,
+    email_confirm: true,
+    user_metadata: { full_name: userData.name }
+  });
+  if (error) {
+    throw new Error(`Failed to configure test user ${userData.email}: ${error.message}`);
+  }
+  if (!data.user?.id) {
+    throw new Error(`Test user ${userData.email} has no auth id after configuration`);
+  }
+  return data.user.id;
+}
+
+async function ensureAuthUser(userData: TestUserData): Promise<string> {
+  const existingUser = await findAuthUserByEmail(userData.email);
+  if (existingUser) return configureAuthUser(existingUser.id, userData);
+
+  const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
+    email: userData.email,
+    password: userData.password,
+    email_confirm: true,
+    user_metadata: { full_name: userData.name }
+  });
+  if (!createError && created.user?.id) return created.user.id;
+
+  const racedUser = await findAuthUserByEmail(userData.email);
+  if (racedUser) return configureAuthUser(racedUser.id, userData);
+
+  if (createError) {
+    throw new Error(`Failed to create test user ${userData.email}: ${createError.message}`);
+  }
+  throw new Error(`Test user ${userData.email} was created without an auth id`);
+}
+
+function ensureAuthUserOnce(userData: TestUserData): Promise<string> {
+  const key = userData.email.trim().toLowerCase();
+  const pending = authUserSeedPromises.get(key);
+  if (pending) return pending;
+
+  const promise = ensureAuthUser(userData).finally(() => {
+    authUserSeedPromises.delete(key);
+  });
+  authUserSeedPromises.set(key, promise);
+  return promise;
+}
+
 export async function setupTestUsers() {
-  requireSupabaseEnvironment();
+  requireLocalSupabaseMutation();
   console.log('Setting up test users...');
   
   for (const userData of Object.values(TEST_USERS_DATA)) {
-    const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
-      email: userData.email,
-      password: userData.password,
-      email_confirm: true,
-      user_metadata: { full_name: userData.name }
-    });
-
-    let userId = created.user?.id;
-    if (createError) {
-      if (!createError.message.toLowerCase().includes('already registered')) {
-        throw new Error(`Failed to create test user ${userData.email}: ${createError.message}`);
-      }
-
-      const { data: users, error: listError } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
-      if (listError) {
-        throw new Error(`Failed to find existing test user ${userData.email}: ${listError.message}`);
-      }
-      userId = users.users.find((user) => user.email === userData.email)?.id;
-    }
-
-    if (!userId) {
-      throw new Error(`Test user ${userData.email} has no auth id`);
-    }
+    const userId = await ensureAuthUserOnce(userData);
 
     const { error: profileError } = await supabaseAdmin
       .from('user_profiles')
@@ -111,7 +192,7 @@ export async function setupTestUsers() {
 }
 
 export async function cleanupTestData() {
-  requireSupabaseEnvironment();
+  requireLocalSupabaseMutation();
   console.log('Cleaning up test data...');
 
   const testEmails = Object.values(TEST_USERS_DATA).map(({ email }) => email);
@@ -177,82 +258,4 @@ export async function cleanupTestData() {
   }
 
   console.log(`Test data cleanup completed for ${projectIds.length} known E2E projects`);
-}
-
-export async function createTestProject(createdBy: string, name: string, description?: string) {
-  const scopedName = scopeE2EProjectName(name);
-  const { data, error } = await supabaseAdmin
-    .from('projects')
-    .insert({
-      name: scopedName,
-      description: description || '',
-      created_by: createdBy,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    })
-    .select()
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to create test project: ${error.message}`);
-  }
-
-  return data;
-}
-
-export async function addTestProjectMember(projectId: string, userId: string, role: string, addedBy: string) {
-  const { data, error } = await supabaseAdmin
-    .from('project_members')
-    .insert({
-      project_id: projectId,
-      user_id: userId,
-      role,
-      added_by: addedBy,
-      added_at: new Date().toISOString()
-    })
-    .select()
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to add test project member: ${error.message}`);
-  }
-
-  return data;
-}
-
-export async function createTestDocument(projectId: string, workflowStep: number, title: string, content: string, createdBy: string, status: string = 'private') {
-  const { data, error } = await supabaseAdmin
-    .from('planning_documents')
-    .insert({
-      project_id: projectId,
-      workflow_step: workflowStep,
-      title,
-      content,
-      status,
-      created_by: createdBy,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    })
-    .select()
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to create test document: ${error.message}`);
-  }
-
-  return data;
-}
-
-export async function getUserByEmail(email: string) {
-  const { data, error } = await supabaseAdmin
-    .from('user_profiles')
-    .select('*')
-    .eq('email', email)
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to get user by email: ${error.message}`);
-  }
-
-  return data;
 }

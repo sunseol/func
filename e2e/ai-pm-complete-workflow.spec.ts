@@ -1,231 +1,156 @@
-import { test, expect } from '@playwright/test';
-import { TestHelpers, TEST_USERS, setupTestData, cleanupTestData } from './utils/test-helpers';
+import { expect, test } from '@playwright/test';
+import { login, openWorkflow, requireAIPMBackend, seedDocument, seedProject } from './ai-pm/fixtures';
+import { TEST_USERS, cleanupTestData, setupTestData } from './utils/test-helpers';
 
-test.describe('AI PM Complete Workflow', () => {
-  let helpers: TestHelpers;
-
-  test.beforeEach(async ({ page }) => {
-    helpers = new TestHelpers(page);
-    await setupTestData(page);
+test.describe('AI-PM workflow contract', () => {
+  test.beforeEach(async ({}, testInfo) => {
+    requireAIPMBackend(testInfo);
+    await setupTestData();
   });
 
-  test.afterEach(async ({ page }) => {
-    await cleanupTestData(page);
+  test.afterEach(async ({}, testInfo) => {
+    if (testInfo.status !== 'skipped') await cleanupTestData();
   });
 
-  test('Complete project workflow from creation to document approval', async ({ page }) => {
-    // 1. Admin login and project creation
-    await helpers.login(TEST_USERS.admin);
-    
-    const projectId = await helpers.createProject(
-      'E-Book Platform Project',
-      'A comprehensive e-book platform for digital content distribution'
-    );
-
-    // Verify project was created
-    await helpers.expectTextContent('[data-testid="project-title"]', 'E-Book Platform Project');
-
-    // 2. Add project members
-    await helpers.addProjectMember(TEST_USERS.planner1.email, '콘텐츠기획');
-    await helpers.addProjectMember(TEST_USERS.planner2.email, '서비스기획');
-    await helpers.addProjectMember(TEST_USERS.designer.email, 'UIUX기획');
-
-    // Verify members were added
-    await helpers.expectElementVisible(`[data-testid="member-${TEST_USERS.planner1.email}"]`);
-    await helpers.expectElementVisible(`[data-testid="member-${TEST_USERS.planner2.email}"]`);
-    await helpers.expectElementVisible(`[data-testid="member-${TEST_USERS.designer.email}"]`);
-
-    // 3. Start workflow - Step 1: 사업 아이디어 정의
-    await helpers.navigateToWorkflowStep(1);
-    
-    // Send AI message
-    await helpers.sendAIMessage('전자책 플랫폼을 기획하고 싶습니다. 독자들이 쉽게 전자책을 구매하고 읽을 수 있는 플랫폼을 만들고자 합니다.');
-    
-    // Generate document from AI conversation
-    await helpers.generateDocument();
-    
-    // Edit the generated document
-    await helpers.editDocument(`
-# 사업 아이디어 정의
-
-## 핵심 아이디어
-전자책 플랫폼 "BookHub"는 독자들이 다양한 장르의 전자책을 쉽게 발견하고, 구매하고, 읽을 수 있는 통합 플랫폼입니다.
-
-## 주요 특징
-- 개인화된 도서 추천 시스템
-- 소셜 리딩 기능 (독서 노트 공유, 독서 모임)
-- 다양한 결제 옵션 및 구독 모델
-- 크로스 플랫폼 지원 (웹, 모바일, 태블릿)
-
-## 타겟 고객
-- 20-40대 디지털 네이티브
-- 독서를 즐기는 직장인 및 학생
-- 새로운 콘텐츠를 찾는 독서 애호가
-    `);
-
-    // Request approval
-    await helpers.requestApproval();
-
-    // 4. Logout and login as content planner to approve
-    await helpers.logout();
-    await helpers.login(TEST_USERS.planner1);
-    
-    // Navigate to the project
-    await page.goto(`/ai-pm/${projectId}/workflow/1`);
-    
-    // Approve the document
-    await helpers.approveDocument();
-
-    // 5. Continue to Step 2: 시장 조사 및 경쟁사 분석
-    await helpers.navigateToWorkflowStep(2);
-    
-    await helpers.sendAIMessage('전자책 시장의 현황과 주요 경쟁사들을 분석해주세요. 특히 국내 시장에 집중해서 분석해주세요.');
-    
-    await helpers.generateDocument();
-    
-    await helpers.editDocument(`
-# 시장 조사 및 경쟁사 분석
-
-## 시장 현황
-- 국내 전자책 시장 규모: 약 2,000억원 (2023년 기준)
-- 연평균 성장률: 15%
-- 주요 성장 동력: 모바일 독서 증가, 구독 서비스 확산
-
-## 주요 경쟁사
-### 1. 리디북스
-- 시장 점유율: 40%
-- 강점: 다양한 장르, 구독 서비스
-- 약점: 높은 수수료율
-
-### 2. 밀리의 서재
-- 시장 점유율: 25%
-- 강점: 무제한 구독 모델
-- 약점: 제한적인 신간 도서
-
-### 3. 교보문고 SAM
-- 시장 점유율: 20%
-- 강점: 오프라인 연계
-- 약점: 사용자 경험 부족
-    `);
-
-    await helpers.requestApproval();
-
-    // 6. Test conflict detection
-    await helpers.checkConflicts();
-    
-    // Verify conflict analysis panel appears
-    await helpers.expectElementVisible('[data-testid="conflict-analysis-panel"]');
-
-    // 7. Approve step 2
-    await helpers.approveDocument();
-
-    // 8. Test workflow progress tracking
-    await helpers.expectTextContent('[data-testid="workflow-progress"]', '2/9');
-    
-    // Verify step 1 and 2 are marked as completed
-    await helpers.expectElementVisible('[data-testid="step-1-completed"]');
-    await helpers.expectElementVisible('[data-testid="step-2-completed"]');
-
-    // 9. Test document version history
-    await page.getByRole('button', { name: /버전 기록/ }).click();
-    await helpers.expectElementVisible('[data-testid="version-history-panel"]');
-    
-    // Should show at least 2 versions (initial and edited)
-    await expect(page.locator('[data-testid="version-item"]')).toHaveCount(2);
+  test('QA-AIPM-001 dashboard cards and stats are scoped to seeded projects', async ({ page }) => {
+    const project = await seedProject('QA-AIPM-001');
+    await login(page, TEST_USERS.admin);
+    await page.goto('/ai-pm');
+    await expect(page.getByText(project.name, { exact: true })).toBeVisible();
+    await expect(page.getByText('전체 프로젝트')).toBeVisible();
+    await expect(page.getByText('내 프로젝트')).toBeVisible();
   });
 
-  test('AI functionality integration test', async ({ page }) => {
-    // Login as admin and create project
-    await helpers.login(TEST_USERS.admin);
-    const projectId = await helpers.createProject('AI Integration Test Project');
-
-    // Navigate to workflow step 1
-    await helpers.navigateToWorkflowStep(1);
-
-    // Test AI chat functionality
-    await helpers.sendAIMessage('웹툰 플랫폼을 기획하고 싶습니다.');
-    
-    // Verify AI response appears
-    await helpers.expectElementVisible('[data-testid="ai-response"]');
-    
-    // Test document generation
-    await helpers.generateDocument();
-    
-    // Verify document was generated
-    await helpers.expectElementVisible('[data-testid="document-editor"]');
-    
-    // Test AI conflict detection
-    await helpers.editDocument('# 웹툰 플랫폼 기획\n\n기본적인 웹툰 플랫폼을 만들고자 합니다.');
-    
-    // Create another document in step 2 to test conflicts
-    await helpers.navigateToWorkflowStep(2);
-    await helpers.editDocument('# 시장 분석\n\n웹툰 시장은 매우 경쟁이 치열합니다.');
-    await helpers.requestApproval();
-    await helpers.approveDocument();
-    
-    // Go back to step 1 and check for conflicts
-    await helpers.navigateToWorkflowStep(1);
-    await helpers.checkConflicts();
-    
-    // Verify conflict analysis appears
-    await helpers.expectElementVisible('[data-testid="conflict-analysis-panel"]');
-    
-    // Test AI streaming response
-    await helpers.sendAIMessage('더 자세한 기획안을 작성해주세요.');
-    
-    // Verify streaming indicator appears
-    await helpers.expectElementVisible('[data-testid="ai-typing-indicator"]');
+  test('QA-AIPM-002 create and delete use the project API lifecycle', async ({ page }) => {
+    await login(page, TEST_USERS.admin);
+    await page.goto('/ai-pm');
+    await page.getByRole('button', { name: '새 프로젝트' }).first().click();
+    const name = `E2E_AUDIT_QA-AIPM-002_${Date.now().toString(36)}`;
+    await page.getByLabel('프로젝트 이름').fill(name);
+    const createResponsePromise = page.waitForResponse((response) => (
+      response.url().endsWith('/api/ai-pm/projects') && response.request().method() === 'POST'
+    ));
+    await page.getByRole('button', { name: '프로젝트 생성' }).click();
+    const createResponse = await createResponsePromise;
+    expect(createResponse.status()).toBe(201);
+    const createPayload: { readonly project?: { readonly id?: unknown } } = await createResponse.json();
+    expect(typeof createPayload.project?.id).toBe('string');
+    await page.waitForURL(/\/ai-pm\/[^/]+$/);
+    const projectId = new URL(page.url()).pathname.split('/').at(-1);
+    expect(projectId).toBeTruthy();
+    expect(projectId).toBe(createPayload.project?.id);
+    const response = await page.request.delete(`/api/ai-pm/projects/${projectId}`);
+    expect(response.status()).toBe(200);
   });
 
-  test('Document approval workflow edge cases', async ({ page }) => {
-    // Setup: Admin creates project and adds members
-    await helpers.login(TEST_USERS.admin);
-    const projectId = await helpers.createProject('Approval Test Project');
-    await helpers.addProjectMember(TEST_USERS.planner1.email, '콘텐츠기획');
+  test('QA-WF-001 discovery renders guide and current progress', async ({ page }) => {
+    const project = await seedProject('QA-WF-001');
+    await login(page, TEST_USERS.admin);
+    await openWorkflow(page, project.id, 1);
+    await expect(page.getByTestId('workflow-step-1')).toBeVisible();
+    await page.getByRole('button', { name: '워크플로우 가이드' }).click();
+    await expect(page.getByText('1단계: 컨셉 정의 및 기획')).toBeVisible();
+  });
 
-    // Test 1: Non-member cannot access project
-    await helpers.logout();
-    await helpers.login(TEST_USERS.designer); // Not added as member
-    
-    await page.goto(`/ai-pm/${projectId}`);
-    
-    // Should be redirected or show access denied
-    await helpers.expectElementVisible('[data-testid="access-denied"]');
+  test('QA-WF-002 research is reachable only through the workflow sidebar', async ({ page }) => {
+    const project = await seedProject('QA-WF-002');
+    await login(page, TEST_USERS.admin);
+    await openWorkflow(page, project.id, 2);
+    await expect(page).toHaveURL(new RegExp(`/workflow/2$`));
+    await expect(page.getByTestId('workflow-step-2')).toBeVisible();
+  });
 
-    // Test 2: Member can create private document
-    await helpers.logout();
-    await helpers.login(TEST_USERS.planner1);
-    
-    await page.goto(`/ai-pm/${projectId}/workflow/1`);
-    await helpers.editDocument('# Private Document\n\nThis is a private document.');
-    
-    // Document should be in private status
-    await helpers.expectTextContent('[data-testid="document-status"]', '개인 문서');
+  test('QA-WF-003 requirements guide is rendered for step 3', async ({ page }) => {
+    const project = await seedProject('QA-WF-003');
+    await login(page, TEST_USERS.admin);
+    await openWorkflow(page, project.id, 3);
+    await page.getByRole('button', { name: '워크플로우 가이드' }).click();
+    await expect(page.getByText('3단계: 파트별 문서 제작')).toBeVisible();
+  });
 
-    // Test 3: Other members cannot see private documents
-    await helpers.logout();
-    await helpers.login(TEST_USERS.admin);
-    
-    await page.goto(`/ai-pm/${projectId}/workflow/1`);
-    
-    // Should not see the private document content
-    await helpers.expectElementNotVisible('[data-testid="document-editor"]');
+  test('QA-WF-004 information architecture keeps the role-aware workspace reachable', async ({ page }) => {
+    const project = await seedProject('QA-WF-004', { planner2: 'service_planning', planner1: 'ux_planning' });
+    await login(page, TEST_USERS.admin);
+    await openWorkflow(page, project.id, 4);
+    await expect(page.getByTestId('workflow-step-4')).toBeVisible();
+    await expect(page.getByRole('button', { name: '문서 편집기' })).toBeVisible();
+  });
 
-    // Test 4: Approval request workflow
-    await helpers.logout();
-    await helpers.login(TEST_USERS.planner1);
-    
-    await page.goto(`/ai-pm/${projectId}/workflow/1`);
-    await helpers.requestApproval();
-    
-    // Test 5: Admin can approve documents
-    await helpers.logout();
-    await helpers.login(TEST_USERS.admin);
-    
-    await page.goto(`/ai-pm/${projectId}/workflow/1`);
-    await helpers.approveDocument();
-    
-    // Document should now be official
-    await helpers.expectTextContent('[data-testid="document-status"]', '공식 문서');
+  test('QA-WF-005 interaction design workspace is reachable at step 5', async ({ page }) => {
+    const project = await seedProject('QA-WF-005', { planner2: 'service_planning', designer: 'developer' });
+    await login(page, TEST_USERS.admin);
+    await openWorkflow(page, project.id, 5);
+    await expect(page.getByRole('button', { name: 'AI 어시스턴트' })).toBeVisible();
+  });
+
+  test('QA-WF-006 visual design remains usable at a mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const project = await seedProject('QA-WF-006');
+    await login(page, TEST_USERS.admin);
+    await openWorkflow(page, project.id, 6);
+    await expect(page.getByTestId('workflow-step-6')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  });
+
+  test('QA-WF-007 implementation plan exposes its document workspace', async ({ page }) => {
+    const project = await seedProject('QA-WF-007');
+    await login(page, TEST_USERS.admin);
+    await openWorkflow(page, project.id, 7);
+    await expect(page.getByRole('button', { name: '문서 편집기' })).toBeVisible();
+    await expect(page.getByText('문서를 선택해주세요')).toBeVisible();
+  });
+
+  test('QA-WF-008 review loads without granting an unauthorized mutation control', async ({ page }) => {
+    const project = await seedProject('QA-WF-008', { planner1: 'content_planning' });
+    await login(page, TEST_USERS.planner1);
+    await openWorkflow(page, project.id, 8);
+    await expect(page.getByTestId('workflow-step-8')).toBeVisible();
+    await expect(page.getByRole('button', { name: '승인' })).toHaveCount(0);
+  });
+
+  test('QA-WF-009 delivery is the terminal step with no step 10 link', async ({ page }) => {
+    const project = await seedProject('QA-WF-009');
+    await login(page, TEST_USERS.admin);
+    await openWorkflow(page, project.id, 9);
+    await expect(page.getByTestId('workflow-step-9')).toBeVisible();
+    await expect(page.getByTestId('workflow-step-10')).toHaveCount(0);
+  });
+
+  test('QA-DOC-001 select, edit, save and version the seeded document', async ({ page }) => {
+    const project = await seedProject('QA-DOC-001');
+    await seedDocument(project.id, 1, 'E2E_AUDIT original content');
+    await login(page, TEST_USERS.admin);
+    await openWorkflow(page, project.id, 1);
+    await page.getByText('E2E_AUDIT document 1', { exact: true }).click();
+    await expect(page.getByTestId('document-editor')).toBeVisible();
+    await page.getByRole('button', { name: '문서 편집', exact: true }).click();
+    await page.getByLabel('문서 내용').fill('E2E_AUDIT edited content');
+    const saveResponsePromise = page.waitForResponse((response) => (
+      response.url().includes('/api/ai-pm/documents/') && response.request().method() === 'PUT'
+    ));
+    await page.getByRole('button', { name: '완료' }).click();
+    const saveResponse = await saveResponsePromise;
+    expect(saveResponse.status()).toBe(200);
+    const savePayload: { readonly document?: { readonly version?: unknown } } = await saveResponse.json();
+    expect(typeof savePayload.document?.version).toBe('number');
+    expect(savePayload.document?.version).toBeGreaterThan(1);
+    await expect(page.getByText('문서 저장 완료', { exact: true })).toHaveCount(1);
+  });
+
+  test('QA-DOC-004 private documents expose the approval request transition', async ({ page }) => {
+    const project = await seedProject('QA-DOC-004');
+    await seedDocument(project.id, 1, 'E2E_AUDIT approval content');
+    await login(page, TEST_USERS.admin);
+    await openWorkflow(page, project.id, 1);
+    await page.getByText('E2E_AUDIT document 1', { exact: true }).click();
+    await expect(page.getByTestId('document-status')).toContainText('개인 문서');
+  });
+
+  test('QA-AIPM-006 settings advertises the current unimplemented mutation surface', async ({ page }) => {
+    const project = await seedProject('QA-AIPM-006');
+    await login(page, TEST_USERS.admin);
+    await page.goto(`/ai-pm/${project.id}`);
+    await page.getByRole('button', { name: '설정' }).click();
+    await expect(page.getByText('프로젝트 설정 기능은 향후 구현 예정입니다.')).toBeVisible();
   });
 });

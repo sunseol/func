@@ -1,4 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
+import { buildWebServerEnv } from './scripts/e2e/playwright-env.mjs';
+
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3000';
+const browserChannel = process.env.PLAYWRIGHT_CHANNEL === 'chrome' ? 'chrome' : undefined;
+const webServerCommand = process.env.PLAYWRIGHT_WEB_SERVER_COMMAND ?? 'npm run start -- --hostname 127.0.0.1 --port 3000';
+const webServerEnv = buildWebServerEnv();
+const reuseExistingServer = process.env.PLAYWRIGHT_REUSE_SERVER === '1'
+  || (process.env.PLAYWRIGHT_REUSE_SERVER === undefined && !process.env.CI);
 
 /**
  * @see https://playwright.dev/docs/test-configuration
@@ -28,10 +36,13 @@ export default defineConfig({
     ['./e2e/custom-reporter.ts'], // 커스텀 리포터 - 남은 시간 표시
     ['dot'] // 진행상황을 점으로 표시
   ],
+  globalSetup: './e2e/setup/global-account-seed.ts',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3000',
+    baseURL,
+
+    ...(browserChannel ? { channel: browserChannel } : {}),
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
@@ -83,9 +94,10 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: 'npm run start -- --hostname 127.0.0.1 --port 3000',
-    url: 'http://127.0.0.1:3000',
-    reuseExistingServer: !process.env.CI,
+    command: webServerCommand,
+    env: webServerEnv,
+    url: baseURL,
+    reuseExistingServer,
     timeout: 120 * 1000,
   },
 });

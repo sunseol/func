@@ -38,6 +38,10 @@ yarn-error.log*
 # generated browser reports
 /playwright-report/
 
+# generated local Supabase migrations and runtime state
+/supabase/migrations/
+/supabase/.temp/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
