@@ -109,7 +109,7 @@ export default function InputForm({ onDataChange, initialData }: InputFormProps)
           name="date"
           rules={[{ required: true, message: '날짜를 선택해주세요.' }]}
         >
-          <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD dddd" />
+          <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
         </Form.Item>
       </Card>
 
@@ -137,7 +137,7 @@ export default function InputForm({ onDataChange, initialData }: InputFormProps)
                   }}
                   extra={
                     <Popconfirm title="이 프로젝트를 삭제할까요?" onConfirm={() => remove(name)} okText="예" cancelText="아니오">
-                        <Button icon={<DeleteOutlined />} type="text" danger />
+                        <Button icon={<DeleteOutlined />} type="text" danger className="touch-target-44" />
                     </Popconfirm>
                   }
                 >
@@ -171,10 +171,10 @@ export default function InputForm({ onDataChange, initialData }: InputFormProps)
                             >
                               <Input placeholder="협업자 (/w 이름)" />
                             </Form.Item>
-                            <Button icon={<DeleteOutlined />} onClick={() => removeTask(taskName)} type="text" danger />
+                            <Button icon={<DeleteOutlined />} onClick={() => removeTask(taskName)} type="text" danger className="touch-target-44" />
                           </Space>
                         ))}
-                        <Button type="dashed" onClick={() => addTask({ description: '', collaborator: '' })} block icon={<PlusOutlined />}>
+                        <Button type="dashed" onClick={() => addTask({ description: '', collaborator: '' })} block icon={<PlusOutlined />} className="touch-target-44">
                           업무 추가
                         </Button>
                       </Space>
@@ -182,7 +182,7 @@ export default function InputForm({ onDataChange, initialData }: InputFormProps)
                   </Form.List>
                 </Card>
               ))}
-              <Button type="dashed" onClick={() => add({ name: '', tasks: [{ description: '', collaborator: '' }] })} block icon={<PlusOutlined />}>
+              <Button type="dashed" onClick={() => add({ name: '', tasks: [{ description: '', collaborator: '' }] })} block icon={<PlusOutlined />} className="touch-target-44">
                 프로젝트 추가
               </Button>
             </Space>
@@ -218,10 +218,10 @@ export default function InputForm({ onDataChange, initialData }: InputFormProps)
                   >
                     <Input placeholder="협업자 (/w 이름)" />
                   </Form.Item>
-                  <Button icon={<DeleteOutlined />} onClick={() => remove(name)} type="text" danger />
+                  <Button icon={<DeleteOutlined />} onClick={() => remove(name)} type="text" danger className="touch-target-44" />
                 </Space>
               ))}
-              <Button type="dashed" onClick={() => add({ description: '', collaborator: '' })} block icon={<PlusOutlined />}>
+              <Button type="dashed" onClick={() => add({ description: '', collaborator: '' })} block icon={<PlusOutlined />} className="touch-target-44">
                 기타 업무 추가
               </Button>
             </Space>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Badge, Button, Drawer, Layout, Menu, Typography } from 'antd';
@@ -30,6 +30,11 @@ type NavKey =
   | '/profile'
   | '/admin';
 
+const menuItemStyle = {
+  minHeight: 44,
+  lineHeight: '44px',
+} satisfies React.CSSProperties;
+
 function pickSelectedKey(pathname: string | null): NavKey | undefined {
   if (!pathname) return undefined;
   if (pathname.startsWith('/ai-pm')) return '/ai-pm';
@@ -50,44 +55,56 @@ export default function AppSidebar() {
   const router = useRouter();
 
   const [mobileOpen, setMobileOpen] = useState(false);
+  const mobileTriggerRef = useRef<HTMLButtonElement>(null);
 
   const selectedKey = pickSelectedKey(pathname);
+
+  const handleMobileClose = () => {
+    setMobileOpen(false);
+    window.requestAnimationFrame(() => mobileTriggerRef.current?.focus());
+  };
 
   const items = useMemo<MenuProps['items']>(() => {
     const base: MenuProps['items'] = [
       {
         key: '/',
         icon: <FileTextOutlined />,
-        label: <Link href="/">보고서 작성</Link>,
+        style: menuItemStyle,
+        label: <Link href="/" style={{ display: 'flex', alignItems: 'center', minHeight: 44, width: '100%' }}>보고서 작성</Link>,
       },
       {
         key: '/ai-pm',
         icon: <RobotOutlined />,
-        label: <Link href="/ai-pm">AI PM</Link>,
+        style: menuItemStyle,
+        label: <Link href="/ai-pm" style={{ display: 'flex', alignItems: 'center', minHeight: 44, width: '100%' }}>AI PM</Link>,
       },
       {
         key: '/my-reports',
         icon: <ProfileOutlined />,
-        label: <Link href="/my-reports">내 보고서</Link>,
+        style: menuItemStyle,
+        label: <Link href="/my-reports" style={{ display: 'flex', alignItems: 'center', minHeight: 44, width: '100%' }}>내 보고서</Link>,
       },
       {
         key: '/report-generator',
         icon: <SettingOutlined />,
-        label: <Link href="/report-generator">리포트 요약</Link>,
+        style: menuItemStyle,
+        label: <Link href="/report-generator" style={{ display: 'flex', alignItems: 'center', minHeight: 44, width: '100%' }}>리포트 요약</Link>,
       },
       {
         key: '/notifications',
+        style: menuItemStyle,
         icon: (
           <Badge count={unreadCount} size="small" offset={[6, -2]}>
             <BellOutlined />
           </Badge>
         ),
-        label: <Link href="/notifications">알림</Link>,
+        label: <Link href="/notifications" style={{ display: 'flex', alignItems: 'center', minHeight: 44, width: '100%' }}>알림</Link>,
       },
       {
         key: '/profile',
         icon: <UserOutlined />,
-        label: <Link href="/profile">프로필</Link>,
+        style: menuItemStyle,
+        label: <Link href="/profile" style={{ display: 'flex', alignItems: 'center', minHeight: 44, width: '100%' }}>프로필</Link>,
       },
     ];
 
@@ -95,7 +112,8 @@ export default function AppSidebar() {
       base.push({
         key: '/admin',
         icon: <SettingOutlined />,
-        label: <Link href="/admin">관리자</Link>,
+        style: menuItemStyle,
+        label: <Link href="/admin" style={{ display: 'flex', alignItems: 'center', minHeight: 44, width: '100%' }}>관리자</Link>,
       });
     }
 
@@ -134,13 +152,15 @@ export default function AppSidebar() {
             borderInlineEnd: 0,
             background: 'transparent',
           }}
-          onClick={() => setMobileOpen(false)}
+          onClick={() => {
+            if (mobileOpen) handleMobileClose();
+          }}
         />
       </div>
 
       {!authLoading && user && (
         <div style={{ padding: 12, borderTop: `1px solid ${isDarkMode ? '#1f1f1f' : '#f0f0f0'}` }}>
-          <Button danger block icon={<LogoutOutlined />} onClick={handleLogout}>
+          <Button danger block icon={<LogoutOutlined />} onClick={handleLogout} style={{ minHeight: 44 }}>
             로그아웃
           </Button>
         </div>
@@ -154,14 +174,18 @@ export default function AppSidebar() {
       type="primary"
       icon={<BarsOutlined />}
       onClick={() => setMobileOpen(true)}
+      className="mobile-sidebar-trigger"
       style={{
         position: 'fixed',
         left: 12,
         bottom: 12,
         zIndex: 1000,
         borderRadius: 999,
+        minWidth: 44,
+        minHeight: 44,
       }}
       aria-label="메뉴 열기"
+      ref={mobileTriggerRef}
     />
   );
 
@@ -188,13 +212,12 @@ export default function AppSidebar() {
         title="메뉴"
         placement="left"
         open={mobileOpen}
-        onClose={() => setMobileOpen(false)}
+        onClose={handleMobileClose}
         width={300}
+        styles={{ body: { overflowX: 'hidden', padding: 0 } }}
       >
         {siderContent}
       </Drawer>
     </>
   );
 }
-
-

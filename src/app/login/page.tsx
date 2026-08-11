@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { AuthApiError } from '@supabase/supabase-js';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useTheme } from '@/app/components/ThemeProvider';
+import { useAuth } from '@/contexts/AuthContext';
+import { getPostLoginPath } from '@/lib/auth/navigation';
 import { Card, Form, Input, Button, Typography, Alert, Space } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 
@@ -19,40 +20,24 @@ export default function LoginPage() {
   const router = useRouter();
   const supabase = createClient();
   const { isDarkMode } = useTheme();
+  const { signIn } = useAuth();
   const [form] = Form.useForm();
 
   const handleLogin = async (values: { email: string; password: string }) => {
     setLoading(true);
     setError(null);
 
-    console.log('로그인 시도:', values.email); // 디버깅용
-
     try {
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email: values.email,
-        password: values.password,
-      });
-
-      console.log('로그인 응답:', { data, error: signInError }); // 디버깅용
-
-      if (signInError) {
-        console.error('Supabase 로그인 오류:', signInError);
-        if (signInError instanceof AuthApiError && signInError.status === 400) {
-          setError('아이디 혹은 비밀번호가 틀렸습니다. 다시 확인해주세요.');
-        } else {
-          setError(`로그인 실패: ${signInError.message}`);
-        }
+      const result = await signIn(values.email, values.password);
+      if (result.error) {
+        setError(result.error);
         return;
       }
 
-      console.log('로그인 성공:', data.user?.email);
-      // 로그인 성공 시 메인 페이지 또는 대시보드로 이동
-      router.push('/');
+      const redirect = new URLSearchParams(window.location.search).get('redirect');
+      router.replace(getPostLoginPath(redirect));
     } catch (err: unknown) {
-      console.error('Login error details:', err);
-      if (err instanceof AuthApiError && err.status === 400) {
-        setError('아이디 혹은 비밀번호가 틀렸습니다. 다시 확인해주세요.');
-      } else if (err instanceof Error) {
+      if (err instanceof Error) {
         setError(`로그인 실패: ${err.message}`);
       } else {
         setError('알 수 없는 오류로 로그인에 실패했습니다.');
@@ -170,6 +155,7 @@ export default function LoginPage() {
                 loading={loading}
                 block
                 size="large"
+                style={{ minHeight: 44 }}
               >
                 {loading ? '로그인 중...' : '로그인'}
               </Button>
@@ -181,7 +167,7 @@ export default function LoginPage() {
                 onClick={handlePasswordReset}
                 loading={resetLoading}
                 block
-                style={{ padding: 0 }}
+                style={{ minHeight: 44, padding: 0 }}
               >
                 {resetLoading ? '재설정 링크 전송 중...' : '비밀번호를 잊으셨나요?'}
               </Button>

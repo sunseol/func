@@ -13,7 +13,7 @@ const { Paragraph, Text, Title } = Typography;
 
 // AntD Form Item 타입 정의 (주간 보고서에 필요한 필드만 포함)
 interface WeeklyFormValues {
-  userName: string;
+  weeklyUserName: string;
   projects: Project[];
   miscTasks: TaskItem[];
 }
@@ -62,7 +62,7 @@ export const WeeklyReportForm: React.FC<WeeklyReportFormProps> = ({
   // 초기 데이터 설정
   useEffect(() => {
     form.setFieldsValue({
-      userName: initialData.userName,
+      weeklyUserName: initialData.userName,
       // 주간 보고서에서는 날짜를 직접 입력받지 않으므로 date 필드는 제외
       // projects와 miscTasks가 없거나 비어있으면 기본 구조 추가
       projects: initialData.projects && initialData.projects.length > 0 
@@ -78,6 +78,7 @@ export const WeeklyReportForm: React.FC<WeeklyReportFormProps> = ({
   const handleFinish = (values: WeeklyFormValues) => {
     const reportData: ReportDraft = {
       ...values,
+      userName: values.weeklyUserName,
       date: dayjs().format('YYYY-MM-DD'), // 제출 시점의 날짜(ISO)
       reportType: 'weekly',
       // 필요시 여기서 values 추가 가공
@@ -150,8 +151,6 @@ export const WeeklyReportForm: React.FC<WeeklyReportFormProps> = ({
   if (writeMode === 'selection') {
     return (
       <>
-        {/* Form 인스턴스 경고 방지용 숨겨진 Form */}
-        <Form form={form} style={{ display: 'none' }} />
         <Card title="주간 보고서 작성 방식 선택">
           <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <Card
@@ -168,7 +167,7 @@ export const WeeklyReportForm: React.FC<WeeklyReportFormProps> = ({
                 <br />
                 완료한 업무와 다음 주 예상 업무를 분석하여 제공합니다.
               </Paragraph>
-              <Button type="primary" icon={<RobotOutlined />} loading={isLoadingReports} block>
+              <Button type="primary" icon={<RobotOutlined />} loading={isLoadingReports} block className="touch-target-44">
                 {isLoadingReports ? '일일 보고서 조회 중...' : '이번 주 보고서로 자동 생성'}
               </Button>
             </Space>
@@ -186,7 +185,7 @@ export const WeeklyReportForm: React.FC<WeeklyReportFormProps> = ({
               <Paragraph type="secondary">
                 프로젝트와 업무를 직접 입력하여 주간 보고서를 작성합니다.
               </Paragraph>
-              <Button icon={<EditOutlined />} block>
+              <Button icon={<EditOutlined />} block className="touch-target-44">
                 직접 작성하기
               </Button>
             </Space>
@@ -205,11 +204,10 @@ export const WeeklyReportForm: React.FC<WeeklyReportFormProps> = ({
 
     return (
       <>
-        {/* Form 인스턴스 경고 방지용 숨겨진 Form */}
-        <Form form={form} style={{ display: 'none' }} />
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Button
           onClick={handleBackToSelection}
+          className="touch-target-44"
           style={{ marginBottom: 16 }}
         >
           ← 작성 방식 선택으로 돌아가기
@@ -244,10 +242,10 @@ export const WeeklyReportForm: React.FC<WeeklyReportFormProps> = ({
                 >
                   전체 선택
                 </Checkbox>
-                <Button size="small" type="link" onClick={selectCurrentWeekReports}>
+                <Button size="small" type="link" onClick={selectCurrentWeekReports} className="touch-target-44">
                   이번 주만 선택
                 </Button>
-                <Button size="small" type="link" onClick={clearSelection}>
+                <Button size="small" type="link" onClick={clearSelection} className="touch-target-44">
                   선택 해제
                 </Button>
               </Space>
@@ -274,6 +272,7 @@ export const WeeklyReportForm: React.FC<WeeklyReportFormProps> = ({
                           type="link"
                           size="small"
                           onClick={() => setPreviewReport(report)}
+                          className="touch-target-44"
                         >
                           자세히 보기
                         </Button>,
@@ -313,6 +312,7 @@ export const WeeklyReportForm: React.FC<WeeklyReportFormProps> = ({
               loading={isLoadingAI}
               block
               size="large"
+              className="touch-target-44"
             >
               {isLoadingAI ? 'AI 생성 중...' : `선택한 ${selectedReportIds.length}개 보고서로 AI 생성하기`}
             </Button>
@@ -403,12 +403,14 @@ export const WeeklyReportForm: React.FC<WeeklyReportFormProps> = ({
     <>
       <Button
         onClick={handleBackToSelection}
+        className="touch-target-44"
         style={{ marginBottom: 16 }}
       >
         ← 작성 방식 선택으로 돌아가기
       </Button>
       <Form
       form={form}
+      key="weekly-manual-form"
       layout="vertical"
       onFinish={handleFinish} // onSubmit 대신 onFinish 사용
       initialValues={{ // Form.List 위한 초기 빈 배열
@@ -417,9 +419,13 @@ export const WeeklyReportForm: React.FC<WeeklyReportFormProps> = ({
       }}
     >
       <Card title="기본 정보" style={{ marginBottom: 24 }}>
+        <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+          보고서 유형: 주간 보고서
+        </Typography.Text>
         <Form.Item
-          label="이름"
-          name="userName"
+          label="주간 보고서 이름"
+          name="weeklyUserName"
+          id="weekly-user-name"
           rules={[{ required: true, message: '이름을 입력해주세요.' }]}
         >
           <Input placeholder="홍길동" />
@@ -448,7 +454,7 @@ export const WeeklyReportForm: React.FC<WeeklyReportFormProps> = ({
                      // 프로젝트가 1개 이상일 때만 삭제 버튼 표시
                      fields.length > 1 ? (
                         <Popconfirm title="이 프로젝트를 삭제할까요?" onConfirm={() => remove(name)} okText="예" cancelText="아니오">
-                            <Button icon={<DeleteOutlined />} type="text" danger />
+                            <Button icon={<DeleteOutlined />} type="text" danger className="touch-target-44" />
                         </Popconfirm>
                      ) : null
                   }
@@ -485,13 +491,14 @@ export const WeeklyReportForm: React.FC<WeeklyReportFormProps> = ({
                                         type="text" 
                                         danger 
                                         size="small" 
+                                        className="touch-target-44"
                                         style={{ float: 'right' }} 
                                     />
                                 )}
                             </Paragraph>
                          </div>
                         ))}
-                        <Button type="dashed" onClick={() => addTask()} block icon={<PlusOutlined />}>
+                        <Button type="dashed" onClick={() => addTask()} block icon={<PlusOutlined />} className="touch-target-44">
                           업무 추가
                         </Button>
                       </Space>
@@ -499,7 +506,7 @@ export const WeeklyReportForm: React.FC<WeeklyReportFormProps> = ({
                   </Form.List>
                 </Card>
               ))}
-              <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
+              <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />} className="touch-target-44">
                 프로젝트 추가
               </Button>
             </Space>
@@ -528,12 +535,13 @@ export const WeeklyReportForm: React.FC<WeeklyReportFormProps> = ({
                             type="text" 
                             danger 
                             size="small" 
+                            className="touch-target-44"
                             style={{ marginTop: '-28px', float: 'right' }} // 위치 조정
                         />
                     )}
                  </div>
               ))}
-              <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
+              <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />} className="touch-target-44">
                 기타 업무 추가
               </Button>
             </Space>
@@ -542,7 +550,7 @@ export const WeeklyReportForm: React.FC<WeeklyReportFormProps> = ({
       </Card>
 
       <Form.Item>
-        <Button type="primary" htmlType="submit" block size="large">
+        <Button type="primary" htmlType="submit" block size="large" className="touch-target-44">
           제출하기
         </Button>
       </Form.Item>

@@ -98,14 +98,27 @@ const NavLink = styled(Link)`
   }
 `;
 
-const MobileIcon = styled.div`
+const MobileIcon = styled.button`
   display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: ${props => props.theme.radii.small};
+  background: transparent;
+  cursor: pointer;
+  color: ${props => props.theme.colors.text};
 
   @media (max-width: ${props => props.theme.breakpoints.mobile}) {
-    display: block;
+    display: inline-flex;
     font-size: 1.8rem;
-    cursor: pointer;
-    color: ${props => props.theme.colors.text};
+  }
+
+  &:focus-visible {
+    outline: 3px solid ${props => props.theme.colors.secondary};
+    outline-offset: 2px;
   }
 `;
 
@@ -217,11 +230,17 @@ const Header = () => {
             <LoginLink href="/login">로그인</LoginLink>
           )}
         </Nav>
-        <MobileIcon onClick={toggleMenu}>
+        <MobileIcon
+          type="button"
+          onClick={toggleMenu}
+          aria-label={isOpen ? '메뉴 닫기' : '메뉴 열기'}
+          aria-expanded={isOpen}
+          aria-controls="landing-mobile-nav"
+        >
           {isOpen ? <FaTimes /> : <FaBars />}
         </MobileIcon>
       </HeaderContainer>
-      <MobileNav $isOpen={isOpen}>
+      <MobileNav id="landing-mobile-nav" $isOpen={isOpen}>
         {navItems.map(item => (
           <MobileNavLink
             key={item.to}

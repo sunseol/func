@@ -2,10 +2,10 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/app/components/ThemeProvider';
+import { persistUserRole, type UserRole } from './role-update';
 import { 
   Card, 
   Spin, 
@@ -13,8 +13,6 @@ import {
   Button, 
   Space, 
   Layout, 
-  Switch, 
-  Avatar, 
   Input, 
   Select, 
   DatePicker, 
@@ -24,7 +22,6 @@ import {
   App as AntApp, 
   Table,
   Tag,
-  Popconfirm,
   Statistic,
   Tabs
 } from 'antd';
@@ -84,8 +81,8 @@ interface AdminStats {
 }
 
 export default function AdminPage() {
-  const { user, loading: authLoading } = useAuth();
-  const { isDarkMode, setIsDarkMode } = useTheme();
+  const { user, profile, isAdmin, loading: authLoading } = useAuth();
+  const { isDarkMode } = useTheme();
   const router = useRouter();
   const [reports, setReports] = useState<DailyReport[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -104,13 +101,13 @@ export default function AdminPage() {
   const [filterDate, setFilterDate] = useState<string | null>(null);
   const [selectedReport, setSelectedReport] = useState<DailyReport | null>(null);
   const [isReportModalVisible, setIsReportModalVisible] = useState(false);
+  const [pendingDeleteReport, setPendingDeleteReport] = useState<DailyReport | null>(null);
+  const [isDeletingReport, setIsDeletingReport] = useState(false);
+  const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('ai-summary');
 
   const { message: messageApi } = AntApp.useApp();
 
-  // 관리자 권한 확인 (최고 관리자 이메일만)
-  const isAdmin = user?.email === 'jakeseol99@keduall.com';
-  
   // 디버깅용 - 사용자 정보 출력
   useEffect(() => {
     if (user) {
@@ -198,14 +195,13 @@ export default function AdminPage() {
           }
         });
         
-        // 현재 로그인한 사용자 추가 (관리자)
         if (user && !uniqueUsers.has(user.id)) {
           uniqueUsers.set(user.id, {
             id: user.id,
             email: user.email || 'Unknown',
             user_metadata: {
               full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Unknown',
-              role: user.email === 'jakeseol99@keduall.com' ? 'admin' : 'user'
+              role: profile?.role ?? (isAdmin ? 'admin' : 'user')
             },
             created_at: user.created_at,
             last_sign_in_at: user.last_sign_in_at
@@ -274,7 +270,7 @@ export default function AdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [user, isAdmin, supabase]);
+  }, [user, profile?.role, isAdmin, supabase]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -295,7 +291,7 @@ export default function AdminPage() {
     }
   }, [user, isAdmin, fetchData]);
 
-  const handleDeleteReport = async (reportId: string) => {
+  const handleDeleteReport = async (reportId: string): Promise<boolean> => {
     try {
       const { error: deleteError } = await supabase
         .from('daily_reports')
@@ -306,6 +302,7 @@ export default function AdminPage() {
 
       setReports(prevReports => prevReports.filter(report => report.id !== reportId));
       messageApi.success('보고서가 성공적으로 삭제되었습니다.');
+      return true;
     } catch (err: unknown) {
       let errorMessage = '보고서 삭제 중 오류가 발생했습니다.';
       if (err instanceof Error) {
@@ -313,7 +310,16 @@ export default function AdminPage() {
       }
       console.error('보고서 삭제 오류:', err);
       messageApi.error(errorMessage);
+      return false;
     }
+  };
+
+  const confirmDeleteReport = async () => {
+    if (!pendingDeleteReport) return;
+    setIsDeletingReport(true);
+    const deleted = await handleDeleteReport(pendingDeleteReport.id);
+    if (deleted) setPendingDeleteReport(null);
+    setIsDeletingReport(false);
   };
 
   const showReportDetail = (report: DailyReport) => {
@@ -321,29 +327,46 @@ export default function AdminPage() {
     setIsReportModalVisible(true);
   };
 
-  const handleUpdateUserRole = async (userId: string, role: string) => {
+  const handleUpdateUserRole = async (userId: string, role: UserRole) => {
+    if (!isAdmin || userId === user?.id) {
+      messageApi.error('현재 로그인한 관리자의 권한은 변경할 수 없습니다.');
+      return;
+    }
+
+    const previousUsers = users;
+    setUpdatingUserId(userId);
+
     try {
-      // user_profiles 테이블에서 직접 role 업데이트
-      const { error } = await supabase
-        .from('user_profiles')
-        .update({ 
-          role: role === 'admin' ? 'admin' : 'user',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', userId);
-
-      if (error) throw error;
-
-      // 사용자 목록 새로고침
-      await fetchData();
+      const persistedRole = await persistUserRole(supabase, userId, role);
+      setUsers((currentUsers) => currentUsers.map((record) => (
+        record.id === persistedRole.id
+          ? {
+              ...record,
+              user_metadata: {
+                ...record.user_metadata,
+                role: persistedRole.role,
+              },
+            }
+          : record
+      )));
       messageApi.success(`사용자 권한이 ${role === 'admin' ? '관리자로' : '일반 사용자로'} 변경되었습니다.`);
     } catch (err: unknown) {
+      setUsers(previousUsers);
       let errorMessage = '사용자 권한 변경 중 오류가 발생했습니다.';
       if (err instanceof Error) {
+        errorMessage = err.message;
+      } else if (
+        typeof err === 'object' &&
+        err !== null &&
+        'message' in err &&
+        typeof err.message === 'string'
+      ) {
         errorMessage = err.message;
       }
       console.error('사용자 권한 변경 오류:', err);
       messageApi.error(errorMessage);
+    } finally {
+      setUpdatingUserId(null);
     }
   };
 
@@ -369,7 +392,7 @@ export default function AdminPage() {
         title: '권한',
         key: 'role',
         render: (_, record) => {
-          const isUserAdmin = record.email === 'jakeseol99@keduall.com' || record.user_metadata?.role === 'admin';
+          const isUserAdmin = record.user_metadata?.role === 'admin';
           return (
             <Tag color={isUserAdmin ? 'red' : 'blue'}>
               {isUserAdmin ? '관리자' : '일반 사용자'}
@@ -396,22 +419,24 @@ export default function AdminPage() {
         title: '작업',
         key: 'actions',
         render: (_, record) => {
-          const isUserAdmin = record.email === 'jakeseol99@keduall.com' || record.user_metadata?.role === 'admin';
-          const isSuperAdmin = record.email === 'jakeseol99@keduall.com';
+          const isUserAdmin = record.user_metadata?.role === 'admin';
+          const isCurrentUser = record.id === user?.id;
           
           return (
             <Space>
-              {!isSuperAdmin && (
+              {!isCurrentUser && (
                 <Button
                   type={isUserAdmin ? 'default' : 'primary'}
                   size="small"
+                  loading={updatingUserId === record.id}
+                  disabled={updatingUserId !== null}
                   onClick={() => handleUpdateUserRole(record.id, isUserAdmin ? 'user' : 'admin')}
                 >
                   {isUserAdmin ? '관리자 해제' : '관리자 지정'}
                 </Button>
               )}
-              {isSuperAdmin && (
-                <Tag color="gold">최고 관리자</Tag>
+              {isCurrentUser && (
+                <Tag color="gold">현재 관리자</Tag>
               )}
             </Space>
           );
@@ -521,16 +546,16 @@ export default function AdminPage() {
           <Button
             type="text"
             icon={<EyeOutlined />}
+            aria-label="보고서 상세 보기"
             onClick={() => showReportDetail(record)}
           />
-          <Popconfirm
-            title="이 보고서를 삭제하시겠습니까?"
-            onConfirm={() => handleDeleteReport(record.id)}
-            okText="삭제"
-            cancelText="취소"
-          >
-            <Button type="text" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+          <Button
+            type="text"
+            danger
+            icon={<DeleteOutlined />}
+            aria-label="보고서 삭제"
+            onClick={() => setPendingDeleteReport(record)}
+          />
         </Space>
       ),
       width: 100,
@@ -758,6 +783,18 @@ export default function AdminPage() {
             </Space>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        title="보고서 삭제 확인"
+        open={pendingDeleteReport !== null}
+        onCancel={() => setPendingDeleteReport(null)}
+        onOk={confirmDeleteReport}
+        okText="삭제"
+        cancelText="취소"
+        confirmLoading={isDeletingReport}
+      >
+        <Text>이 보고서를 삭제하시겠습니까? 삭제하면 복구할 수 없습니다.</Text>
       </Modal>
     </Layout>
   );

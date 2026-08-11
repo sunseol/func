@@ -149,3 +149,76 @@ textarea,
 select {
   font-size: 16px !important;
 }
+
+@media (min-width: 992px) {
+  .mobile-sidebar-trigger {
+    display: none !important;
+  }
+}
+
+.notification-switch-touch-target {
+  position: relative;
+  z-index: 0;
+  width: 44px !important;
+  min-width: 44px !important;
+  height: 44px !important;
+  min-height: 44px !important;
+  line-height: 44px !important;
+  background: transparent !important;
+}
+
+.notification-switch-touch-target::before {
+  content: '';
+  position: absolute;
+  inset: 11px 0;
+  z-index: 0;
+  border-radius: 100px;
+  background: rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  transition: background-color 0.2s ease;
+}
+
+.notification-switch-touch-target.ant-switch-checked::before {
+  background: #1677ff;
+}
+
+.notification-switch-touch-target:hover:not(.ant-switch-disabled)::before {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.notification-switch-touch-target.ant-switch-checked:hover:not(.ant-switch-disabled)::before {
+  background: #4096ff;
+}
+
+.notification-switch-touch-target .ant-switch-handle,
+.notification-switch-touch-target .ant-switch-inner {
+  z-index: 1;
+}
+
+.notification-switch-touch-target .ant-switch-handle {
+  top: 13px !important;
+}
+
+.notification-time-picker.ant-picker {
+  min-width: 91px;
+  min-height: 44px;
+}
+
+.notification-time-picker .ant-picker-input > input {
+  min-height: 44px;
+  line-height: 44px;
+}
+
+.touch-target-44 {
+  min-width: 44px !important;
+  min-height: 44px !important;
+}
+
+.my-reports-search-input .ant-input-clear-icon {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}

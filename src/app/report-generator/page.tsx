@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Upload, Button, Card, Spin, Typography, Tabs, Input, App, Progress } from 'antd';
 const { TextArea } = Input;
 import { UploadOutlined, DownloadOutlined, FilePdfOutlined } from '@ant-design/icons';
-import type { UploadFile } from 'antd/es/upload/interface';
+import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
 import { sanitizeReportHtml } from '@/lib/security/validation';
 import { REPORT_STYLES } from './report-styles';
 
@@ -19,6 +19,7 @@ const ReportGeneratorPageInternal: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loadingMessage, setLoadingMessage] = useState<string>('');
   const [progress, setProgress] = useState<number>(0);
+  const [uploadFeedback, setUploadFeedback] = useState<string | null>(null);
   const reportContentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -71,7 +72,17 @@ const ReportGeneratorPageInternal: React.FC = () => {
         throw new Error(errorData.details || '문서 요약에 실패했습니다.');
       }
       
-      const { summary } = await summarizeResponse.json();
+      const summaryResponse: unknown = await summarizeResponse.json();
+      if (
+        typeof summaryResponse !== 'object' ||
+        summaryResponse === null ||
+        !('summary' in summaryResponse) ||
+        typeof summaryResponse.summary !== 'string' ||
+        summaryResponse.summary.trim().length === 0
+      ) {
+        throw new Error('문서 요약 응답이 올바르지 않습니다.');
+      }
+      const { summary } = summaryResponse;
       
       // 2단계: HTML 생성 API 호출
       setProgress(50);
@@ -88,7 +99,17 @@ const ReportGeneratorPageInternal: React.FC = () => {
         throw new Error(errorData.details || '보고서 생성에 실패했습니다.');
       }
 
-      const { report } = await generateResponse.json();
+      const reportResponse: unknown = await generateResponse.json();
+      if (
+        typeof reportResponse !== 'object' ||
+        reportResponse === null ||
+        !('report' in reportResponse) ||
+        typeof reportResponse.report !== 'string' ||
+        reportResponse.report.trim().length === 0
+      ) {
+        throw new Error('생성된 보고서 응답이 올바르지 않습니다.');
+      }
+      const { report } = reportResponse;
       
       // AI 응답에서 불필요한 코드 블록 마크업 제거
       const cleanedReport = report
@@ -97,7 +118,11 @@ const ReportGeneratorPageInternal: React.FC = () => {
         .trim();
       
       setProgress(100);
-      setGeneratedReport(sanitizeReportHtml(cleanedReport));
+      const safeReport = sanitizeReportHtml(cleanedReport);
+      if (!safeReport.trim()) {
+        throw new Error('생성된 보고서에 표시할 내용이 없습니다.');
+      }
+      setGeneratedReport(safeReport);
       messageApi.success('리포트가 성공적으로 생성되었습니다.');
 
     } catch (error) {
@@ -115,21 +140,36 @@ const ReportGeneratorPageInternal: React.FC = () => {
   };
 
 
-  const props = {
+  const props: UploadProps = {
     onRemove: (file: UploadFile) => {
       const index = fileList.indexOf(file);
       const newFileList = fileList.slice();
       newFileList.splice(index, 1);
       setFileList(newFileList);
     },
-    beforeUpload: (file: UploadFile) => {
-      const allowedTypes = ['application/pdf', 'text/plain', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-      const isAllowedType = allowedTypes.includes(file.type ?? '');
+    beforeUpload: (file) => {
+      const allowedTypes = new Set([
+        'application/pdf',
+        'text/plain',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      ]);
+      const allowedExtensions = /\.(pdf|txt|docx)$/i;
+      const isAllowedType = allowedTypes.has(file.type ?? '') || allowedExtensions.test(file.name);
       if (!isAllowedType) {
-        messageApi.error('PDF, TXT, DOCX 파일만 업로드할 수 있습니다.');
+        const feedback = 'PDF, TXT, DOCX 파일만 업로드할 수 있습니다.';
+        setUploadFeedback(feedback);
+        messageApi.error(feedback);
         return Upload.LIST_IGNORE;
       }
-      setFileList([file]);
+      setUploadFeedback(null);
+      setFileList([{
+        uid: file.uid,
+        name: file.name,
+        status: 'done',
+        size: file.size,
+        type: file.type,
+        originFileObj: file,
+      }]);
       return false; // Prevent auto-upload
     },
     fileList,
@@ -169,6 +209,11 @@ const ReportGeneratorPageInternal: React.FC = () => {
             <Paragraph>
               리포트 파일(PDF, TXT, DOCX)을 업로드하거나 텍스트를 직접 붙여넣으면 AI가 한 페이지 분량의 인포그래픽 스타일 보고서로 요약해 드립니다.
             </Paragraph>
+            {uploadFeedback && (
+              <div role="alert" aria-live="polite" style={{ marginBottom: 16 }}>
+                {uploadFeedback}
+              </div>
+            )}
             <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
             <Button
               type="primary"
@@ -203,7 +248,12 @@ const ReportGeneratorPageInternal: React.FC = () => {
                     PDF로 다운로드
                 </Button>
               </div>
-              <div className="page-container" ref={reportContentRef}>
+              <div
+                className="page-container"
+                ref={reportContentRef}
+                role="article"
+                aria-label="생성된 리포트 내용"
+              >
                 <div className="report-content-wrapper" dangerouslySetInnerHTML={{ __html: generatedReport }} />
               </div>
             </Card>

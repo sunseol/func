@@ -3,14 +3,18 @@ import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { Container } from '../components/Container';
 import { useRouter } from 'next/navigation';
+import { theme } from '../styles/theme';
 
 const Section = styled.section`
-  min-height: 100vh;
+  position: relative;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
-  background-image: url('https://images.unsplash.com/photo-1536148935331-408321065b18?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1974&q=80');
+  background-image:
+    linear-gradient(180deg, rgba(5, 12, 20, 0.7) 0%, rgba(5, 12, 20, 0.52) 54%, rgba(5, 12, 20, 0.7) 100%),
+    url('https://images.unsplash.com/photo-1536148935331-408321065b18?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1974&q=80');
   background-size: cover;
   background-position: center;
   padding-top: 80px; /* Header height */
@@ -26,24 +30,35 @@ const ContentWrapper = styled(motion.div)`
 const Headline = styled(motion.h1)`
   font-size: 3.5rem;
   font-weight: 800;
-  color: ${props => props.theme.colors.text};
+  color: ${theme.colors.text};
   max-width: 800px;
   line-height: 1.2;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  text-wrap: balance;
   text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.7);
 
-  @media (max-width: ${props => props.theme.breakpoints.mobile}) {
-    font-size: 2.5rem;
+  @media (max-width: ${theme.breakpoints.mobile}) {
+    max-width: calc(100vw - 2rem);
+    font-size: 2rem;
+    line-height: 1.25;
   }
 `;
 
 const Subheadline = styled(motion.p)`
   font-size: 1.25rem;
   max-width: 700px;
-  color: ${props => props.theme.colors.textSecondary};
-  text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.7);
+  color: ${theme.colors.text};
+  line-height: 1.6;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  text-wrap: pretty;
+  text-shadow: 1px 1px 5px rgba(0, 0, 0, 0.85);
 
-  @media (max-width: ${props => props.theme.breakpoints.mobile}) {
+  @media (max-width: ${theme.breakpoints.mobile}) {
+    max-width: calc(100vw - 2rem);
     font-size: 1rem;
+    line-height: 1.55;
   }
 `;
 
@@ -52,9 +67,9 @@ const CtaButton = styled(motion.button)`
   font-size: 1.1rem;
   font-weight: 600;
   color: white;
-  background-color: ${props => props.theme.colors.primary};
+  background-color: ${theme.colors.primary};
   border: none;
-  border-radius: ${props => props.theme.radii.pill};
+  border-radius: ${theme.radii.pill};
   cursor: pointer;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
 

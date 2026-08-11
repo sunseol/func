@@ -8,6 +8,14 @@ import { useTheme } from '@/app/components/ThemeProvider';
 
 const { Title, Text } = Typography;
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') {
+    return error.message;
+  }
+  return 'Unknown error';
+}
+
 export default function ProfilePage() {
   const { user, profile, loading, refreshProfile } = useAuth();
   const { isDarkMode } = useTheme();
@@ -41,30 +49,32 @@ export default function ProfilePage() {
     setError(null);
     setSuccess(null);
 
-    const { error: authError } = await supabase.auth.updateUser({
-      data: { full_name: fullName },
-    });
+    try {
+      const { error: authError } = await supabase.auth.updateUser({
+        data: { full_name: fullName },
+      });
 
-    if (authError) {
-      setError(`Failed to update profile: ${authError.message}`);
+      const { error: profileError } = await supabase
+        .from('user_profiles')
+        .update({ full_name: fullName, updated_at: new Date().toISOString() })
+        .eq('id', user.id);
+
+      if (profileError) {
+        throw new Error(profileError.message);
+      }
+
+      await refreshProfile();
+
+      if (authError) {
+        setError(`Failed to update profile: ${authError.message}`);
+      } else {
+        setSuccess('Profile updated.');
+      }
+    } catch (saveError) {
+      setError(`Failed to update profile: ${getErrorMessage(saveError)}`);
+    } finally {
       setSaving(false);
-      return;
     }
-
-    const { error: profileError } = await supabase
-      .from('user_profiles')
-      .update({ full_name: fullName, updated_at: new Date().toISOString() })
-      .eq('id', user.id);
-
-    if (profileError) {
-      setError(`Failed to update profile: ${profileError.message}`);
-      setSaving(false);
-      return;
-    }
-
-    await refreshProfile();
-    setSuccess('Profile updated.');
-    setSaving(false);
   };
 
   if (loading) {
