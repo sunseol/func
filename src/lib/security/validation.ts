@@ -38,7 +38,7 @@ export function sanitizeHtml(dirty: string, options?: {
   allowedAttributes?: string[];
   forbiddenTags?: string[];
 }): string {
-  const config: any = {
+  const config = {
     ALLOWED_TAGS: options?.allowedTags || [
       'p', 'br', 'strong', 'em', 'u', 'ol', 'ul', 'li', 
       'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
@@ -57,7 +57,36 @@ export function sanitizeHtml(dirty: string, options?: {
     SAFE_FOR_TEMPLATES: true
   };
 
-  return String(DOMPurify.sanitize(dirty, config) as any);
+  return DOMPurify.sanitize(dirty, config);
+}
+
+export function sanitizeMarkdownPreview(markdown: string): string {
+  const rendered = markdown
+    .replace(/\n/g, '<br>')
+    .replace(/#{1,6}\s+(.+)/g, '<h1>$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code>$1</code>');
+
+  return sanitizeHtml(rendered);
+}
+
+export function sanitizeReportHtml(report: string): string {
+  return sanitizeHtml(report, {
+    allowedTags: [
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'br', 'strong', 'em', 'u',
+      'ol', 'ul', 'li', 'blockquote', 'code', 'pre', 'div', 'span', 'table',
+      'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'a', 'img', 'hr',
+    ],
+    allowedAttributes: ['class', 'id', 'href', 'src', 'alt', 'title'],
+  });
+}
+
+export async function ensureSuccessfulResponse(response: Response, fallbackMessage: string): Promise<void> {
+  if (response.ok) return;
+
+  const errorData = await response.json().catch(() => null) as { error?: string; message?: string } | null;
+  throw new Error(errorData?.error || errorData?.message || fallbackMessage);
 }
 
 // 입력값 검증 함수
@@ -131,13 +160,14 @@ export function validateInput(
 
 // 다중 필드 검증
 export function validateFields(
-  data: Record<string, any>,
+  data: Record<string, unknown>,
   rules: Record<string, ValidationRule>
 ): ValidationError[] {
   const errors: ValidationError[] = [];
 
   for (const [field, rule] of Object.entries(rules)) {
-    const value = data[field];
+    const rawValue = data[field];
+    const value = typeof rawValue === 'string' || rawValue == null ? rawValue : String(rawValue);
     const error = validateInput(value, rule);
     
     if (error) {

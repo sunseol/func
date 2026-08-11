@@ -1,6 +1,6 @@
 ﻿import { NextRequest } from 'next/server';
 import { ApiError, json, parseJson, withApi } from '@/lib/http';
-import { getSupabase, requireAuth, requireProjectAccess, requireProjectManagement } from '@/lib/ai-pm/auth';
+import { getSupabase, isSupabaseNoRows, requireAuth, requireProjectAccess, requireProjectManagement } from '@/lib/ai-pm/auth';
 import { requireMaxLength, requireString, requireUuid, sanitizeText } from '@/lib/ai-pm/validators';
 import { AIpmErrorType } from '@/types/ai-pm';
 
@@ -17,25 +17,46 @@ export const GET = withApi(async (_request: NextRequest, { params }: Context) =>
   await requireProjectAccess(supabase, auth, safeProjectId);
 
   const { data: project, error: projectError } = await supabase
-    .from('projects')
+    .from('projects_with_creator')
     .select('*')
     .eq('id', safeProjectId)
     .single();
 
-  if (projectError || !project) {
+  if (projectError && !isSupabaseNoRows(projectError)) {
+    throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to fetch project', projectError);
+  }
+  if (!project) {
     throw new ApiError(404, AIpmErrorType.PROJECT_NOT_FOUND, 'Project not found', projectError);
   }
 
-  const { data: members } = await supabase
-    .from('project_members')
+  const { data: members, error: membersError } = await supabase
+    .from('project_members_with_profiles')
     .select('*')
     .eq('project_id', safeProjectId)
     .order('added_at', { ascending: true });
 
+  if (membersError) {
+    throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to fetch project members', membersError);
+  }
+
+  const { data: progress, error: progressError } = await supabase.rpc('get_project_progress', {
+    project_uuid: safeProjectId,
+  });
+
+  if (progressError) {
+    throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to fetch project progress', progressError);
+  }
+
+  const normalizedProgress = Array.isArray(progress) ? progress : [];
   return json({
-    project,
+    project: {
+      ...project,
+      member_count: (members || []).length,
+      official_documents_count: normalizedProgress.filter((step) => step.has_official_document).length,
+      progress: normalizedProgress,
+    },
     members: members || [],
-    progress: [],
+    progress: normalizedProgress,
   });
 });
 
@@ -47,7 +68,7 @@ export const PUT = withApi(async (request: NextRequest, { params }: Context) => 
 
   await requireProjectManagement(supabase, auth, safeProjectId);
 
-  const body = await parseJson<{ name?: string; description?: string }>(request);
+  const body = await parseJson<{ name?: string; description?: string }>(request, { maxBytes: 16_000, requireContentType: true });
   const updateData: { name?: string; description?: string | null; updated_at: string } = {
     updated_at: new Date().toISOString(),
   };
@@ -89,7 +110,10 @@ export const DELETE = withApi(async (_request: NextRequest, { params }: Context)
     .eq('id', safeProjectId)
     .single();
 
-  if (existingError || !existingProject) {
+  if (existingError && !isSupabaseNoRows(existingError)) {
+    throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to load project', existingError);
+  }
+  if (!existingProject) {
     throw new ApiError(404, AIpmErrorType.PROJECT_NOT_FOUND, 'Project not found', existingError);
   }
 

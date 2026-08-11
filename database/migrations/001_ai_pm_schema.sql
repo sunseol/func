@@ -95,8 +95,7 @@ CREATE TABLE IF NOT EXISTS ai_conversations (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
--- R
-LS (Row Level Security) 정책 설정
+-- RLS (Row Level Security) 정책 설정
 
 -- projects 테이블 RLS 활성화
 ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
@@ -414,8 +413,9 @@ DROP TRIGGER IF EXISTS create_initial_planning_document_version ON planning_docu
 CREATE TRIGGER create_initial_planning_document_version
     AFTER INSERT ON planning_documents
     FOR EACH ROW
-    EXECUTE FUNCTION create_initial_document_version();-- 유용한 뷰 및 
-함수 생성
+    EXECUTE FUNCTION create_initial_document_version();
+
+-- 유용한 뷰 및 함수 생성
 
 -- 프로젝트 멤버 정보와 사용자 프로필을 조인한 뷰
 CREATE OR REPLACE VIEW project_members_with_profiles AS
@@ -549,8 +549,9 @@ BEGIN
                      (SELECT MAX(ac.updated_at) FROM ai_conversations ac WHERE ac.project_id = p.id)
             ) DESC NULLS LAST;
 END;
-$$ LANGUAGE plpgsql;-- 마
-이그레이션 완료 로그
+$$ LANGUAGE plpgsql;
+
+-- 마이그레이션 완료 로그
 DO $$
 BEGIN
     RAISE NOTICE 'AI PM 데이터베이스 스키마 마이그레이션이 완료되었습니다.';

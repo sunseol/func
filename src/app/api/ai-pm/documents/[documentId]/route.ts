@@ -2,7 +2,8 @@
 import { ApiError, json, parseJson, withApi } from '@/lib/http';
 import { getSupabase, requireAuth, requireDocumentAccess } from '@/lib/ai-pm/auth';
 import { requireDocumentStatus, requireMaxLength, requireString, requireUuid, sanitizeText } from '@/lib/ai-pm/validators';
-import { AIpmErrorType, DocumentResponse, UpdateDocumentRequest } from '@/types/ai-pm';
+import { AIpmErrorType, type DocumentResponse, type UpdateDocumentRequest } from '@/types/ai-pm';
+import { fetchDocumentWithUsers } from '../document-response';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +15,8 @@ export const GET = withApi(async (_request: NextRequest, { params }: Context) =>
   const { documentId } = await params;
   const safeDocumentId = requireUuid(documentId, 'documentId');
 
-  const { document } = await requireDocumentAccess(supabase, auth, safeDocumentId);
+  await requireDocumentAccess(supabase, auth, safeDocumentId);
+  const document = await fetchDocumentWithUsers(supabase, safeDocumentId);
   const response: DocumentResponse = { document };
   return json(response);
 });
@@ -25,7 +27,7 @@ export const PUT = withApi(async (request: NextRequest, { params }: Context) => 
   const { documentId } = await params;
   const safeDocumentId = requireUuid(documentId, 'documentId');
 
-  const body = await parseJson<UpdateDocumentRequest>(request);
+  const body = await parseJson<UpdateDocumentRequest>(request, { maxBytes: 256_000, requireContentType: true });
   const { document: existing, canModify } = await requireDocumentAccess(supabase, auth, safeDocumentId);
 
   if (!canModify) {
@@ -33,6 +35,16 @@ export const PUT = withApi(async (request: NextRequest, { params }: Context) => 
   }
 
   const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  const changesContent = body.content !== undefined && body.content !== existing.content;
+  const changesTitle = body.title !== undefined && body.title !== existing.title;
+
+  if ((changesContent || changesTitle) && existing.status !== 'private') {
+    throw new ApiError(
+      409,
+      AIpmErrorType.APPROVAL_REQUIRED,
+      'Only private documents can be edited; transition the document to private first',
+    );
+  }
 
   if (body.title !== undefined) {
     updateData.title = requireMaxLength(requireString(body.title, 'title'), 'title', 255);
@@ -41,30 +53,30 @@ export const PUT = withApi(async (request: NextRequest, { params }: Context) => 
 
   if (body.status !== undefined) {
     const status = requireDocumentStatus(body.status, 'status');
-    if (status === 'official' && existing.status !== 'official') {
-      throw new ApiError(400, AIpmErrorType.VALIDATION_ERROR, 'Use approval endpoint for official status');
+    if (status !== existing.status) {
+      if (status === 'pending_approval' || status === 'official') {
+        throw new ApiError(
+          409,
+          AIpmErrorType.APPROVAL_REQUIRED,
+          'Use the dedicated approval endpoint for this status transition',
+        );
+      }
+      if (existing.status === 'pending_approval') {
+        throw new ApiError(
+          409,
+          AIpmErrorType.APPROVAL_REQUIRED,
+          'Use the withdrawal endpoint to return a pending document to private',
+        );
+      }
+      if (existing.status === 'official' && auth.profile.role !== 'admin') {
+        throw new ApiError(403, AIpmErrorType.FORBIDDEN, 'Only admins can withdraw an official document');
+      }
     }
     updateData.status = status;
   }
 
-  if (body.content !== undefined && body.content !== existing.content) {
-    const { error: versionError } = await supabase
-      .from('document_versions')
-      .insert({
-        document_id: safeDocumentId,
-        version: existing.version,
-        content: existing.content,
-        created_by: auth.user.id,
-      })
-      .select()
-      .single();
-
-    if (versionError) {
-      throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to create version history', versionError);
-    }
-
-    updateData.content = body.content;
-    updateData.version = existing.version + 1;
+  if (changesContent) {
+    updateData.content = requireMaxLength(requireString(body.content, 'content'), 'content', 200_000);
   }
 
   const { data: updated, error: updateError } = await supabase
@@ -78,7 +90,8 @@ export const PUT = withApi(async (request: NextRequest, { params }: Context) => 
     throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to update document', updateError);
   }
 
-  const response: DocumentResponse = { document: updated };
+  const enrichedDocument = await fetchDocumentWithUsers(supabase, safeDocumentId);
+  const response: DocumentResponse = { document: enrichedDocument };
   return json(response);
 });
 
@@ -88,9 +101,17 @@ export const DELETE = withApi(async (_request: NextRequest, { params }: Context)
   const { documentId } = await params;
   const safeDocumentId = requireUuid(documentId, 'documentId');
 
-  const { canModify } = await requireDocumentAccess(supabase, auth, safeDocumentId);
+  const { document: existing, canModify } = await requireDocumentAccess(supabase, auth, safeDocumentId);
   if (!canModify) {
     throw new ApiError(403, AIpmErrorType.FORBIDDEN, 'Document delete not allowed');
+  }
+
+  if (existing.status !== 'private') {
+    throw new ApiError(
+      409,
+      AIpmErrorType.APPROVAL_REQUIRED,
+      'Transition the document to private before deleting it',
+    );
   }
 
   const { error: deleteError } = await supabase.from('planning_documents').delete().eq('id', safeDocumentId);

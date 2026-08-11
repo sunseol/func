@@ -3,6 +3,7 @@
  */
 
 import { NextRequest } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 import { POST } from '../route';
 import { ApiError } from '@/lib/http';
 import { AIpmErrorType } from '@/types/ai-pm';
@@ -25,13 +26,18 @@ jest.mock('@/lib/ai-pm/conversation-manager', () => ({
   }),
 }));
 
-import { getSupabase, requireAuth, requireProjectAccess } from '@/lib/ai-pm/auth';
+import { getSupabase, requireAuth, requireProjectAccess, type AuthContext } from '@/lib/ai-pm/auth';
 
 const mockGetSupabase = getSupabase as jest.MockedFunction<typeof getSupabase>;
 const mockRequireAuth = requireAuth as jest.MockedFunction<typeof requireAuth>;
 const mockRequireProjectAccess = requireProjectAccess as jest.MockedFunction<typeof requireProjectAccess>;
 
-const createSupabaseMock = (document: any = {}) => ({
+const createAuth = (): AuthContext => ({
+  user: { id: 'user-1', email: 'user@example.com' },
+  profile: { id: 'user-1', email: 'user@example.com', full_name: 'User', role: 'user', created_at: '', updated_at: '' },
+});
+
+const createSupabaseMock = (document: Readonly<Record<string, unknown>> = {}) => Object.assign(createClient('http://localhost:54321', 'test-key'), {
   from: jest.fn((table: string) => {
     if (table === 'projects') {
       return {
@@ -56,6 +62,7 @@ const createSupabaseMock = (document: any = {}) => ({
     return {
       select: jest.fn(() => ({
         eq: jest.fn(() => ({
+          maybeSingle: jest.fn(() => Promise.resolve({ data: document, error: null })),
           single: jest.fn(() => Promise.resolve({ data: null, error: null })),
         })),
       })),
@@ -69,7 +76,7 @@ describe('/api/ai-pm/documents/generate', () => {
   });
 
   it('returns 401 when auth fails', async () => {
-    mockGetSupabase.mockResolvedValue(createSupabaseMock() as any);
+    mockGetSupabase.mockResolvedValue(createSupabaseMock());
     mockRequireAuth.mockRejectedValueOnce(
       new ApiError(401, AIpmErrorType.UNAUTHORIZED, 'Authentication required'),
     );
@@ -79,7 +86,7 @@ describe('/api/ai-pm/documents/generate', () => {
       body: JSON.stringify({ workflow_step: 1 }),
     });
 
-    const response = await POST(request);
+    const response = await POST(request, undefined);
     const data = await response.json();
 
     expect(response.status).toBe(401);
@@ -87,19 +94,17 @@ describe('/api/ai-pm/documents/generate', () => {
   });
 
   it('generates a document', async () => {
-    mockGetSupabase.mockResolvedValue(createSupabaseMock({ id: 'doc-1' }) as any);
-    mockRequireAuth.mockResolvedValueOnce({
-      user: { id: 'user-1', email: 'user@example.com' },
-      profile: { id: 'user-1', email: 'user@example.com', full_name: 'User', role: 'user', created_at: '', updated_at: '' },
-    } as any);
+    mockGetSupabase.mockResolvedValue(createSupabaseMock({ id: 'doc-1' }));
+    mockRequireAuth.mockResolvedValueOnce(createAuth());
     mockRequireProjectAccess.mockResolvedValueOnce();
 
-    const request = new NextRequest('http://localhost:3000/api/ai-pm/documents/generate?projectId=11111111-1111-1111-1111-111111111111', {
+    const request = new NextRequest('http://localhost:3000/api/ai-pm/documents/generate?projectId=11111111-1111-1111-8111-111111111111', {
       method: 'POST',
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ workflow_step: 1 }),
     });
 
-    const response = await POST(request);
+    const response = await POST(request, undefined);
     const data = await response.json();
 
     expect(response.status).toBe(201);

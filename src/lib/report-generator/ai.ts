@@ -2,6 +2,8 @@ import Groq from 'groq-sdk';
 import { validateAiPmPrompt, logSecurityEvent } from '@/lib/security/promptInjection';
 import { requireEnv } from '@/lib/env';
 
+export const LOW_COST_MODEL = 'openai/gpt-oss-20b' as const;
+
 const getGroqClient = () => new Groq({
   apiKey: requireEnv('GROQ_API_KEY'),
 });
@@ -38,7 +40,7 @@ export async function summarizeContent(rawContent: string): Promise<string> {
 
     const completion = await getGroqClient().chat.completions.create({
       messages: [{ role: 'user', content: summarizationPrompt }],
-      model: 'meta-llama/llama-4-scout-17b-16e-instruct', // 빠르고 경제적인 모델 사용
+      model: LOW_COST_MODEL,
       temperature: 0.2, // 창의성보다는 정확성에 초점
       max_tokens: 3500, // 충분한 요약 분량 확보
     });

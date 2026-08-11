@@ -1,5 +1,49 @@
 import { NextResponse } from 'next/server';
+import { ApiError, withApi } from '@/lib/http';
+import { getSupabase, requireAuth } from '@/lib/ai-pm/auth';
 import { generateReport } from '@/lib/report-generator/ai';
+
+const MAX_BODY_BYTES = 128 * 1024;
+const MAX_SUMMARY_CHARS = 40_000;
+
+async function readJsonWithinLimit(request: Request, maxBytes: number): Promise<unknown> {
+        const body = request.body;
+        if (!body) {
+            throw new ApiError(400, 'INVALID_JSON', 'Request body is required');
+        }
+
+        const reader = body.getReader();
+        const chunks: Uint8Array[] = [];
+        let totalBytes = 0;
+        try {
+            while (true) {
+                const result = await reader.read();
+                if (result.done) break;
+                totalBytes += result.value.byteLength;
+                if (totalBytes > maxBytes) {
+                    await reader.cancel();
+                    throw new ApiError(413, 'PAYLOAD_TOO_LARGE', 'request body exceeds the allowed limit');
+                }
+                chunks.push(result.value);
+            }
+        } finally {
+            reader.releaseLock();
+        }
+
+        const bytes = new Uint8Array(totalBytes);
+        let offset = 0;
+        for (const chunk of chunks) {
+            bytes.set(chunk, offset);
+            offset += chunk.byteLength;
+        }
+
+        try {
+            const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes));
+            return parsed;
+        } catch {
+            throw new ApiError(400, 'INVALID_JSON', 'Invalid JSON body');
+        }
+}
 
 const reportPrompt = `
 ## 인포그래픽 보고서 생성 지시사항
@@ -74,22 +118,31 @@ const reportPrompt = `
 이제 아래 요약된 내용을 바탕으로 위의 규칙을 **반드시** 지켜서 가독성 높은 인포그래픽 보고서를 만들어줘.
 `;
 
-export async function POST(req: Request) {
-    console.log("[GENERATE_HTML_API] Received request");
-    try {
-        const body = await req.json();
-        const summary = body.summary;
+export const POST = withApi(async (req: Request) => {
+        const supabase = await getSupabase();
+        await requireAuth(supabase);
 
-        if (!summary || typeof summary !== 'string') {
-            return NextResponse.json({ error: '요약된 내용이 필요합니다.' }, { status: 400 });
+        const contentType = req.headers.get('content-type') || '';
+        if (contentType !== '' && !contentType.includes('application/json')) {
+            throw new ApiError(415, 'UNSUPPORTED_MEDIA_TYPE', 'unsupported request content type');
         }
+        const contentLength = req.headers.get('content-length');
+        if (contentLength !== null && Number(contentLength) > MAX_BODY_BYTES) {
+            throw new ApiError(413, 'PAYLOAD_TOO_LARGE', 'request body exceeds the allowed limit');
+        }
+        const rawBody = await readJsonWithinLimit(req, MAX_BODY_BYTES);
+        if (typeof rawBody !== 'object' || rawBody === null || !('summary' in rawBody) ||
+            typeof rawBody.summary !== 'string' || rawBody.summary.trim().length === 0) {
+            throw new ApiError(400, 'VALIDATION_ERROR', 'summary is required');
+        }
+        if (new TextEncoder().encode(JSON.stringify(rawBody)).byteLength > MAX_BODY_BYTES ||
+            rawBody.summary.length > MAX_SUMMARY_CHARS) {
+            throw new ApiError(413, 'PAYLOAD_TOO_LARGE', 'summary exceeds the allowed limit');
+        }
+
+        const summary = rawBody.summary;
         
         const report = await generateReport(summary, reportPrompt);
 
         return NextResponse.json({ report });
-
-    } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
-        return NextResponse.json({ error: 'HTML 보고서 생성 중 오류 발생', details: errorMessage }, { status: 500 });
-    }
-}
+});
