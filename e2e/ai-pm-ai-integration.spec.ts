@@ -21,8 +21,8 @@ test.describe('AI PM AI Integration Tests', () => {
 
     // Test AI chat interface
     await helpers.expectElementVisible('[data-testid="ai-chat-panel"]');
-    await helpers.expectElementVisible('[data-testid="ai-chat-input"]');
-    await helpers.expectElementVisible('[data-testid="send-message-button"]');
+    await helpers.expectElementVisible(page.getByPlaceholder('Type your message...'));
+    await helpers.expectElementVisible(page.getByRole('button', { name: 'Send message' }));
 
     // Send initial message to AI
     await helpers.sendAIMessage('스마트폰 앱 기반의 음식 배달 플랫폼을 기획하고 싶습니다. 주요 타겟은 20-30대 직장인입니다.');
@@ -46,7 +46,7 @@ test.describe('AI PM AI Integration Tests', () => {
     
     // Verify document was generated with AI content
     await helpers.expectElementVisible('[data-testid="document-editor"]');
-    const documentContent = await page.locator('[data-testid="document-editor"]').inputValue();
+    const documentContent = await page.locator('[data-testid="document-content"]').inputValue();
     expect(documentContent).toContain('음식 배달');
     expect(documentContent.length).toBeGreaterThan(100); // Should be substantial content
   });
@@ -138,8 +138,8 @@ test.describe('AI PM AI Integration Tests', () => {
     await helpers.navigateToWorkflowStep(1);
 
     // Send a complex message that should trigger streaming
-    await page.fill('[data-testid="ai-chat-input"]', '종합적인 핀테크 플랫폼을 기획해주세요. 결제, 송금, 투자, 대출 등 모든 금융 서비스를 포함한 상세한 기획안을 작성해주세요.');
-    await page.click('[data-testid="send-message-button"]');
+    await page.getByPlaceholder('Type your message...').fill('종합적인 핀테크 플랫폼을 기획해주세요. 결제, 송금, 투자, 대출 등 모든 금융 서비스를 포함한 상세한 기획안을 작성해주세요.');
+    await page.getByRole('button', { name: 'Send message' }).click();
 
     // Verify streaming indicator appears
     await helpers.expectElementVisible('[data-testid="ai-typing-indicator"]');
@@ -300,7 +300,7 @@ test.describe('AI PM AI Integration Tests', () => {
     await helpers.generateDocument();
 
     // Validate generated content quality
-    const documentContent = await page.locator('[data-testid="document-editor"]').inputValue();
+    const documentContent = await page.locator('[data-testid="document-content"]').inputValue();
     
     // Check for required sections
     expect(documentContent).toContain('타겟');
@@ -319,7 +319,7 @@ test.describe('AI PM AI Integration Tests', () => {
     await helpers.sendAIMessage('생성된 문서에서 수익 모델 부분을 더 구체적으로 개선해주세요.');
     await helpers.generateDocument();
 
-    const refinedContent = await page.locator('[data-testid="document-editor"]').inputValue();
+    const refinedContent = await page.locator('[data-testid="document-content"]').inputValue();
     expect(refinedContent.length).toBeGreaterThan(documentContent.length);
   });
 });

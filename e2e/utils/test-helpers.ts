@@ -1,4 +1,5 @@
-import { Page, expect } from '@playwright/test';
+import { Locator, Page, expect } from '@playwright/test';
+import { scopeE2EProjectName } from '../setup/test-setup';
 
 export interface TestUser {
   email: string;
@@ -39,18 +40,19 @@ export class TestHelpers {
 
   async login(user: TestUser) {
     await this.page.goto('/login');
-    await this.page.fill('[data-testid="email-input"]', user.email);
-    await this.page.fill('[data-testid="password-input"]', user.password);
-    await this.page.click('[data-testid="login-button"]');
+    await this.page.getByPlaceholder('이메일').fill(user.email);
+    await this.page.getByPlaceholder('비밀번호').fill(user.password);
+    await this.page.getByRole('button', { name: '로그인' }).click();
     
     // Wait for successful login redirect
     await this.page.waitForURL('/', { timeout: 10000 });
   }
 
   async logout() {
-    await this.page.click('[data-testid="user-menu"]');
-    await this.page.click('[data-testid="logout-button"]');
-    await this.page.waitForURL('/login');
+    const userMenu = this.page.getByRole('button', { name: '사용자 메뉴' });
+    await userMenu.hover();
+    await this.page.getByRole('button', { name: '로그아웃' }).click();
+    await this.page.waitForURL(/\/login|\/landing/);
   }
 
   async navigateToAIPM() {
@@ -59,115 +61,137 @@ export class TestHelpers {
   }
 
   async createProject(name: string, description: string = '') {
+    const scopedName = scopeE2EProjectName(name);
     await this.navigateToAIPM();
-    await this.page.click('[data-testid="create-project-button"]');
+    await this.page.getByRole('button', { name: /새 프로젝트/ }).first().click();
     
     // Fill project form
-    await this.page.fill('[data-testid="project-name-input"]', name);
+    await this.page.getByLabel('프로젝트 이름').fill(scopedName);
     if (description) {
-      await this.page.fill('[data-testid="project-description-input"]', description);
+      await this.page.getByLabel('프로젝트 설명').fill(description);
     }
     
-    await this.page.click('[data-testid="save-project-button"]');
+    await this.page.getByRole('button', { name: '프로젝트 생성' }).click();
     
     // Wait for project to be created and redirected
     await this.page.waitForURL(/\/ai-pm\/[^\/]+$/);
     
     // Extract project ID from URL
     const url = this.page.url();
-    const projectId = url.split('/ai-pm/')[1];
+    const projectId = url.match(/\/ai-pm\/([^/]+)/)?.[1];
+    if (!projectId) throw new Error(`Project creation did not navigate to a project: ${url}`);
     return projectId;
   }
 
   async addProjectMember(email: string, role: string) {
-    await this.page.click('[data-testid="add-member-button"]');
-    await this.page.fill('[data-testid="member-email-input"]', email);
-    await this.page.selectOption('[data-testid="member-role-select"]', role);
-    await this.page.click('[data-testid="confirm-add-member-button"]');
+    const membersTab = this.page.getByRole('button', { name: '멤버 관리' });
+    if (await membersTab.count() > 0) await membersTab.click();
+    await this.page.getByRole('button', { name: '멤버 추가' }).click();
+    await this.page.getByLabel('사용자 선택').click();
+    await this.page.getByText(email, { exact: true }).click();
+    await this.page.getByLabel('역할').click();
+    await this.page.getByText(role, { exact: true }).click();
+    await this.page.getByRole('button', { name: '멤버 추가', exact: true }).last().click();
     
     // Wait for member to be added
-    await expect(this.page.locator(`[data-testid="member-${email}"]`)).toBeVisible();
+    await expect(this.page.getByText(email, { exact: true })).toBeVisible();
   }
 
   async navigateToWorkflowStep(step: number) {
-    await this.page.click(`[data-testid="workflow-step-${step}"]`);
+    await this.page.getByRole('link', { name: new RegExp(`^${step}\\.`) }).click();
     await this.page.waitForLoadState('networkidle');
   }
 
   async sendAIMessage(message: string) {
-    await this.page.fill('[data-testid="ai-chat-input"]', message);
-    await this.page.click('[data-testid="send-message-button"]');
+    await this.page.getByPlaceholder('Type your message...').fill(message);
+    await this.page.getByRole('button', { name: 'Send message' }).click();
     
     // Wait for AI response
-    await this.page.waitForSelector('[data-testid="ai-response"]', { timeout: 30000 });
+    await this.page.locator('[data-testid="ai-response"]').last().waitFor({ timeout: 30000 });
   }
 
   async generateDocument() {
-    await this.page.click('[data-testid="generate-document-button"]');
+    await this.page.getByRole('button', { name: /새 문서/ }).click();
     
     // Wait for document to be generated
-    await this.page.waitForSelector('[data-testid="document-editor"]', { timeout: 30000 });
+    await this.page.locator('[data-testid="document-editor"]').waitFor({ timeout: 30000 });
   }
 
   async editDocument(content: string) {
     // Clear existing content and add new content
-    await this.page.click('[data-testid="document-editor"]');
-    await this.page.keyboard.press('Control+A');
-    await this.page.keyboard.type(content);
+    const editor = this.page.getByLabel('문서 내용');
+    if (await editor.count() === 0) {
+      await this.page.getByRole('button', { name: '편집', exact: true }).click();
+    }
+    await editor.fill(content);
     
     // Save document
-    await this.page.click('[data-testid="save-document-button"]');
+    await this.page.getByRole('button', { name: /완료|저장/ }).click();
     
     // Wait for save confirmation
-    await expect(this.page.locator('[data-testid="save-status"]')).toContainText('저장됨');
+    await expect(this.page.getByText(/저장됨|문서 저장 완료/).first()).toBeVisible();
   }
 
   async requestApproval() {
-    await this.page.click('[data-testid="request-approval-button"]');
+    await this.setDocumentStatus('pending_approval', '승인 요청');
     
     // Wait for approval request confirmation
-    await expect(this.page.locator('[data-testid="document-status"]')).toContainText('승인 대기');
+    await expect(this.page.getByText('승인 대기', { exact: true }).first()).toBeVisible();
   }
 
   async approveDocument() {
-    await this.page.click('[data-testid="approve-document-button"]');
+    await this.setDocumentStatus('official', '공식 문서');
     
     // Wait for approval confirmation
-    await expect(this.page.locator('[data-testid="document-status"]')).toContainText('승인됨');
+    await expect(this.page.getByText('공식 문서', { exact: true }).first()).toBeVisible();
   }
 
   async checkConflicts() {
-    await this.page.click('[data-testid="check-conflicts-button"]');
+    await this.page.getByRole('button', { name: /충돌 분석/ }).click();
     
     // Wait for conflict analysis
-    await this.page.waitForSelector('[data-testid="conflict-analysis-panel"]', { timeout: 30000 });
+    await this.page.locator('[data-testid="conflict-analysis-panel"]').waitFor({ timeout: 30000 });
+  }
+
+  private async setDocumentStatus(value: string, optionLabel: string) {
+    const nativeSelect = this.page.locator('select').filter({
+      has: this.page.locator(`option[value="${value}"]`),
+    });
+    if (await nativeSelect.count() > 0) {
+      await nativeSelect.first().selectOption(value);
+      return;
+    }
+
+    const statusButton = this.page.getByRole('button', { name: /개인 문서|승인 대기|공식 문서/ }).first();
+    await statusButton.click();
+    await this.page.getByText(optionLabel, { exact: true }).last().click();
   }
 
   async waitForToast(message: string) {
-    await expect(this.page.locator('[data-testid="toast-message"]')).toContainText(message);
+    await expect(this.page.getByRole('alert')).toContainText(message);
   }
 
-  async expectElementVisible(selector: string) {
-    await expect(this.page.locator(selector)).toBeVisible();
+  async expectElementVisible(target: Locator | string) {
+    await expect(typeof target === 'string' ? this.page.locator(target) : target).toBeVisible();
   }
 
-  async expectElementNotVisible(selector: string) {
-    await expect(this.page.locator(selector)).not.toBeVisible();
+  async expectElementNotVisible(target: Locator | string) {
+    await expect(typeof target === 'string' ? this.page.locator(target) : target).not.toBeVisible();
   }
 
-  async expectTextContent(selector: string, text: string) {
-    await expect(this.page.locator(selector)).toContainText(text);
+  async expectTextContent(target: Locator | string, text: string | RegExp) {
+    await expect(typeof target === 'string' ? this.page.locator(target) : target).toContainText(text);
   }
 }
 
 export async function setupTestData(page: Page) {
-  // ES 모듈 문제 해결을 위해 임시로 주석 처리
-  // const { setupTestUsers } = await import('../setup/test-setup');
-  // await setupTestUsers();
-  console.log('Test data setup skipped for now');
+  void page;
+  const { setupTestUsers } = await import('../setup/test-setup');
+  await setupTestUsers();
 }
 
 export async function cleanupTestData(page: Page) {
+  void page;
   const { cleanupTestData: cleanup } = await import('../setup/test-setup');
   await cleanup();
 }

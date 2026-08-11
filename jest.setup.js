@@ -5,6 +5,20 @@ process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://test.supabase.co';
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key';
 process.env.GROQ_API_KEY = 'test-groq-key';
 
+if (typeof Response === 'undefined') {
+  global.Response = class TestResponse {
+    constructor(body, init = {}) {
+      this.body = body;
+      this.status = init.status ?? 200;
+      this.ok = this.status >= 200 && this.status < 300;
+    }
+
+    async json() {
+      return JSON.parse(this.body ?? 'null');
+    }
+  };
+}
+
 // Supabase 모킹
 jest.mock('@/lib/supabase/client', () => ({
   createClient: jest.fn(() => ({

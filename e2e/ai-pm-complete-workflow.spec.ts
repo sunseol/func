@@ -127,7 +127,7 @@ test.describe('AI PM Complete Workflow', () => {
     await helpers.expectElementVisible('[data-testid="step-2-completed"]');
 
     // 9. Test document version history
-    await page.click('[data-testid="document-history-button"]');
+    await page.getByRole('button', { name: /버전 기록/ }).click();
     await helpers.expectElementVisible('[data-testid="version-history-panel"]');
     
     // Should show at least 2 versions (initial and edited)
@@ -200,7 +200,7 @@ test.describe('AI PM Complete Workflow', () => {
     await helpers.editDocument('# Private Document\n\nThis is a private document.');
     
     // Document should be in private status
-    await helpers.expectTextContent('[data-testid="document-status"]', '비공개');
+    await helpers.expectTextContent('[data-testid="document-status"]', '개인 문서');
 
     // Test 3: Other members cannot see private documents
     await helpers.logout();
@@ -226,6 +226,6 @@ test.describe('AI PM Complete Workflow', () => {
     await helpers.approveDocument();
     
     // Document should now be official
-    await helpers.expectTextContent('[data-testid="document-status"]', '승인됨');
+    await helpers.expectTextContent('[data-testid="document-status"]', '공식 문서');
   });
 });

@@ -2,35 +2,21 @@ name: E2E Tests
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ master ]
   pull_request:
-    branches: [ main ]
+    branches: [ master ]
 
 jobs:
   test:
     timeout-minutes: 60
     runs-on: ubuntu-latest
     
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: funcommute_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-
     steps:
     - uses: actions/checkout@v4
     
     - uses: actions/setup-node@v4
       with:
-        node-version: 18
+        node-version: 22
         cache: 'npm'
     
     - name: Install dependencies
@@ -39,18 +25,19 @@ jobs:
     - name: Install Playwright Browsers
       run: npx playwright install --with-deps
     
-    - name: Setup test database
-      run: |
-        # Add database setup commands here
-        echo "Setting up test database..."
-      env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/funcommute_test
-    
+    - name: Run lint
+      run: npm run lint
+
+    - name: Run type checks
+      run: npm run type-check
+
+    - name: Run Jest
+      run: npm run test:ci
+
     - name: Build application
       run: npm run build
       env:
         NODE_ENV: test
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/funcommute_test
         NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -60,7 +47,6 @@ jobs:
       run: npm run test:e2e
       env:
         NODE_ENV: test
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/funcommute_test
         NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

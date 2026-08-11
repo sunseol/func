@@ -19,14 +19,14 @@ test.describe('AI PM Access Control and Permissions', () => {
     
     // Admin should see all projects
     await helpers.navigateToAIPM();
-    await helpers.expectElementVisible('[data-testid="create-project-button"]');
+    await helpers.expectElementVisible(page.getByRole('button', { name: '새 프로젝트' }).first());
     
     // Create a project
     const projectId = await helpers.createProject('Admin Test Project');
     
     // Admin should have full access to project management
-    await helpers.expectElementVisible('[data-testid="add-member-button"]');
-    await helpers.expectElementVisible('[data-testid="project-settings-button"]');
+    await helpers.expectElementVisible(page.getByRole('button', { name: '멤버 관리' }));
+    await helpers.expectElementVisible(page.getByRole('button', { name: '설정' }));
     
     // Add a member
     await helpers.addProjectMember(TEST_USERS.planner1.email, '콘텐츠기획');
@@ -63,7 +63,7 @@ test.describe('AI PM Access Control and Permissions', () => {
     await helpers.expectElementNotVisible('[data-testid="create-project-button"]');
     
     // User should see the project they're a member of
-    await helpers.expectElementVisible(`[data-testid="project-${projectId}"]`);
+    await helpers.expectElementVisible(page.locator(`a[href="/ai-pm/${projectId}"]`));
     
     // Navigate to project
     await page.goto(`/ai-pm/${projectId}`);
@@ -96,7 +96,7 @@ test.describe('AI PM Access Control and Permissions', () => {
     
     // Project should not appear in project list
     await helpers.navigateToAIPM();
-    await helpers.expectElementNotVisible(`[data-testid="project-${projectId}"]`);
+    await helpers.expectElementNotVisible(page.locator(`a[href="/ai-pm/${projectId}"]`));
     
     // Workflow steps should be inaccessible
     await page.goto(`/ai-pm/${projectId}/workflow/1`);
@@ -117,7 +117,7 @@ test.describe('AI PM Access Control and Permissions', () => {
     await helpers.editDocument('# Private Content Plan\n\nThis is a private document.');
     
     // Document should be private (not approved)
-    await helpers.expectTextContent('[data-testid="document-status"]', '비공개');
+    await helpers.expectTextContent('[data-testid="document-status"]', '개인 문서');
     await helpers.logout();
     
     // Service planner should not see the private document
@@ -139,7 +139,7 @@ test.describe('AI PM Access Control and Permissions', () => {
     await helpers.login(TEST_USERS.planner2);
     await page.goto(`/ai-pm/${projectId}/workflow/1`);
     await helpers.expectElementVisible('[data-testid="document-content"]');
-    await helpers.expectTextContent('[data-testid="document-status"]', '승인됨');
+    await helpers.expectTextContent('[data-testid="document-status"]', '공식 문서');
   });
 
   test('Session management and security', async ({ page }) => {
@@ -147,7 +147,7 @@ test.describe('AI PM Access Control and Permissions', () => {
     await helpers.login(TEST_USERS.planner1);
     
     // Verify user is logged in
-    await helpers.expectElementVisible('[data-testid="user-menu"]');
+    await helpers.expectElementVisible(page.getByRole('button', { name: '사용자 메뉴' }));
     
     // Simulate session expiry by clearing cookies
     await page.context().clearCookies();
@@ -230,14 +230,14 @@ test.describe('AI PM Access Control and Permissions', () => {
     await helpers.login(TEST_USERS.planner1);
     await page.goto(`/ai-pm/${projectId}/workflow/1`);
     
-    await page.click('[data-testid="document-history-button"]');
+    await page.getByRole('button', { name: /버전 기록/ }).click();
     await helpers.expectElementVisible('[data-testid="version-history-panel"]');
     
     // Should see both versions
     await expect(page.locator('[data-testid="version-item"]')).toHaveCount(2);
     
     // Should be able to view previous versions
-    await page.click('[data-testid="view-version-1"]');
+    await page.getByRole('button', { name: /버전 1 미리보기/ }).click();
     await helpers.expectTextContent('[data-testid="version-content"]', 'First version');
     
     await helpers.logout();

@@ -16,7 +16,9 @@ const customJestConfig = {
     '<rootDir>/.next/',
     '<rootDir>/node_modules/',
     '<rootDir>/e2e/',
+    '<rootDir>/database/migrations/',
     '<rootDir>/playwright-report/',
+    '/\\._[^/]+$',
   ],
   collectCoverageFrom: [
     'src/**/*.{js,jsx,ts,tsx}',
@@ -24,6 +26,9 @@ const customJestConfig = {
     '!src/**/*.stories.{js,jsx,ts,tsx}',
   ],
   moduleDirectories: ['node_modules', '<rootDir>/'],
+  transformIgnorePatterns: [
+    '/node_modules/(?!(antd|@ant-design|isows|@supabase|@supabase-js)/)',
+  ],
 }
 
 // createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async

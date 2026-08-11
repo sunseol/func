@@ -3,7 +3,7 @@ const nextConfig = {
   // 환경 변수 설정
   // 성능 최적화 설정
   experimental: {
-    optimizePackageImports: ['@heroicons/react', 'antd'],
+    optimizePackageImports: [],
     // 모바일 최적화를 위한 코드 스플리팅
     optimizeCss: true,
   },
@@ -64,7 +64,7 @@ const nextConfig = {
         headers: [
           {
             key: 'Cache-Control',
-            value: 'public, max-age=300, stale-while-revalidate=600',
+            value: 'private, no-store',
           },
         ],
       },
@@ -97,64 +97,6 @@ const nextConfig = {
       },
     ];
   },
-
-  ...(!process.env.TURBOPACK && {
-    webpack: (config, { isServer, dev }) => {
-      // 트리 쉐이킹 최적화
-      config.optimization = {
-        ...config.optimization,
-        usedExports: true,
-        sideEffects: false,
-        // 모바일 최적화를 위한 코드 스플리팅
-        splitChunks: {
-          ...config.optimization.splitChunks,
-          chunks: 'all',
-          cacheGroups: {
-            ...config.optimization.splitChunks?.cacheGroups,
-            // AI-PM 모듈 별도 청크
-            aipm: {
-              test: /[\\/]src[\\/]components[\\/]ai-pm[\\/]/,
-              name: 'ai-pm',
-              chunks: 'all',
-              priority: 10,
-            },
-            // UI 컴포넌트 별도 청크
-            ui: {
-              test: /[\\/]src[\\/]components[\\/]ui[\\/]/,
-              name: 'ui-components',
-              chunks: 'all',
-              priority: 9,
-            },
-            // Ant Design 별도 청크
-            antd: {
-              test: /[\\/]node_modules[\\/]antd[\\/]/,
-              name: 'antd',
-              chunks: 'all',
-              priority: 8,
-            },
-            // 모바일 특화 컴포넌트
-            mobile: {
-              test: /[\\/]src[\\/]components[\\/].*[Mm]obile.*\.tsx?$/,
-              name: 'mobile-components',
-              chunks: 'all',
-              priority: 7,
-            },
-          },
-        },
-      };
-
-      // 모바일에서 사용하지 않는 패키지 제외
-      if (!isServer && !dev) {
-        config.resolve.alias = {
-          ...config.resolve.alias,
-          // 개발 도구는 프로덕션에서 제외
-          '@/components/dev/PerformanceMonitor': false,
-        };
-      }
-
-      return config;
-    },
-  }),
 
   // PoweredByHeader 비활성화 (보안)
   poweredByHeader: false,

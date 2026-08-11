@@ -225,7 +225,7 @@ test.describe('AI PM Multi-User Collaboration', () => {
 
       // Admin removes member
       await adminPage.goto(`/ai-pm/${projectId}`);
-      await adminPage.click(`[data-testid="remove-member-${TEST_USERS.planner1.email}"]`);
+      await adminPage.getByRole('button', { name: `멤버 삭제 ${TEST_USERS.planner1.email}` }).click();
       await adminPage.click('[data-testid="confirm-remove-member"]');
 
       // Member should no longer have access
