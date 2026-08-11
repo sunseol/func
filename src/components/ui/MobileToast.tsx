@@ -257,7 +257,7 @@ export const MobileToast: React.FC<MobileToastProps> = ({
         </div>
       )}
 
-      <style jsx>{`
+      <style>{`
         @keyframes toast-progress {
           from { width: 100%; }
           to { width: 0%; }

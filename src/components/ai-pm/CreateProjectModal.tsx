@@ -12,8 +12,6 @@ interface CreateProjectModalProps {
 }
 
 export default function CreateProjectModal({ isOpen = true, onClose, onSuccess }: CreateProjectModalProps) {
-  if (!isOpen) return null;
-
   const nameInputRef = useRef<HTMLInputElement | null>(null);
 
   const [formData, setFormData] = useState<CreateProjectRequest>({
@@ -88,6 +86,8 @@ export default function CreateProjectModal({ isOpen = true, onClose, onSuccess }
     // Clear error when user starts typing
     if (error) setError(null);
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">

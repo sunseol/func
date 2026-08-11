@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { act, render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { MobileToast } from '../MobileToast';
 import { ViewportProvider } from '@/contexts/ViewportContext';
@@ -60,6 +60,7 @@ describe('MobileToast', () => {
   });
 
   it('calls onRemove when close button is clicked', () => {
+    jest.useFakeTimers();
     render(
       <ViewportProvider>
         <MobileToast
@@ -73,8 +74,10 @@ describe('MobileToast', () => {
 
     const closeButton = screen.getByLabelText('알림 닫기');
     fireEvent.click(closeButton);
+    act(() => jest.advanceTimersByTime(300));
 
     expect(mockOnRemove).toHaveBeenCalledWith('test-toast');
+    jest.useRealTimers();
   });
 
   it('renders action button when action is provided', () => {

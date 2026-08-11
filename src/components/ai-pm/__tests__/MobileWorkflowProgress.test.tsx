@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { ViewportProvider } from '@/contexts/ViewportContext';
 import MobileWorkflowProgress from '../MobileWorkflowProgress';
+import type { WorkflowStep } from '@/types/ai-pm';
 
 // Mock the useViewport hook
 jest.mock('@/contexts/ViewportContext', () => ({
@@ -23,8 +24,8 @@ jest.mock('@/contexts/ViewportContext', () => ({
 
 describe('MobileWorkflowProgress', () => {
   const defaultProps = {
-    currentStep: 3 as const,
-    completedSteps: [1, 2] as const
+    currentStep: 3 as WorkflowStep,
+    completedSteps: [1, 2] as WorkflowStep[]
   };
 
   beforeEach(() => {

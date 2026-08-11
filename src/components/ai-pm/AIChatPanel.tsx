@@ -5,14 +5,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { useViewport } from '@/contexts/ViewportContext';
 import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
-import { AIChatMessage, SendMessageRequest, WorkflowStep, WORKFLOW_STEPS } from '@/types/ai-pm';
+import { AIChatMessage, WorkflowStep, WORKFLOW_STEPS } from '@/types/ai-pm';
 import { Input, Button } from 'antd';
 import {
   SendOutlined,
   MessageOutlined,
   ClockCircleOutlined,
   StopOutlined,
-  SaveOutlined,
   FullscreenOutlined,
   FullscreenExitOutlined,
 } from '@ant-design/icons';
@@ -33,7 +32,25 @@ interface ChatMessage extends AIChatMessage {
   error?: string;
 }
 
-type SaveState = 'saved' | 'saving' | 'unsaved' | 'error';
+type HistoryState = 'loading' | 'loaded' | 'new' | 'error';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function parseMessage(value: unknown): ChatMessage | null {
+  if (!isRecord(value)) return null;
+  const { id, role, content, timestamp } = value;
+  if (
+    typeof id !== 'string' ||
+    (role !== 'user' && role !== 'assistant') ||
+    typeof content !== 'string' ||
+    (typeof timestamp !== 'string' && !(timestamp instanceof Date))
+  ) {
+    return null;
+  }
+  return { id, role, content, timestamp: new Date(timestamp) };
+}
 
 const STEP_SUGGESTIONS: Record<WorkflowStep, string[]> = {
   1: ['Define the target users', 'Clarify the core value proposition', 'Outline differentiation'],
@@ -64,7 +81,8 @@ export default function AIChatPanel({
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [saveState, setSaveState] = useState<SaveState>('saved');
+  const [historyState, setHistoryState] = useState<HistoryState>('loading');
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -110,21 +128,27 @@ export default function AIChatPanel({
     const loadConversation = async () => {
       try {
         setIsLoading(true);
+        setHistoryState('loading');
+        setLoadError(null);
         const response = await fetch(`/api/ai-pm/chat?projectId=${projectId}&workflowStep=${workflowStep}`);
-        if (!response.ok) return;
+        if (!response.ok) {
+          throw new Error(`History request failed with status ${response.status}`);
+        }
 
-        const data = await response.json();
-        const conversation = data.conversation;
+        const data: unknown = await response.json();
+        const conversation = isRecord(data) && isRecord(data.conversation) ? data.conversation : null;
+        const rawMessages = conversation?.messages;
+        if (!conversation || !Array.isArray(rawMessages)) {
+          throw new Error('History response did not include a conversation');
+        }
+        const parsedMessages = rawMessages.map(parseMessage);
+        if (parsedMessages.some((message) => message === null)) {
+          throw new Error('History response contained an invalid message');
+        }
 
-        if (conversation && conversation.messages.length > 0) {
-          setMessages(
-            conversation.messages.map((msg: any): ChatMessage => ({
-              id: msg.id || `${msg.role}-${msg.timestamp}`,
-              role: msg.role as ChatMessage['role'],
-              content: String(msg.content ?? ''),
-              timestamp: new Date(msg.timestamp),
-            })),
-          );
+        if (parsedMessages.length > 0) {
+          setMessages(parsedMessages.filter((message): message is ChatMessage => message !== null));
+          setHistoryState('loaded');
         } else {
           setMessages([
             {
@@ -134,46 +158,24 @@ export default function AIChatPanel({
               timestamp: new Date(),
             },
           ]);
+          setHistoryState('new');
         }
       } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unable to load conversation history.';
+        setMessages([]);
+        setLoadError(message);
+        setHistoryState('error');
         showError('Load failed', 'Unable to load conversation history.');
       } finally {
         setIsLoading(false);
-        setSaveState('saved');
       }
     };
 
     loadConversation();
   }, [workflowStep, projectId, showError]);
 
-  const handleSave = async (messagesToSave?: ChatMessage[]) => {
-    const currentMessages = messagesToSave || messages;
-    if (currentMessages.length === 0) return;
-
-    setSaveState('saving');
-    try {
-      const response = await fetch(`/api/ai-pm/chat`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId,
-          workflow_step: workflowStep,
-          messages: currentMessages.filter((message) => message.id !== 'welcome'),
-        }),
-      });
-
-      if (!response.ok) throw new Error('Failed to save conversation');
-
-      success('Saved', 'Conversation saved successfully.');
-      setSaveState('saved');
-    } catch {
-      showError('Save failed', 'Unable to save conversation.');
-      setSaveState('error');
-    }
-  };
-
   const sendMessage = async (content: string) => {
-    if (!content.trim() || isLoading) return;
+    if (!content.trim() || isLoading || historyState === 'loading' || historyState === 'error') return;
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -193,7 +195,6 @@ export default function AIChatPanel({
     setInputMessage('');
     setIsLoading(true);
     setIsStreaming(true);
-    setSaveState('unsaved');
 
     try {
       abortControllerRef.current = new AbortController();
@@ -201,7 +202,7 @@ export default function AIChatPanel({
       const response = await fetch(`/api/ai-pm/chat/stream?projectId=${projectId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: content.trim(), workflow_step: workflowStep } as SendMessageRequest),
+        body: JSON.stringify({ message: content.trim(), workflow_step: workflowStep }),
         signal: abortControllerRef.current.signal,
       });
 
@@ -211,6 +212,7 @@ export default function AIChatPanel({
 
       let accumulatedContent = '';
       let buffer = '';
+      let streamError: Error | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -229,8 +231,12 @@ export default function AIChatPanel({
           }
 
           try {
-            const parsed = JSON.parse(data);
-            if (parsed.content) {
+            const parsed: unknown = JSON.parse(data);
+            if (isRecord(parsed) && typeof parsed.error === 'string') {
+              streamError = new Error(typeof parsed.message === 'string' ? parsed.message : parsed.error);
+              continue;
+            }
+            if (isRecord(parsed) && typeof parsed.content === 'string') {
               accumulatedContent += parsed.content;
               setMessages((prev) =>
                 prev.map((msg) =>
@@ -244,9 +250,10 @@ export default function AIChatPanel({
         }
       }
 
-      let finalMessages: ChatMessage[] = [];
+      if (streamError) throw streamError;
+
       setMessages((prev) => {
-        finalMessages = prev.map((msg) =>
+        const finalMessages = prev.map((msg) =>
           msg.id === aiMessage.id ? { ...msg, content: accumulatedContent.trim(), isLoading: false } : msg,
         );
         return finalMessages;
@@ -259,7 +266,6 @@ export default function AIChatPanel({
         timestamp: aiMessage.timestamp,
       });
 
-      await handleSave(finalMessages);
     } catch (error) {
       const aborted = error instanceof Error && error.name === 'AbortError';
       const errorMessage = aborted
@@ -276,7 +282,6 @@ export default function AIChatPanel({
         showError('Chat error', 'Unable to fetch AI response.');
       }
 
-      setSaveState('error');
     } finally {
       setIsLoading(false);
       setIsStreaming(false);
@@ -292,7 +297,8 @@ export default function AIChatPanel({
     if (!confirm('Clear the current conversation? This cannot be undone.')) return;
 
     try {
-      await fetch(`/api/ai-pm/chat?projectId=${projectId}&workflowStep=${workflowStep}`, { method: 'DELETE' });
+      const response = await fetch(`/api/ai-pm/chat?projectId=${projectId}&workflowStep=${workflowStep}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error(`Clear failed with status ${response.status}`);
       setMessages([
         {
           id: 'welcome',
@@ -301,25 +307,9 @@ export default function AIChatPanel({
           timestamp: new Date(),
         },
       ]);
-      setSaveState('saved');
       success('Cleared', 'Conversation cleared.');
     } catch {
       showError('Clear failed', 'Unable to clear conversation.');
-    }
-  };
-
-  const renderSaveStatus = () => {
-    switch (saveState) {
-      case 'saved':
-        return <span className="text-xs text-gray-500">All changes saved.</span>;
-      case 'saving':
-        return <span className="text-xs text-blue-500">Saving...</span>;
-      case 'unsaved':
-        return <span className="text-xs text-yellow-600">Unsaved changes.</span>;
-      case 'error':
-        return <span className="text-xs text-red-500">Save failed.</span>;
-      default:
-        return null;
     }
   };
 
@@ -328,6 +318,7 @@ export default function AIChatPanel({
   return (
     <div
       ref={chatContainerRef}
+      data-testid="ai-chat-panel"
       className={`bg-white flex flex-col h-full ${
         isFullscreen ? 'fixed inset-0 z-50 rounded-none' : 'rounded-lg shadow-sm border border-gray-200'
       } ${className}`}
@@ -355,9 +346,16 @@ export default function AIChatPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {loadError && (
+          <div role="alert" className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+            Unable to load conversation history. Sending is disabled until history is available.
+          </div>
+        )}
         {messages.map((message) => (
           <div
             key={message.id}
+            data-testid="ai-message"
+            data-message-role={message.role}
             className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
@@ -369,10 +367,20 @@ export default function AIChatPanel({
                     : 'bg-gray-100 text-gray-900'
               }`}
             >
-              <div className="whitespace-pre-wrap">{message.content}</div>
+              <div
+                className="whitespace-pre-wrap"
+                data-testid={message.error ? 'ai-error-message' : message.role === 'assistant' ? 'ai-response' : 'user-message'}
+              >
+                {message.content}
+              </div>
             </div>
           </div>
         ))}
+        {isStreaming && (
+          <div data-testid="ai-typing-indicator" role="status" className="sr-only">
+            AI 응답 생성 중
+          </div>
+        )}
         <div ref={messagesEndRef} />
       </div>
 
@@ -380,7 +388,12 @@ export default function AIChatPanel({
         {suggestions.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-3">
             {suggestions.map((suggestion) => (
-              <Button key={suggestion} size="small" onClick={() => sendMessage(suggestion)} disabled={isLoading}>
+              <Button
+                key={suggestion}
+                size="small"
+                onClick={() => sendMessage(suggestion)}
+                disabled={isLoading || historyState === 'loading' || historyState === 'error'}
+              >
                 {suggestion}
               </Button>
             ))}
@@ -390,6 +403,7 @@ export default function AIChatPanel({
         <div className="flex items-center gap-2">
           <Input.TextArea
             value={inputMessage}
+            aria-label="AI 메시지"
             onChange={(event) => setInputMessage(event.target.value)}
             placeholder="Type your message..."
             autoSize={{ minRows: 2, maxRows: 4 }}
@@ -399,14 +413,16 @@ export default function AIChatPanel({
                 sendMessage(inputMessage);
               }
             }}
-            disabled={isLoading}
+            disabled={isLoading || historyState === 'loading' || historyState === 'error'}
           />
           <div className="flex flex-col gap-2">
             <Button
               type="primary"
               icon={<SendOutlined />}
+              aria-label="Send message"
               onClick={() => sendMessage(inputMessage)}
               loading={isLoading}
+              disabled={historyState === 'loading' || historyState === 'error'}
             />
             {isStreaming && (
               <Button icon={<StopOutlined />} onClick={stopStreaming} danger />
@@ -415,13 +431,9 @@ export default function AIChatPanel({
         </div>
 
         <div className="flex items-center justify-between mt-3">
-          <Button size="small" icon={<SaveOutlined />} onClick={() => handleSave()} disabled={saveState === 'saving'}>
-            Save
-          </Button>
           <Button size="small" onClick={clearConversation}>
             Clear
           </Button>
-          <div>{renderSaveStatus()}</div>
         </div>
       </div>
     </div>

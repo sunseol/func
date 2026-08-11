@@ -5,6 +5,8 @@ import { Upload, Button, Card, Spin, Typography, Tabs, Input, App, Progress } fr
 const { TextArea } = Input;
 import { UploadOutlined, DownloadOutlined, FilePdfOutlined } from '@ant-design/icons';
 import type { UploadFile } from 'antd/es/upload/interface';
+import { sanitizeReportHtml } from '@/lib/security/validation';
+import { REPORT_STYLES } from './report-styles';
 
 const { Title, Paragraph } = Typography;
 
@@ -34,7 +36,12 @@ const ReportGeneratorPageInternal: React.FC = () => {
         return;
       }
       const formData = new FormData();
-      formData.append('file', fileList[0] as any);
+      const file = fileList[0]?.originFileObj;
+      if (!file) {
+        messageApi.error('선택한 파일을 읽을 수 없습니다.');
+        return;
+      }
+      formData.append('file', file);
       initialBody = formData;
     } else { // activeTab === 'text'
       if (!inputText.trim()) {
@@ -90,7 +97,7 @@ const ReportGeneratorPageInternal: React.FC = () => {
         .trim();
       
       setProgress(100);
-      setGeneratedReport(cleanedReport);
+      setGeneratedReport(sanitizeReportHtml(cleanedReport));
       messageApi.success('리포트가 성공적으로 생성되었습니다.');
 
     } catch (error) {
@@ -180,82 +187,7 @@ const ReportGeneratorPageInternal: React.FC = () => {
             </div>
           )}
 
-          <style dangerouslySetInnerHTML={{__html: `
-            .page-container {
-              width: 100%;
-              max-width: 210mm;
-              min-height: 297mm;
-              padding: 15mm;
-              margin: 20px auto;
-              background: white;
-              box-shadow: 0 0 15px rgba(0,0,0,0.1);
-              position: relative;
-              overflow: hidden;
-              box-sizing: border-box;
-            }
-            .report-content-wrapper {
-              font-family: 'NotoSansKR', sans-serif;
-              width: 100%;
-              height: 100%;
-              max-width: 100%;
-              overflow-wrap: break-word;
-              word-wrap: break-word;
-            }
-            .report-content-wrapper * {
-              max-width: 100%;
-              box-sizing: border-box;
-            }
-            @media print {
-              @page {
-                size: A4;
-                margin: 15mm; /* Add margins for printing */
-              }
-              body, .report-generator-container {
-                 background: white !important;
-              }
-              body * {
-                visibility: hidden;
-              }
-              .printable-area, .printable-area * {
-                visibility: visible;
-              }
-              .printable-area {
-                position: static;
-                width: auto;
-                padding: 0 !important;
-              }
-              .page-container {
-                margin: 0;
-                box-shadow: none;
-                border: none;
-                padding: 0;
-                min-height: initial; /* Allow content to flow */
-              }
-              .non-printable {
-                display: none;
-              }
-               .ant-card, .ant-card-body {
-                 border: none !important;
-                 padding: 0 !important;
-                 box-shadow: none !important;
-               }
-            }
-
-            .animated-progress .ant-progress-inner {
-              background-color: #e6f7ff;
-            }
-
-            .animated-progress .ant-progress-bg {
-              background-image: linear-gradient(90deg, #1890ff 25%, #40a9ff 50%, #69c0ff 75%, #91d5ff 100%);
-              background-size: 200% 100%;
-              animation: progress-animation 2s linear infinite;
-            }
-
-            @keyframes progress-animation {
-              0% { background-position: 200% 0; }
-              100% { background-position: -200% 0; }
-            }
-          `}} />
+          <style>{REPORT_STYLES}</style>
 
           {generatedReport && (
             <Card 

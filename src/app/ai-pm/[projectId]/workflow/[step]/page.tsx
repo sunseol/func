@@ -22,6 +22,8 @@ import {
   ClockIcon
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import { ensureSuccessfulResponse } from '@/lib/security/validation';
+import { getDocumentStatusAction } from '@/lib/ai-pm/document-status-action';
 
 interface ProjectData {
   id: string;
@@ -66,13 +68,13 @@ export default function WorkflowStepPage() {
         name: projectData.name,
         description: projectData.description,
         memberCount: data.members?.length || 0,
-        documentCount: data.progress?.reduce((sum: number, p: any) => sum + p.document_count, 0) || 0
+        documentCount: data.progress?.reduce((sum: number, p: { document_count: number }) => sum + p.document_count, 0) || 0
       });
 
       const completed = data.progress
-        ?.filter((p: any) => p && p.has_official_document)
-        .map((p: any) => p.workflow_step)
-        .filter((step: any) => step !== undefined && step !== null) || [];
+        ?.filter((p: { has_official_document: boolean }) => p && p.has_official_document)
+        .map((p: { workflow_step: WorkflowStep }) => p.workflow_step)
+        .filter((step: WorkflowStep | undefined) => step !== undefined && step !== null) || [];
       setCompletedSteps(completed);
 
     } catch (err) {
@@ -123,24 +125,21 @@ export default function WorkflowStepPage() {
       throw new Error("No document selected");
     }
 
-    const dedicatedAction = newStatus === 'pending_approval' ? 'request-approval' : newStatus === 'official' ? 'approve' : null;
+    const action = getDocumentStatusAction(currentDocument.status, newStatus);
+    if (!action) return;
 
     try {
       let response;
-      if (dedicatedAction) {
-        // Use dedicated endpoints for requesting approval or approving
-        const url = `/api/ai-pm/documents/${currentDocument.id}/${dedicatedAction}`;
-        console.log(`[StatusChange] Calling dedicated action: POST ${url}`);
-        response = await fetch(url, { method: 'POST' });
-      } else {
-        // Use generic update endpoint for other status changes (e.g., to private, rejected)
+      if (action === 'update') {
         const url = `/api/ai-pm/documents/${currentDocument.id}?projectId=${projectId}`;
-        console.log(`[StatusChange] Calling generic update: PUT ${url}`);
         response = await fetch(url, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: newStatus }),
         });
+      } else {
+        const url = `/api/ai-pm/documents/${currentDocument.id}/${action}`;
+        response = await fetch(url, { method: 'POST' });
       }
 
       if (!response.ok) {
@@ -161,9 +160,11 @@ export default function WorkflowStepPage() {
       throw new Error("No document selected");
     }
 
-    await fetch(`/api/ai-pm/documents/${currentDocument.id}?projectId=${projectId}`, {
+    const response = await fetch(`/api/ai-pm/documents/${currentDocument.id}?projectId=${projectId}`, {
       method: 'DELETE',
     });
+
+    await ensureSuccessfulResponse(response, '문서 삭제에 실패했습니다.');
     
     setCurrentDocument(null);
     loadProjectData();
@@ -196,7 +197,7 @@ export default function WorkflowStepPage() {
   if (!project) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-center">
+        <div data-testid="access-denied" className="text-center">
           <h2 className="text-xl font-semibold text-gray-900 mb-2">프로젝트를 찾을 수 없습니다</h2>
           <p className="text-gray-600 mb-4">요청하신 프로젝트가 존재하지 않거나 접근 권한이 없습니다.</p>
           <Link

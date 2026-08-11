@@ -133,6 +133,8 @@ export default function LoginPage() {
             >
               <Input
                 prefix={<UserOutlined />}
+                aria-label="이메일"
+                type="email"
                 placeholder="이메일"
               />
             </Form.Item>
@@ -143,6 +145,7 @@ export default function LoginPage() {
             >
               <Input.Password
                 prefix={<LockOutlined />}
+                aria-label="비밀번호"
                 placeholder="비밀번호"
               />
             </Form.Item>
@@ -163,6 +166,7 @@ export default function LoginPage() {
               <Button
                 type="primary"
                 htmlType="submit"
+                aria-label="로그인"
                 loading={loading}
                 block
                 size="large"

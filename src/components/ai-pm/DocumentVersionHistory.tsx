@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   ClockIcon, 
   DocumentIcon, 
@@ -48,7 +48,7 @@ export default function DocumentVersionHistory({
   const [selectedVersion, setSelectedVersion] = useState<DocumentVersion | null>(null);
 
   // Fetch document versions
-  const fetchVersions = async () => {
+  const fetchVersions = useCallback(async () => {
     setLoading(true);
     setError(null);
     
@@ -61,20 +61,20 @@ export default function DocumentVersionHistory({
       
       const data = await response.json();
       setVersions(data.versions || []);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to fetch versions:', err);
-      setError(err.message || '버전 히스토리를 불러오는데 실패했습니다.');
+      setError(err instanceof Error ? err.message : '버전 히스토리를 불러오는데 실패했습니다.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [documentId]);
 
   // Load versions when component opens
   useEffect(() => {
     if (isOpen) {
       fetchVersions();
     }
-  }, [isOpen, documentId]);
+  }, [isOpen, fetchVersions]);
 
   // Handle version preview
   const handlePreviewVersion = (version: DocumentVersion) => {
@@ -96,8 +96,8 @@ export default function DocumentVersionHistory({
       setError(null);
       await onRestoreVersion(version.id);
       await fetchVersions(); // Refresh versions list
-    } catch (err: any) {
-      setError(err.message || '버전 복원에 실패했습니다.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '버전 복원에 실패했습니다.');
     }
   };
 
@@ -139,7 +139,7 @@ export default function DocumentVersionHistory({
   if (!isOpen) return null;
 
   return (
-    <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 ${className}`}>
+    <div data-testid="version-history-panel" className={`fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 ${className}`}>
       <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl h-full max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
@@ -190,6 +190,7 @@ export default function DocumentVersionHistory({
                   {versions.map((version) => (
                     <div
                       key={version.id}
+                      data-testid="version-item"
                       className={`p-4 hover:bg-gray-50 cursor-pointer transition-colors ${
                         selectedVersion?.id === version.id ? 'bg-blue-50 border-r-2 border-blue-500' : ''
                       }`}
@@ -215,6 +216,7 @@ export default function DocumentVersionHistory({
                             }}
                             className="p-1 text-gray-400 hover:text-blue-600 rounded"
                             title="미리보기"
+                            aria-label={`버전 ${version.version} 미리보기`}
                           >
                             <EyeIcon className="w-4 h-4" />
                           </button>
@@ -296,7 +298,7 @@ export default function DocumentVersionHistory({
                   
                   {/* Content preview */}
                   <div className="prose max-w-none">
-                    <pre className="whitespace-pre-wrap font-mono text-sm bg-gray-50 p-4 rounded-lg overflow-x-auto">
+                    <pre data-testid="version-content" className="whitespace-pre-wrap font-mono text-sm bg-gray-50 p-4 rounded-lg overflow-x-auto">
                       {selectedVersion.content}
                     </pre>
                   </div>

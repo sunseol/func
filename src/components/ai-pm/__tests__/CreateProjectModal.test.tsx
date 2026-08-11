@@ -31,6 +31,15 @@ describe('CreateProjectModal', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it('keeps hook order stable when toggling visibility', () => {
+    const { rerender } = render(<CreateProjectModal isOpen onClose={onClose} onSuccess={onSuccess} />);
+
+    rerender(<CreateProjectModal isOpen={false} onClose={onClose} onSuccess={onSuccess} />);
+    rerender(<CreateProjectModal isOpen onClose={onClose} onSuccess={onSuccess} />);
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
   it('closes via overlay, cancel, and escape', async () => {
     const user = userEvent.setup();
     render(<CreateProjectModal isOpen onClose={onClose} onSuccess={onSuccess} />);
@@ -99,4 +108,3 @@ describe('CreateProjectModal', () => {
     });
   });
 });
-

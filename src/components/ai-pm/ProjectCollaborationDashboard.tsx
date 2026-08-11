@@ -188,7 +188,7 @@ function ProjectCollaborationDashboard({ projectId, className = '' }: ProjectCol
   }
 
   return (
-    <div className={`bg-white rounded-lg border border-gray-200 ${className}`}>
+    <div data-testid="project-collaboration-dashboard" className={`bg-white rounded-lg border border-gray-200 ${className}`}>
       <div className="p-6 border-b border-gray-200">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -263,7 +263,7 @@ function ProjectCollaborationDashboard({ projectId, className = '' }: ProjectCol
 
       <div className="p-6">
         {activeTab === 'timeline' && (
-          <div className="space-y-4">
+          <div data-testid="activity-feed" className="space-y-4">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Recent activity</h3>
 
             {activities.length === 0 ? (
@@ -278,7 +278,13 @@ function ProjectCollaborationDashboard({ projectId, className = '' }: ProjectCol
                   const activityColor = getActivityColor(activity.activity_type);
 
                   return (
-                    <div key={activity.id} className="flex items-start gap-4 p-4 border border-gray-200 rounded-lg">
+                    <div
+                      key={activity.id}
+                      data-testid={activity.activity_type === 'document_approval_requested'
+                        ? 'pending-approval-notification'
+                        : 'activity-item'}
+                      className="flex items-start gap-4 p-4 border border-gray-200 rounded-lg"
+                    >
                       <div className={`p-2 rounded-full ${activityColor}`}>
                         <ActivityIcon className="w-4 h-4" />
                       </div>

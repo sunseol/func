@@ -74,7 +74,8 @@ describe('ResponsiveTable', () => {
       isMobile: false,
       isTablet: false,
       isDesktop: true,
-      current: 'desktop',
+      deviceType: 'desktop',
+      current: 'xl',
       width: 1200,
       height: 800
     });
@@ -144,8 +145,9 @@ describe('ResponsiveTable', () => {
       mockUseBreakpoint.mockReturnValue({
         isMobile: true,
         isTablet: false,
-        isDesktop: false,
-        current: 'mobile',
+      isDesktop: false,
+      deviceType: 'mobile',
+      current: 'sm',
         width: 375,
         height: 667
       });

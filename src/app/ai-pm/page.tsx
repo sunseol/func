@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { useViewport } from '@/contexts/ViewportContext';
-import { ProjectWithCreator, CreateProjectRequest } from '@/types/ai-pm';
+import { UserProject, CreateProjectRequest } from '@/types/ai-pm';
 import { MobileLazy } from '@/lib/lazy-loading';
 import LoadingSkeletons from '@/components/ui/LoadingSkeletons';
 
@@ -12,7 +12,7 @@ import LoadingSkeletons from '@/components/ui/LoadingSkeletons';
 // ProjectCard는 모바일에서 즉시 렌더되도록 정적 임포트로 전환
 import ProjectCard from '@/components/ai-pm/ProjectCard';
 const CreateProjectModal = React.lazy(() => import('@/components/ai-pm/CreateProjectModal'));
-import { 
+import {
   PlusIcon,
   FolderIcon,
   UserGroupIcon,
@@ -20,12 +20,25 @@ import {
   ClockIcon
 } from '@heroicons/react/24/outline';
 
+const RECENT_ACTIVITY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+function countRecentActivity(projects: readonly UserProject[]): number {
+  const now = Date.now();
+  return projects.filter((project) => {
+    if (!project.last_activity) return false;
+    const timestamp = Date.parse(project.last_activity);
+    if (Number.isNaN(timestamp)) return false;
+    const age = now - timestamp;
+    return age >= 0 && age <= RECENT_ACTIVITY_WINDOW_MS;
+  }).length;
+}
+
 export default function AIPMPage() {
   const { user } = useAuth();
   const { success, error: showError } = useToast();
   const { isMobile } = useViewport();
   
-  const [projects, setProjects] = useState<ProjectWithCreator[]>([]);
+  const [projects, setProjects] = useState<UserProject[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [stats, setStats] = useState({
@@ -44,23 +57,24 @@ export default function AIPMPage() {
         throw new Error('프로젝트 목록을 불러오는데 실패했습니다.');
       }
 
-      const data = await response.json();
-      setProjects(data.projects || []);
+      const data: { readonly projects?: readonly UserProject[] } = await response.json();
+      const dashboardProjects = data.projects ?? [];
+      setProjects([...dashboardProjects]);
 
       // 통계 계산
-      const totalProjects = data.projects?.length || 0;
-      const activeProjects = data.projects?.filter((p: any) => 
-        p.progress?.some((prog: any) => prog.has_official_document)
-      ).length || 0;
-      const totalDocuments = data.projects?.reduce((sum: number, p: any) => 
-        sum + (p.progress?.reduce((docSum: number, prog: any) => docSum + prog.document_count, 0) || 0), 0
-      ) || 0;
+      const totalProjects = dashboardProjects.length;
+      const activeProjects = dashboardProjects.filter((project) => project.official_documents_count > 0).length;
+      const totalDocuments = dashboardProjects.reduce(
+        (sum, project) => sum + project.official_documents_count,
+        0,
+      );
+      const recentActivity = countRecentActivity(dashboardProjects);
 
       setStats({
         totalProjects,
         activeProjects,
         totalDocuments,
-        recentActivity: Math.floor(Math.random() * 10) + 1 // 임시 데이터
+        recentActivity
       });
 
     } catch (err) {
@@ -140,6 +154,7 @@ export default function AIPMPage() {
               </div>
               <button
                 onClick={() => setShowCreateModal(true)}
+                aria-label="새 프로젝트"
                 className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors"
               >
                 <PlusIcon className="w-4 h-4 mr-2" />
@@ -183,7 +198,7 @@ export default function AIPMPage() {
                 <DocumentTextIcon className="h-6 w-6 sm:h-8 sm:w-8 text-purple-500" />
               </div>
               <div className="ml-3 sm:ml-4">
-                <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-300">총 문서</p>
+                <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-300">공식 문서</p>
                 <p className="text-lg sm:text-2xl font-semibold text-gray-900 dark:text-white">{stats.totalDocuments}</p>
               </div>
             </div>
@@ -195,7 +210,7 @@ export default function AIPMPage() {
                 <ClockIcon className="h-6 w-6 sm:h-8 sm:w-8 text-orange-500" />
               </div>
               <div className="ml-3 sm:ml-4">
-                <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-300">최근 활동</p>
+                <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-300">최근 7일 활동</p>
                 <p className="text-lg sm:text-2xl font-semibold text-gray-900 dark:text-white">{stats.recentActivity}</p>
               </div>
             </div>
@@ -226,6 +241,7 @@ export default function AIPMPage() {
               <div className="mt-6">
                 <button
                   onClick={() => setShowCreateModal(true)}
+                  aria-label="새 프로젝트"
                   className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors"
                 >
                   <PlusIcon className="w-4 h-4 mr-2" />

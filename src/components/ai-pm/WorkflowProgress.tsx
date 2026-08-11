@@ -80,7 +80,7 @@ export default function WorkflowProgress({
   };
 
   return (
-    <div className={`bg-white dark:bg-neutral-900 rounded-lg shadow-sm border border-gray-200 dark:border-neutral-800 ${
+    <div data-testid="workflow-progress" className={`bg-white dark:bg-neutral-900 rounded-lg shadow-sm border border-gray-200 dark:border-neutral-800 ${
       isMobile ? 'p-4' : 'p-6'
     }`}>
       {/* 전체 진행률 */}
@@ -129,7 +129,8 @@ export default function WorkflowProgress({
                 <div className="absolute left-3 top-6 w-0.5 h-8 bg-gray-200"></div>
               )}
               
-              <div 
+              <div
+                {...(status === 'completed' ? { 'data-testid': `step-${step}-completed` } : {})}
                 className={`flex items-start rounded-lg border transition-all duration-200 ${
                   getStepColor(status)
                 } ${isClickable ? 'cursor-pointer hover:shadow-md' : ''} ${

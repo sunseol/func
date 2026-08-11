@@ -1,10 +1,16 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
+import type { AnchorHTMLAttributes } from 'react';
 import WorkflowSidebar from '../WorkflowSidebar';
 
+type MockLinkProps = Pick<
+  AnchorHTMLAttributes<HTMLAnchorElement>,
+  'href' | 'children' | 'onClick' | 'className'
+>;
+
 jest.mock('next/link', () => {
-  return ({ href, children, onClick, className }: any) => (
+  return ({ href, children, onClick, className }: MockLinkProps) => (
     <a href={href} onClick={onClick} className={className}>
       {children}
     </a>
@@ -83,5 +89,23 @@ describe('WorkflowSidebar', () => {
     expect(onStepClick).toHaveBeenCalledWith(4);
     expect(onClose).not.toHaveBeenCalled();
   });
-});
 
+  it('does not expose tool links for routes that do not exist', () => {
+    render(
+      <WorkflowSidebar
+        displayMode="desktop"
+        projectId="p1"
+        projectName="My Project"
+        currentStep={3}
+        completedSteps={[1, 2]}
+        memberCount={4}
+        documentCount={7}
+      />,
+    );
+
+    expect(screen.queryByText('AI 어시스턴트')).not.toBeInTheDocument();
+    expect(screen.queryByText('문서 관리')).not.toBeInTheDocument();
+    expect(screen.queryByText('멤버 관리')).not.toBeInTheDocument();
+    expect(screen.queryByText('프로젝트 설정')).not.toBeInTheDocument();
+  });
+});

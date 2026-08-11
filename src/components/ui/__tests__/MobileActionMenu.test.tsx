@@ -49,7 +49,8 @@ describe('MobileActionMenu', () => {
         isMobile: false,
         isTablet: false,
         isDesktop: true,
-        current: 'desktop',
+        deviceType: 'desktop',
+        current: 'xl',
         width: 1200,
         height: 800
       });
@@ -173,7 +174,8 @@ describe('MobileActionMenu', () => {
         isMobile: true,
         isTablet: false,
         isDesktop: false,
-        current: 'mobile',
+        deviceType: 'mobile',
+        current: 'sm',
         width: 375,
         height: 667
       });
@@ -287,7 +289,8 @@ describe('MobileActionMenu', () => {
         isMobile: false,
         isTablet: false,
         isDesktop: true,
-        current: 'desktop',
+        deviceType: 'desktop',
+        current: 'xl',
         width: 1200,
         height: 800
       });
@@ -322,7 +325,8 @@ describe('MobileActionMenu', () => {
         isMobile: false,
         isTablet: false,
         isDesktop: true,
-        current: 'desktop',
+        deviceType: 'desktop',
+        current: 'xl',
         width: 1200,
         height: 800
       });

@@ -160,6 +160,7 @@ export default function AIPMHeader() {
             <div className="relative">
               <button 
                 onClick={isMobile ? toggleUserMenu : undefined}
+                aria-label="사용자 메뉴"
                 className={cn(
                   "flex items-center text-gray-700 hover:text-gray-900 transition-colors",
                   isMobile ? "min-h-[44px] min-w-[44px] space-x-1 px-2" : "space-x-2 group"
@@ -206,6 +207,7 @@ export default function AIPMHeader() {
 
                     <button
                       onClick={handleSignOut}
+                      aria-label="로그아웃"
                       className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
                     >
                       로그아웃
