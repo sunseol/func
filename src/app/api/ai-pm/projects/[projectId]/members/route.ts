@@ -37,7 +37,7 @@ export const POST = withApi(async (request: NextRequest, { params }: Context) =>
 
   await requireProjectManagement(supabase, auth, safeProjectId);
 
-  const body = await parseJson<{ user_id?: string; role?: string }>(request);
+  const body = await parseJson<{ user_id?: string; role?: string }>(request, { maxBytes: 8_192, requireContentType: true });
   const userId = requireUuid(requireString(body.user_id, 'user_id'), 'user_id');
   const role = requireProjectRole(body.role, 'role');
 
@@ -77,7 +77,7 @@ export const PUT = withApi(async (request: NextRequest, { params }: Context) => 
 
   await requireProjectManagement(supabase, auth, safeProjectId);
 
-  const body = await parseJson<{ memberId?: string; role?: string }>(request);
+  const body = await parseJson<{ memberId?: string; role?: string }>(request, { maxBytes: 8_192, requireContentType: true });
   const memberId = requireUuid(requireString(body.memberId, 'memberId'), 'memberId');
   const role = requireProjectRole(body.role, 'role');
 

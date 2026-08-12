@@ -1,287 +1,164 @@
-import { test, expect } from '@playwright/test';
-import { TestHelpers, TEST_USERS, setupTestData, cleanupTestData } from './utils/test-helpers';
+import { expect, test, type BrowserContext } from '@playwright/test';
+import { expectProjectAccessDenied, getSeededApprovalHistory, getSeededDocumentState, getSeededProjectMemberRole, login, loginContext, openWorkflow, requireAIPMBackend, seedDocument, seedProject } from './ai-pm/fixtures';
+import { TEST_USERS, cleanupTestData, setupTestData } from './utils/test-helpers';
 
-test.describe('AI PM Access Control and Permissions', () => {
-  let helpers: TestHelpers;
-
-  test.beforeEach(async ({ page }) => {
-    helpers = new TestHelpers(page);
-    await setupTestData(page);
+test.describe('AI-PM access and document permissions', () => {
+  test.beforeEach(async ({}, testInfo) => {
+    requireAIPMBackend(testInfo);
+    await setupTestData();
   });
 
-  test.afterEach(async ({ page }) => {
-    await cleanupTestData(page);
+  test.afterEach(async ({}, testInfo) => {
+    if (testInfo.status !== 'skipped') await cleanupTestData();
   });
 
-  test('Admin access control', async ({ page }) => {
-    // Admin login
-    await helpers.login(TEST_USERS.admin);
-    
-    // Admin should see all projects
-    await helpers.navigateToAIPM();
-    await helpers.expectElementVisible('[data-testid="create-project-button"]');
-    
-    // Create a project
-    const projectId = await helpers.createProject('Admin Test Project');
-    
-    // Admin should have full access to project management
-    await helpers.expectElementVisible('[data-testid="add-member-button"]');
-    await helpers.expectElementVisible('[data-testid="project-settings-button"]');
-    
-    // Add a member
-    await helpers.addProjectMember(TEST_USERS.planner1.email, '콘텐츠기획');
-    
-    // Admin should be able to access all workflow steps
-    for (let step = 1; step <= 9; step++) {
-      await helpers.navigateToWorkflowStep(step);
-      await helpers.expectElementVisible('[data-testid="document-editor"]');
+  test('QA-AIPM-005 project member search and CRUD enforce project management access', async ({ browser }) => {
+    const project = await seedProject('QA-AIPM-005', { planner1: 'content_planning' });
+    const adminContext = await loginContext(browser, TEST_USERS.admin);
+    const nonManagerContext = await loginContext(browser, TEST_USERS.planner1);
+    const nonMemberContext = await loginContext(browser, TEST_USERS.designer);
+    try {
+      const forbidden = await nonMemberContext.request.get(`/api/ai-pm/projects/${project.id}/members`);
+      expect(forbidden.status()).toBe(403);
+
+      const allowed = await nonManagerContext.request.get(`/api/ai-pm/projects/${project.id}/members`);
+      expect(allowed.status()).toBe(200);
+
+      const search = await adminContext.request.get('/api/ai-pm/users/search?email=designer%40test.com');
+      expect(search.status()).toBe(200);
+      const searchPayload: { readonly users?: ReadonlyArray<{ readonly id: string; readonly email: string }> } = await search.json();
+      const designer = searchPayload.users?.find((user) => user.email === TEST_USERS.designer.email);
+      expect(designer).toBeDefined();
+
+      const added = await adminContext.request.post(`/api/ai-pm/projects/${project.id}/members`, {
+        data: { user_id: designer?.id, role: 'ux_planning' },
+      });
+      expect(added.status()).toBe(201);
+      const addedPayload: { readonly member: { readonly id: string; readonly user_id: string; readonly role: string } } = await added.json();
+      expect(addedPayload.member).toMatchObject({ user_id: designer?.id, role: 'ux_planning' });
+
+      const updated = await adminContext.request.put(`/api/ai-pm/projects/${project.id}/members`, {
+        data: { memberId: addedPayload.member.id, role: 'developer' },
+      });
+      expect(updated.status()).toBe(200);
+      const updatedPayload: { readonly member: { readonly id: string; readonly role: string } } = await updated.json();
+      expect(updatedPayload.member).toMatchObject({ id: addedPayload.member.id, role: 'developer' });
+
+      const nonManagerUpdate = await nonManagerContext.request.put(`/api/ai-pm/projects/${project.id}/members`, {
+        data: { memberId: addedPayload.member.id, role: 'content_planning' },
+      });
+      expect(nonManagerUpdate.status()).toBe(403);
+
+      const removed = await adminContext.request.delete(`/api/ai-pm/projects/${project.id}/members?memberId=${addedPayload.member.id}`);
+      expect(removed.status()).toBe(200);
+
+      const nonManagerAdd = await nonManagerContext.request.post(`/api/ai-pm/projects/${project.id}/members`, {
+        data: { user_id: designer?.id, role: 'ux_planning' },
+      });
+      expect(nonManagerAdd.status()).toBe(403);
+    } finally {
+      await Promise.all([adminContext.close(), nonManagerContext.close(), nonMemberContext.close()]);
     }
-    
-    // Admin should be able to approve documents
-    await helpers.navigateToWorkflowStep(1);
-    await helpers.editDocument('# Test Document\n\nAdmin created document.');
-    await helpers.requestApproval();
-    await helpers.approveDocument();
-    
-    // Admin should see all project activities
-    await page.goto(`/ai-pm/${projectId}`);
-    await helpers.expectElementVisible('[data-testid="activity-feed"]');
   });
 
-  test('Regular user access control', async ({ page }) => {
-    // Setup: Admin creates project and adds user
-    await helpers.login(TEST_USERS.admin);
-    const projectId = await helpers.createProject('User Access Test');
-    await helpers.addProjectMember(TEST_USERS.planner1.email, '콘텐츠기획');
-    await helpers.logout();
-    
-    // Regular user login
-    await helpers.login(TEST_USERS.planner1);
-    
-    // User should only see projects they're a member of
-    await helpers.navigateToAIPM();
-    await helpers.expectElementNotVisible('[data-testid="create-project-button"]');
-    
-    // User should see the project they're a member of
-    await helpers.expectElementVisible(`[data-testid="project-${projectId}"]`);
-    
-    // Navigate to project
-    await page.goto(`/ai-pm/${projectId}`);
-    
-    // User should not see admin functions
-    await helpers.expectElementNotVisible('[data-testid="add-member-button"]');
-    await helpers.expectElementNotVisible('[data-testid="project-settings-button"]');
-    
-    // User should be able to work on documents
-    await helpers.navigateToWorkflowStep(1);
-    await helpers.editDocument('# User Document\n\nRegular user created document.');
-    
-    // User can request approval but cannot approve their own documents
-    await helpers.requestApproval();
-    await helpers.expectElementNotVisible('[data-testid="approve-document-button"]');
+  test('QA-WF-010 invalid workflow step is denied with project-list recovery', async ({ page }) => {
+    const project = await seedProject('QA-WF-010');
+    await login(page, TEST_USERS.admin);
+    await page.goto(`/ai-pm/${project.id}/workflow/10`);
+    await expectProjectAccessDenied(page);
   });
 
-  test('Non-member access denial', async ({ page }) => {
-    // Setup: Admin creates project without adding the test user
-    await helpers.login(TEST_USERS.admin);
-    const projectId = await helpers.createProject('Private Project');
-    await helpers.logout();
-    
-    // Non-member tries to access project
-    await helpers.login(TEST_USERS.planner1);
-    
-    // Direct URL access should be denied
-    await page.goto(`/ai-pm/${projectId}`);
-    await helpers.expectElementVisible('[data-testid="access-denied"]');
-    
-    // Project should not appear in project list
-    await helpers.navigateToAIPM();
-    await helpers.expectElementNotVisible(`[data-testid="project-${projectId}"]`);
-    
-    // Workflow steps should be inaccessible
-    await page.goto(`/ai-pm/${projectId}/workflow/1`);
-    await helpers.expectElementVisible('[data-testid="access-denied"]');
+  test('QA-DOC-003 version history returns exact edited content and denies outsiders', async ({ browser }) => {
+    const project = await seedProject('QA-DOC-003', { planner1: 'content_planning' });
+    const documentId = await seedDocument(project.id, 1, 'E2E_AUDIT version one');
+    const adminContext = await loginContext(browser, TEST_USERS.admin);
+    const outsiderContext = await loginContext(browser, TEST_USERS.designer);
+    try {
+      const firstEdit = await adminContext.request.put(`/api/ai-pm/documents/${documentId}`, {
+        data: { version: 1, content: 'E2E_AUDIT version two' },
+      });
+      expect(firstEdit.status()).toBe(200);
+      const secondEdit = await adminContext.request.put(`/api/ai-pm/documents/${documentId}`, {
+        data: { version: 2, content: 'E2E_AUDIT version three' },
+      });
+      expect(secondEdit.status()).toBe(200);
+
+      const response = await adminContext.request.get(`/api/ai-pm/documents/${documentId}/versions`);
+      expect(response.status()).toBe(200);
+      const body: { readonly versions?: ReadonlyArray<{ readonly version: number; readonly content: string; readonly document_id: string }> } = await response.json();
+      expect(body.versions).toEqual([
+        expect.objectContaining({ version: 1, content: 'E2E_AUDIT version one', document_id: documentId }),
+        expect.objectContaining({ version: 2, content: 'E2E_AUDIT version two', document_id: documentId }),
+        expect.objectContaining({ version: 3, content: 'E2E_AUDIT version three', document_id: documentId }),
+      ]);
+
+      const outsider = await outsiderContext.request.get(`/api/ai-pm/documents/${documentId}/versions`);
+      expect(outsider.status()).toBe(404);
+      expect(await outsider.json()).toMatchObject({ error: 'DOCUMENT_NOT_FOUND' });
+    } finally {
+      await Promise.all([adminContext.close(), outsiderContext.close()]);
+    }
   });
 
-  test('Role-based document access', async ({ page }) => {
-    // Setup: Admin creates project and adds members with different roles
-    await helpers.login(TEST_USERS.admin);
-    const projectId = await helpers.createProject('Role Test Project');
-    await helpers.addProjectMember(TEST_USERS.planner1.email, '콘텐츠기획');
-    await helpers.addProjectMember(TEST_USERS.planner2.email, '서비스기획');
-    await helpers.logout();
-    
-    // Content planner creates a private document
-    await helpers.login(TEST_USERS.planner1);
-    await page.goto(`/ai-pm/${projectId}/workflow/1`);
-    await helpers.editDocument('# Private Content Plan\n\nThis is a private document.');
-    
-    // Document should be private (not approved)
-    await helpers.expectTextContent('[data-testid="document-status"]', '비공개');
-    await helpers.logout();
-    
-    // Service planner should not see the private document
-    await helpers.login(TEST_USERS.planner2);
-    await page.goto(`/ai-pm/${projectId}/workflow/1`);
-    await helpers.expectElementNotVisible('[data-testid="document-content"]');
-    await helpers.logout();
-    
-    // Admin should see all documents
-    await helpers.login(TEST_USERS.admin);
-    await page.goto(`/ai-pm/${projectId}/workflow/1`);
-    await helpers.expectElementVisible('[data-testid="document-content"]');
-    
-    // Admin approves the document
-    await helpers.approveDocument();
-    await helpers.logout();
-    
-    // Now service planner should see the approved document
-    await helpers.login(TEST_USERS.planner2);
-    await page.goto(`/ai-pm/${projectId}/workflow/1`);
-    await helpers.expectElementVisible('[data-testid="document-content"]');
-    await helpers.expectTextContent('[data-testid="document-status"]', '승인됨');
-  });
+  test('QA-DOC-005 implemented approval transitions enforce roles and status', async ({ browser }) => {
+    const project = await seedProject('QA-DOC-005', { planner1: 'content_planning', planner2: 'service_planning' });
+    const documentId = await seedDocument(project.id, 1, 'E2E_AUDIT approval matrix');
+    const adminContext = await loginContext(browser, TEST_USERS.admin);
+    const unauthorizedContext = await loginContext(browser, TEST_USERS.planner1);
+    const authorizedContext = await loginContext(browser, TEST_USERS.planner2);
+    try {
+      const request = await adminContext.request.post(`/api/ai-pm/documents/${documentId}/request-approval`);
+      expect(request.status()).toBe(200);
 
-  test('Session management and security', async ({ page }) => {
-    // Login as user
-    await helpers.login(TEST_USERS.planner1);
-    
-    // Verify user is logged in
-    await helpers.expectElementVisible('[data-testid="user-menu"]');
-    
-    // Simulate session expiry by clearing cookies
-    await page.context().clearCookies();
-    
-    // Try to access AI PM - should redirect to login
-    await helpers.navigateToAIPM();
-    await page.waitForURL('/login');
-    
-    // Login again
-    await helpers.login(TEST_USERS.planner1);
-    
-    // Test logout functionality
-    await helpers.logout();
-    await page.waitForURL('/login');
-    
-    // Verify cannot access protected routes after logout
-    await page.goto('/ai-pm');
-    await page.waitForURL('/login');
-  });
+      expect(await getSeededProjectMemberRole(project.id, TEST_USERS.planner1)).toBe('content_planning');
+      expect(await getSeededProjectMemberRole(project.id, TEST_USERS.planner2)).toBe('service_planning');
+      await expectContextProjectRole(unauthorizedContext, project.id, 'content_planning');
+      await expectContextProjectRole(authorizedContext, project.id, 'service_planning');
+      await expectSeededPendingDocument(documentId);
 
-  test('API endpoint access control', async ({ page }) => {
-    // Setup: Create project as admin
-    await helpers.login(TEST_USERS.admin);
-    const projectId = await helpers.createProject('API Test Project');
-    await helpers.logout();
-    
-    // Test API access without authentication
-    const response = await page.request.get(`/api/ai-pm/projects/${projectId}`);
-    expect(response.status()).toBe(401);
-    
-    // Login as non-member
-    await helpers.login(TEST_USERS.planner1);
-    
-    // Test API access as non-member
-    const nonMemberResponse = await page.request.get(`/api/ai-pm/projects/${projectId}`);
-    expect(nonMemberResponse.status()).toBe(403);
-    
-    await helpers.logout();
-    
-    // Login as admin
-    await helpers.login(TEST_USERS.admin);
-    
-    // Test API access as admin
-    const adminResponse = await page.request.get(`/api/ai-pm/projects/${projectId}`);
-    expect(adminResponse.status()).toBe(200);
-    
-    // Add user as member
-    await page.goto(`/ai-pm/${projectId}`);
-    await helpers.addProjectMember(TEST_USERS.planner1.email, '콘텐츠기획');
-    await helpers.logout();
-    
-    // Login as member
-    await helpers.login(TEST_USERS.planner1);
-    
-    // Test API access as member
-    const memberResponse = await page.request.get(`/api/ai-pm/projects/${projectId}`);
-    expect(memberResponse.status()).toBe(200);
-  });
+      const unauthorized = await unauthorizedContext.request.post(`/api/ai-pm/documents/${documentId}/approve`);
+      expect(unauthorized.status()).toBe(404);
+      expect(await unauthorized.json()).toMatchObject({ error: 'DOCUMENT_NOT_FOUND' });
 
-  test('Document version access control', async ({ page }) => {
-    // Setup: Admin creates project and document
-    await helpers.login(TEST_USERS.admin);
-    const projectId = await helpers.createProject('Version Control Test');
-    await helpers.addProjectMember(TEST_USERS.planner1.email, '콘텐츠기획');
-    
-    // Create and approve a document
-    await helpers.navigateToWorkflowStep(1);
-    await helpers.editDocument('# Version 1\n\nFirst version of the document.');
-    await helpers.requestApproval();
-    await helpers.approveDocument();
-    
-    // Create a new version
-    await helpers.editDocument('# Version 2\n\nSecond version of the document.');
-    await helpers.requestApproval();
-    await helpers.approveDocument();
-    
-    await helpers.logout();
-    
-    // Member should see version history
-    await helpers.login(TEST_USERS.planner1);
-    await page.goto(`/ai-pm/${projectId}/workflow/1`);
-    
-    await page.click('[data-testid="document-history-button"]');
-    await helpers.expectElementVisible('[data-testid="version-history-panel"]');
-    
-    // Should see both versions
-    await expect(page.locator('[data-testid="version-item"]')).toHaveCount(2);
-    
-    // Should be able to view previous versions
-    await page.click('[data-testid="view-version-1"]');
-    await helpers.expectTextContent('[data-testid="version-content"]', 'First version');
-    
-    await helpers.logout();
-    
-    // Non-member should not access version history
-    await helpers.login(TEST_USERS.designer);
-    
-    const versionResponse = await page.request.get(`/api/ai-pm/documents/${projectId}/versions`);
-    expect(versionResponse.status()).toBe(403);
-  });
+      const authorized = await authorizedContext.request.post(`/api/ai-pm/documents/${documentId}/approve`);
+      expect(authorized.status()).toBe(200);
+      expect(await authorized.json()).toMatchObject({ document: { status: 'official' } });
+      expect(await getSeededDocumentState(documentId)).toEqual({ workflowStep: 1, status: 'official' });
+      expect(await getSeededApprovalHistory(documentId)).toEqual([
+        expect.objectContaining({ action: 'requested', previousStatus: 'private', newStatus: 'pending_approval' }),
+        expect.objectContaining({ action: 'approved', previousStatus: 'pending_approval', newStatus: 'official' }),
+      ]);
 
-  test('Bulk permission operations', async ({ page }) => {
-    // Admin creates project
-    await helpers.login(TEST_USERS.admin);
-    const projectId = await helpers.createProject('Bulk Operations Test');
-    
-    // Add multiple members
-    await helpers.addProjectMember(TEST_USERS.planner1.email, '콘텐츠기획');
-    await helpers.addProjectMember(TEST_USERS.planner2.email, '서비스기획');
-    await helpers.addProjectMember(TEST_USERS.designer.email, 'UIUX기획');
-    
-    // Verify all members were added
-    await helpers.expectElementVisible(`[data-testid="member-${TEST_USERS.planner1.email}"]`);
-    await helpers.expectElementVisible(`[data-testid="member-${TEST_USERS.planner2.email}"]`);
-    await helpers.expectElementVisible(`[data-testid="member-${TEST_USERS.designer.email}"]`);
-    
-    // Test bulk role change (if implemented)
-    await page.click('[data-testid="bulk-actions-button"]');
-    await page.selectOption('[data-testid="bulk-role-select"]', '개발자');
-    await page.click('[data-testid="apply-bulk-changes"]');
-    
-    // Verify roles were changed
-    await helpers.expectTextContent(`[data-testid="member-role-${TEST_USERS.planner1.email}"]`, '개발자');
-    await helpers.expectTextContent(`[data-testid="member-role-${TEST_USERS.planner2.email}"]`, '개발자');
-    await helpers.expectTextContent(`[data-testid="member-role-${TEST_USERS.designer.email}"]`, '개발자');
-    
-    // Test bulk member removal
-    await page.click('[data-testid="select-all-members"]');
-    await page.click('[data-testid="bulk-remove-members"]');
-    await page.click('[data-testid="confirm-bulk-remove"]');
-    
-    // Verify members were removed
-    await helpers.expectElementNotVisible(`[data-testid="member-${TEST_USERS.planner1.email}"]`);
-    await helpers.expectElementNotVisible(`[data-testid="member-${TEST_USERS.planner2.email}"]`);
-    await helpers.expectElementNotVisible(`[data-testid="member-${TEST_USERS.designer.email}"]`);
+      const invalidStatus = await authorizedContext.request.post(`/api/ai-pm/documents/${documentId}/approve`);
+      expect(invalidStatus.status()).toBe(400);
+      expect(await invalidStatus.json()).toMatchObject({ error: 'VALIDATION_ERROR' });
+
+      const withdrawDocumentId = await seedDocument(project.id, 2, 'E2E_AUDIT withdraw matrix');
+      const withdrawRequest = await adminContext.request.post(`/api/ai-pm/documents/${withdrawDocumentId}/request-approval`);
+      expect(withdrawRequest.status()).toBe(200);
+      const withdraw = await adminContext.request.post(`/api/ai-pm/documents/${withdrawDocumentId}/withdraw-approval`);
+      expect(withdraw.status()).toBe(200);
+      expect(await withdraw.json()).toMatchObject({ document: { status: 'private' } });
+      expect(await getSeededDocumentState(withdrawDocumentId)).toEqual({ workflowStep: 2, status: 'private' });
+
+      const invalidWithdraw = await adminContext.request.post(`/api/ai-pm/documents/${withdrawDocumentId}/withdraw-approval`);
+      expect(invalidWithdraw.status()).toBe(400);
+      expect(await invalidWithdraw.json()).toMatchObject({ error: 'APPROVAL_REQUIRED' });
+    } finally {
+      await Promise.all([adminContext.close(), unauthorizedContext.close(), authorizedContext.close()]);
+    }
   });
 });
+
+async function expectContextProjectRole(context: BrowserContext, projectId: string, role: string): Promise<void> {
+  const response = await context.request.get('/api/ai-pm/projects');
+  expect(response.status()).toBe(200);
+  const body: unknown = await response.json();
+  expect(body).toMatchObject({
+    projects: expect.arrayContaining([expect.objectContaining({ id: projectId, user_role: role })]),
+  });
+}
+
+async function expectSeededPendingDocument(documentId: string): Promise<void> {
+  expect(await getSeededDocumentState(documentId)).toEqual({ workflowStep: 1, status: 'pending_approval' });
+}

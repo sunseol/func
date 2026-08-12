@@ -22,6 +22,9 @@ import {
   ClockIcon
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import { ensureSuccessfulResponse } from '@/lib/security/validation';
+import { getDocumentStatusAction } from '@/lib/ai-pm/document-status-action';
+import { parseWorkflowStepParam } from '@/lib/ai-pm/workflow-step';
 
 interface ProjectData {
   id: string;
@@ -31,6 +34,36 @@ interface ProjectData {
   documentCount: number;
 }
 
+const MOBILE_WORKFLOW_STEPS = [
+  [1, '컨셉 정의'],
+  [2, '기능 기획'],
+  [3, '기술 설계'],
+  [4, '개발 계획'],
+  [5, '테스트 계획'],
+  [6, '배포 준비'],
+  [7, '운영 계획'],
+  [8, '마케팅 전략'],
+  [9, '사업화 계획'],
+] as const satisfies ReadonlyArray<readonly [WorkflowStep, string]>;
+
+function AccessDeniedView() {
+  return (
+    <div className="flex items-center justify-center h-full">
+      <div data-testid="access-denied" className="text-center">
+        <h2 className="text-xl font-semibold text-gray-900 mb-2">프로젝트를 찾을 수 없습니다</h2>
+        <p className="text-gray-600 mb-4">요청하신 프로젝트가 존재하지 않거나 접근 권한이 없습니다.</p>
+        <Link
+          href="/ai-pm"
+          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+        >
+          <ArrowLeftIcon className="w-4 h-4 mr-2" />
+          프로젝트 목록으로
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 export default function WorkflowStepPage() {
   const params = useParams();
   const { user } = useAuth();
@@ -38,7 +71,7 @@ export default function WorkflowStepPage() {
   const { handleApiError } = useApiError();
   
   const projectId = params.projectId as string;
-  const step = parseInt(params.step as string) as WorkflowStep;
+  const step = parseWorkflowStepParam(params.step);
   
   const [project, setProject] = useState<ProjectData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -50,6 +83,11 @@ export default function WorkflowStepPage() {
   const { isMobile } = useViewport();
 
   const loadProjectData = useCallback(async () => {
+    if (!step) {
+      setIsLoading(false);
+      return;
+    }
+
     try {
       setIsLoading(true);
       const response = await fetch(`/api/ai-pm/projects/${projectId}`);
@@ -66,13 +104,13 @@ export default function WorkflowStepPage() {
         name: projectData.name,
         description: projectData.description,
         memberCount: data.members?.length || 0,
-        documentCount: data.progress?.reduce((sum: number, p: any) => sum + p.document_count, 0) || 0
+        documentCount: data.progress?.reduce((sum: number, p: { document_count: number }) => sum + p.document_count, 0) || 0
       });
 
       const completed = data.progress
-        ?.filter((p: any) => p && p.has_official_document)
-        .map((p: any) => p.workflow_step)
-        .filter((step: any) => step !== undefined && step !== null) || [];
+        ?.filter((p: { has_official_document: boolean }) => p && p.has_official_document)
+        .map((p: { workflow_step: WorkflowStep }) => p.workflow_step)
+        .filter((step: WorkflowStep | undefined) => step !== undefined && step !== null) || [];
       setCompletedSteps(completed);
 
     } catch (err) {
@@ -80,7 +118,7 @@ export default function WorkflowStepPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [projectId, handleApiError]);
+  }, [projectId, step, handleApiError]);
 
   useEffect(() => {
     loadProjectData();
@@ -99,6 +137,7 @@ export default function WorkflowStepPage() {
     const requestBody: UpdateDocumentRequest = {
       content,
       title: title || currentDocument.title,
+      version: currentDocument.version,
     };
 
     const response = await fetch(`/api/ai-pm/documents/${currentDocument.id}?projectId=${projectId}`, {
@@ -114,7 +153,6 @@ export default function WorkflowStepPage() {
 
     const { document: updatedDocument } = await response.json();
     handleDocumentUpdated(updatedDocument);
-    success('문서 저장 완료', '변경사항이 성공적으로 저장되었습니다.');
     return updatedDocument;
   };
 
@@ -123,24 +161,21 @@ export default function WorkflowStepPage() {
       throw new Error("No document selected");
     }
 
-    const dedicatedAction = newStatus === 'pending_approval' ? 'request-approval' : newStatus === 'official' ? 'approve' : null;
+    const action = getDocumentStatusAction(currentDocument.status, newStatus);
+    if (!action) return;
 
     try {
       let response;
-      if (dedicatedAction) {
-        // Use dedicated endpoints for requesting approval or approving
-        const url = `/api/ai-pm/documents/${currentDocument.id}/${dedicatedAction}`;
-        console.log(`[StatusChange] Calling dedicated action: POST ${url}`);
-        response = await fetch(url, { method: 'POST' });
-      } else {
-        // Use generic update endpoint for other status changes (e.g., to private, rejected)
+      if (action === 'update') {
         const url = `/api/ai-pm/documents/${currentDocument.id}?projectId=${projectId}`;
-        console.log(`[StatusChange] Calling generic update: PUT ${url}`);
         response = await fetch(url, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: newStatus }),
+          body: JSON.stringify({ status: newStatus, version: currentDocument.version }),
         });
+      } else {
+        const url = `/api/ai-pm/documents/${currentDocument.id}/${action}`;
+        response = await fetch(url, { method: 'POST' });
       }
 
       if (!response.ok) {
@@ -161,9 +196,11 @@ export default function WorkflowStepPage() {
       throw new Error("No document selected");
     }
 
-    await fetch(`/api/ai-pm/documents/${currentDocument.id}?projectId=${projectId}`, {
+    const response = await fetch(`/api/ai-pm/documents/${currentDocument.id}?projectId=${projectId}`, {
       method: 'DELETE',
     });
+
+    await ensureSuccessfulResponse(response, '문서 삭제에 실패했습니다.');
     
     setCurrentDocument(null);
     loadProjectData();
@@ -171,7 +208,7 @@ export default function WorkflowStepPage() {
   };
 
   const handleStepClick = (clickedStep: WorkflowStep) => {
-    if (clickedStep <= step) {
+    if (step !== null && clickedStep <= step) {
       window.location.href = `/ai-pm/${projectId}/workflow/${clickedStep}`;
     }
   };
@@ -185,6 +222,10 @@ export default function WorkflowStepPage() {
     loadProjectData();
   };
 
+  if (!step) {
+    return <AccessDeniedView />;
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -194,21 +235,7 @@ export default function WorkflowStepPage() {
   }
 
   if (!project) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">프로젝트를 찾을 수 없습니다</h2>
-          <p className="text-gray-600 mb-4">요청하신 프로젝트가 존재하지 않거나 접근 권한이 없습니다.</p>
-          <Link
-            href="/ai-pm"
-            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-          >
-            <ArrowLeftIcon className="w-4 h-4 mr-2" />
-            프로젝트 목록으로
-          </Link>
-        </div>
-      </div>
-    );
+    return <AccessDeniedView />;
   }
 
   return (
@@ -224,39 +251,71 @@ export default function WorkflowStepPage() {
       />
       
       <div className="flex-1 flex flex-col overflow-hidden">
+        {isMobile && (
+          <nav
+            aria-label="모바일 워크플로우 단계"
+            data-testid="mobile-workflow-navigation"
+            className="border-b border-gray-200 bg-white px-3 py-2"
+          >
+            <div className="grid grid-cols-3 gap-2">
+              {MOBILE_WORKFLOW_STEPS.map(([workflowStep, label]) => {
+                const isCurrentStep = workflowStep === step;
+                return (
+                  <Link
+                    key={workflowStep}
+                    href={`/ai-pm/${projectId}/workflow/${workflowStep}`}
+                    data-testid={`workflow-step-${workflowStep}`}
+                    aria-current={isCurrentStep ? 'step' : undefined}
+                    className={`flex min-h-[44px] min-w-0 items-center gap-1 rounded-md border px-2 py-2 text-xs font-medium leading-tight whitespace-nowrap ${
+                      isCurrentStep
+                        ? 'border-blue-200 bg-blue-50 text-blue-700'
+                        : 'border-gray-200 bg-gray-50 text-gray-600'
+                    }`}
+                  >
+                    <span className="shrink-0">{workflowStep}.</span>
+                    <span className="min-w-0 break-words">{label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </nav>
+        )}
         <div className="bg-white border-b border-gray-200 px-3 sm:px-6">
-          <div className="flex space-x-2 sm:space-x-8 overflow-x-auto no-scrollbar">
+          <div
+            data-testid="mobile-workflow-tabs"
+            className="flex space-x-[6px] sm:space-x-8 overflow-x-auto no-scrollbar"
+          >
             <button
-              className={`flex items-center px-3 py-2 sm:px-4 sm:py-3 text-xs sm:text-sm font-medium border-b-2 transition-colors ${
+              className={`flex min-h-[44px] shrink-0 items-center whitespace-nowrap px-3 py-2 sm:px-4 sm:py-3 text-xs sm:text-sm font-medium border-b-2 transition-colors ${
                 activeTab === 'document'
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-gray-600 hover:text-gray-800 hover:border-gray-300'
               }`}
               onClick={() => setActiveTab('document')}
             >
-              <DocumentTextIcon className="w-5 h-5 mr-2" />
+              <DocumentTextIcon className="w-5 h-5 mr-2 shrink-0" />
               문서 편집기
             </button>
             <button
-              className={`flex items-center px-3 py-2 sm:px-4 sm:py-3 text-xs sm:text-sm font-medium border-b-2 transition-colors ${
+              className={`flex min-h-[44px] shrink-0 items-center whitespace-nowrap px-3 py-2 sm:px-4 sm:py-3 text-xs sm:text-sm font-medium border-b-2 transition-colors ${
                 activeTab === 'chat'
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-gray-600 hover:text-gray-800 hover:border-gray-300'
               }`}
               onClick={() => setActiveTab('chat')}
             >
-              <ChatBubbleLeftRightIcon className="w-5 h-5 mr-2" />
+              <ChatBubbleLeftRightIcon className="w-5 h-5 mr-2 shrink-0" />
               AI 어시스턴트
             </button>
             <button
-              className={`flex items-center px-3 py-2 sm:px-4 sm:py-3 text-xs sm:text-sm font-medium border-b-2 transition-colors ${
+              className={`flex min-h-[44px] shrink-0 items-center whitespace-nowrap px-3 py-2 sm:px-4 sm:py-3 text-xs sm:text-sm font-medium border-b-2 transition-colors ${
                 activeTab === 'guide'
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-gray-600 hover:text-gray-800 hover:border-gray-300'
               }`}
               onClick={() => setActiveTab('guide')}
             >
-              <LightBulbIcon className="w-5 h-5 mr-2" />
+              <LightBulbIcon className="w-5 h-5 mr-2 shrink-0" />
               워크플로우 가이드
             </button>
           </div>
@@ -295,7 +354,7 @@ export default function WorkflowStepPage() {
                   <div className="fixed right-4 bottom-20 sm:bottom-6 z-40">
                     <button
                       onClick={() => setShowDocManager(true)}
-                      className="px-4 py-3 rounded-full shadow-lg bg-blue-600 text-white text-sm font-medium"
+                      className="min-h-[44px] px-4 py-3 rounded-full shadow-lg bg-blue-600 text-white text-sm font-medium"
                     >
                       문서 목록
                     </button>

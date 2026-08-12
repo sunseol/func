@@ -1,55 +1,170 @@
-import { SupabaseClient } from '@supabase/supabase-js';
-import {
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type {
   AIChatMessage,
   AIConversation,
-  WorkflowStep,
   AIpmError,
-  AIpmErrorType
+  WorkflowStep,
 } from '@/types/ai-pm';
-
-export interface ConversationManagerConfig {
-  maxMessagesPerConversation?: number;
-  autoSaveInterval?: number;
-}
-
-const CONVERSATION_MANAGER_SYMBOL = Symbol.for('app.ai-pm.conversationManager');
+import { AIpmErrorType } from '@/types/ai-pm';
 
 type ConversationManagerStore = WeakMap<SupabaseClient, ConversationManager>;
-type GlobalWithConversationManagers = typeof globalThis & {
-  [CONVERSATION_MANAGER_SYMBOL]?: ConversationManagerStore;
-};
+const managerInstances: ConversationManagerStore = new WeakMap();
 
-function getManagerInstances(): ConversationManagerStore {
-  const g = globalThis as GlobalWithConversationManagers;
-  if (!g[CONVERSATION_MANAGER_SYMBOL]) {
-    g[CONVERSATION_MANAGER_SYMBOL] = new WeakMap<SupabaseClient, ConversationManager>();
-  }
-  return g[CONVERSATION_MANAGER_SYMBOL]!;
+type MessageInput = Pick<AIChatMessage, 'role' | 'content'> &
+  Partial<Pick<AIChatMessage, 'id' | 'timestamp'>>;
+type UserMessageInput = MessageInput & { readonly role: 'user' };
+type AssistantMessageInput = MessageInput & { readonly role: 'assistant' };
+type ConversationPair = readonly [UserMessageInput, AssistantMessageInput];
+
+type ConversationRequestState = 'owner' | 'pending' | 'completed' | 'failed';
+
+export interface ConversationRequestClaimOptions {
+  readonly idempotencyKey: string;
+  readonly userMessageId: string;
+  readonly assistantMessageId: string;
 }
 
+export interface ConversationRequestClaim {
+  readonly status: ConversationRequestState;
+  readonly ownerToken?: string;
+  readonly responseContent?: string;
+}
+
+export interface ConversationAppendOptions {
+  readonly idempotencyKey?: string;
+}
+
+export interface ConversationReplayOptions {
+  readonly idempotencyKey: string;
+  readonly userMessageId: string;
+  readonly assistantMessageId: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isWorkflowStep(value: unknown): value is WorkflowStep {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 9;
+}
+
+function parseMessage(value: unknown): AIChatMessage | null {
+  if (!isRecord(value)) return null;
+  const { id, role, content, timestamp, idempotency_key: idempotencyKey } = value;
+  if (
+    typeof id !== 'string' ||
+    (role !== 'user' && role !== 'assistant') ||
+    typeof content !== 'string' ||
+    (typeof timestamp !== 'string' && !(timestamp instanceof Date)) ||
+    (idempotencyKey !== undefined && typeof idempotencyKey !== 'string')
+  ) {
+    return null;
+  }
+  return {
+    id,
+    role,
+    content,
+    timestamp: new Date(timestamp),
+    ...(idempotencyKey !== undefined ? { idempotency_key: idempotencyKey } : {}),
+  };
+}
+
+function parseConversation(value: unknown): AIConversation | null {
+  if (!isRecord(value)) return null;
+  const { id, project_id, workflow_step, user_id, messages, created_at, updated_at } = value;
+  if (
+    typeof id !== 'string' ||
+    typeof project_id !== 'string' ||
+    !isWorkflowStep(workflow_step) ||
+    typeof user_id !== 'string' ||
+    !Array.isArray(messages) ||
+    typeof created_at !== 'string' ||
+    typeof updated_at !== 'string'
+  ) {
+    return null;
+  }
+  const parsedMessages = messages.map(parseMessage);
+  if (parsedMessages.some((message) => message === null)) return null;
+  const validMessages = parsedMessages.filter((message): message is AIChatMessage => message !== null);
+  return {
+    id,
+    project_id,
+    workflow_step,
+    user_id,
+    messages: validMessages,
+    created_at,
+    updated_at,
+  };
+}
+
+function parseRpcConversation(value: unknown): AIConversation {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error('Conversation append RPC returned no conversation row');
+  }
+  const conversation = parseConversation(value[0]);
+  if (!conversation) {
+    throw new Error('Conversation append RPC returned an invalid conversation row');
+  }
+  return conversation;
+}
+
+function parseRequestClaim(value: unknown): ConversationRequestClaim {
+  const row = Array.isArray(value) ? value[0] : value;
+  if (!isRecord(row) || typeof row.status !== 'string') {
+    throw new Error('Conversation request claim RPC returned an invalid row');
+  }
+  const status = row.status;
+  if (status !== 'owner' && status !== 'pending' && status !== 'completed' && status !== 'failed') {
+    throw new Error('Conversation request claim RPC returned an unknown status');
+  }
+  if (status === 'owner' && typeof row.owner_token !== 'string') {
+    throw new Error('Conversation request claim RPC returned no owner token');
+  }
+  if (status === 'completed' && typeof row.response_content !== 'string') {
+    throw new Error('Conversation request claim RPC returned no persisted response');
+  }
+  return {
+    status,
+    ...(typeof row.owner_token === 'string' ? { ownerToken: row.owner_token } : {}),
+    ...(typeof row.response_content === 'string' ? { responseContent: row.response_content } : {}),
+  };
+}
+
+function createMessageId(): string {
+  const randomUuid = globalThis.crypto?.randomUUID;
+  return typeof randomUuid === 'function'
+    ? randomUuid.call(globalThis.crypto)
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function createOwnerToken(): string {
+  const randomUuid = globalThis.crypto?.randomUUID;
+  if (typeof randomUuid !== 'function') {
+    throw new Error('Secure randomness is unavailable for a conversation request claim');
+  }
+  return randomUuid.call(globalThis.crypto);
+}
+
+function normalizeMessage(message: MessageInput): AIChatMessage {
+  return {
+    id: message.id ?? createMessageId(),
+    role: message.role,
+    content: message.content,
+    timestamp: (message.timestamp ? new Date(message.timestamp) : new Date()).toISOString(),
+  };
+}
 
 export class ConversationManager {
-  private supabase: SupabaseClient;
-  private config: Required<ConversationManagerConfig>;
-  private autoSaveTimer: NodeJS.Timeout | null = null;
-  private pendingMessages: Map<string, AIChatMessage[]> = new Map();
+  private readonly supabase: SupabaseClient;
 
-  constructor(supabaseClient: SupabaseClient, config: ConversationManagerConfig = {}) {
+  constructor(supabaseClient: SupabaseClient) {
     this.supabase = supabaseClient;
-    this.config = {
-      maxMessagesPerConversation: config.maxMessagesPerConversation || 100,
-      autoSaveInterval: config.autoSaveInterval || 30000, // 30 seconds
-    };
   }
-
-  // NOTE: All other methods of ConversationManager like `loadConversation`, `addMessage`, etc.
-  // should be included here. They are omitted for brevity in this example,
-  // but they must be present in the actual file.
 
   async loadConversation(
     projectId: string,
     workflowStep: WorkflowStep,
-    userId: string
+    userId: string,
   ): Promise<AIConversation | null> {
     try {
       const { data, error } = await this.supabase
@@ -60,152 +175,225 @@ export class ConversationManager {
         .eq('user_id', userId)
         .order('updated_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') {
-        throw error;
+      if (error) throw error;
+      const conversation = parseConversation(data);
+      if (data !== null && !conversation) {
+        throw new Error('Conversation row contains invalid history');
       }
-
-      if (!data) return null;
-
-      const messages: AIChatMessage[] = Array.isArray(data.messages)
-        ? data.messages.map((msg: any) => ({ ...msg, timestamp: new Date(msg.timestamp) }))
-        : [];
-
-      return { ...data, messages };
+      return conversation;
     } catch (error) {
-      console.error('Error loading conversation:', error);
       throw this.handleDatabaseError(error);
     }
   }
 
-  async addMessage(
+  async appendMessages(
+    projectId: string,
+    workflowStep: WorkflowStep,
+    messages: ConversationPair,
+    options: ConversationAppendOptions = {},
+  ): Promise<AIConversation> {
+    if (messages.length !== 2 || messages[0].role !== 'user' || messages[1].role !== 'assistant') {
+      throw this.handleDatabaseError(new Error('Conversation append requires a user/assistant pair'));
+    }
+    const normalizedMessages = messages.map(normalizeMessage);
+    const idempotencyKey = options.idempotencyKey ?? createMessageId();
+    try {
+      const { data, error } = await this.supabase.rpc('append_ai_conversation_messages', {
+        p_project_id: projectId,
+        p_workflow_step: workflowStep,
+        p_messages: normalizedMessages,
+        p_idempotency_key: idempotencyKey,
+      });
+      if (error) throw error;
+      return parseRpcConversation(data);
+    } catch (error) {
+      throw this.handleDatabaseError(error);
+    }
+  }
+
+  async claimRequest(
+    projectId: string,
+    workflowStep: WorkflowStep,
+    options: ConversationRequestClaimOptions,
+  ): Promise<ConversationRequestClaim> {
+    try {
+      for (let claimAttempt = 0; claimAttempt < 3; claimAttempt += 1) {
+        const ownerToken = createOwnerToken();
+        const { data, error } = await this.supabase.rpc('claim_ai_conversation_request', {
+          p_project_id: projectId,
+          p_workflow_step: workflowStep,
+          p_idempotency_key: options.idempotencyKey,
+          p_user_message_id: options.userMessageId,
+          p_assistant_message_id: options.assistantMessageId,
+          p_owner_token: ownerToken,
+        });
+        if (error) throw error;
+        const claim = parseRequestClaim(data);
+        if (claim.status === 'owner') return claim;
+        if (claim.status === 'completed') return claim;
+
+        for (let pollAttempt = 0; pollAttempt < 20; pollAttempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          const polled = await this.pollRequest(projectId, workflowStep, options);
+          if (polled.status === 'completed') return polled;
+          if (polled.status === 'failed') break;
+        }
+      }
+      throw new Error('Conversation request claim remained pending');
+    } catch (error) {
+      throw this.handleDatabaseError(error);
+    }
+  }
+
+  async pollRequest(
+    projectId: string,
+    workflowStep: WorkflowStep,
+    options: ConversationRequestClaimOptions,
+  ): Promise<ConversationRequestClaim> {
+    try {
+      const { data, error } = await this.supabase.rpc('poll_ai_conversation_request', {
+        p_project_id: projectId,
+        p_workflow_step: workflowStep,
+        p_idempotency_key: options.idempotencyKey,
+        p_user_message_id: options.userMessageId,
+        p_assistant_message_id: options.assistantMessageId,
+      });
+      if (error) throw error;
+      return parseRequestClaim(data);
+    } catch (error) {
+      throw this.handleDatabaseError(error);
+    }
+  }
+
+  async completeRequest(
+    projectId: string,
+    workflowStep: WorkflowStep,
+    options: ConversationRequestClaimOptions,
+    ownerToken: string,
+    messages: ConversationPair,
+  ): Promise<AIConversation> {
+    if (messages.length !== 2 || messages[0].role !== 'user' || messages[1].role !== 'assistant') {
+      throw this.handleDatabaseError(new Error('Conversation append requires a user/assistant pair'));
+    }
+    const normalizedMessages = messages.map(normalizeMessage);
+    try {
+      const { data, error } = await this.supabase.rpc('complete_ai_conversation_request', {
+        p_project_id: projectId,
+        p_workflow_step: workflowStep,
+        p_idempotency_key: options.idempotencyKey,
+        p_user_message_id: options.userMessageId,
+        p_assistant_message_id: options.assistantMessageId,
+        p_owner_token: ownerToken,
+        p_messages: normalizedMessages,
+      });
+      if (error) throw error;
+      return parseRpcConversation(data);
+    } catch (error) {
+      throw this.handleDatabaseError(error);
+    }
+  }
+
+  async failRequest(
+    projectId: string,
+    workflowStep: WorkflowStep,
+    options: ConversationRequestClaimOptions,
+    ownerToken: string,
+  ): Promise<void> {
+    try {
+      const { error } = await this.supabase.rpc('fail_ai_conversation_request', {
+        p_project_id: projectId,
+        p_workflow_step: workflowStep,
+        p_idempotency_key: options.idempotencyKey,
+        p_user_message_id: options.userMessageId,
+        p_assistant_message_id: options.assistantMessageId,
+        p_owner_token: ownerToken,
+      });
+      if (error) throw error;
+    } catch (error) {
+      throw this.handleDatabaseError(error);
+    }
+  }
+
+  async getIdempotentAssistantMessage(
     projectId: string,
     workflowStep: WorkflowStep,
     userId: string,
-    message: Pick<AIChatMessage, 'role' | 'content'> & Partial<Pick<AIChatMessage, 'id' | 'timestamp'>>
-  ): Promise<void> {
-    const conversationKey = `${projectId}-${workflowStep}-${userId}`;
-    if (!this.pendingMessages.has(conversationKey)) {
-        this.pendingMessages.set(conversationKey, []);
+    options: ConversationReplayOptions,
+  ): Promise<AIChatMessage | null> {
+    const conversation = await this.loadConversation(projectId, workflowStep, userId);
+    if (!conversation) return null;
+
+    const keyedMessages = conversation.messages.filter(
+      (message) => message.idempotency_key === options.idempotencyKey,
+    );
+    const userMessage = conversation.messages.find(
+      (message) => message.id === options.userMessageId && message.role === 'user',
+    );
+    const assistantMessage = conversation.messages.find(
+      (message) => message.id === options.assistantMessageId && message.role === 'assistant',
+    );
+
+    if (keyedMessages.length === 0) {
+      if (userMessage || assistantMessage) {
+        throw this.handleDatabaseError(new Error('conversation message identity was already used with another request'));
+      }
+      return null;
     }
 
-    const id =
-      message.id ??
-      (typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    if (
+      keyedMessages.some((message) => message.id === options.userMessageId) &&
+      keyedMessages.some((message) => message.id === options.assistantMessageId) &&
+      userMessage &&
+      assistantMessage
+    ) {
+      return assistantMessage;
+    }
 
-    this.pendingMessages.get(conversationKey)!.push({
-      id,
-      role: message.role,
-      content: message.content,
-      timestamp: message.timestamp ? new Date(message.timestamp) : new Date(),
-    });
+    throw this.handleDatabaseError(new Error('idempotency key was already used with another message pair'));
   }
 
   async getCurrentMessages(
     projectId: string,
     workflowStep: WorkflowStep,
-    userId: string
-  ): Promise<AIChatMessage[]> {
-    const conversationKey = `${projectId}-${workflowStep}-${userId}`;
-    const conversation = await this.loadConversation(projectId, workflowStep, userId);
-    const existingMessages = conversation?.messages || [];
-    const pendingMessages = this.pendingMessages.get(conversationKey) || [];
-    return [...existingMessages, ...pendingMessages];
-  }
-
-  async forceSave(
-    projectId: string,
-    workflowStep: WorkflowStep,
-    userId: string
-  ): Promise<void> {
-    const conversationKey = `${projectId}-${workflowStep}-${userId}`;
-    const messagesToSave = this.pendingMessages.get(conversationKey);
-    if (!messagesToSave || messagesToSave.length === 0) return;
-
-    const conversation = await this.loadConversation(projectId, workflowStep, userId);
-    const existingMessages = conversation?.messages || [];
-    const updatedMessages = [...existingMessages, ...messagesToSave].slice(-this.config.maxMessagesPerConversation);
-
-    const { error } = await this.supabase
-      .from('ai_conversations')
-      .upsert({
-        project_id: projectId,
-        workflow_step: workflowStep,
-        user_id: userId,
-        messages: updatedMessages,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'project_id, workflow_step, user_id' });
-
-    if (error) {
-        throw this.handleDatabaseError(error);
-    }
-    this.pendingMessages.delete(conversationKey);
-  }
-
-  async updateConversationMessages(
-    projectId: string,
-    workflowStep: WorkflowStep,
     userId: string,
-    messages: AIChatMessage[]
-  ): Promise<void> {
-    const updatedMessages = messages.slice(-this.config.maxMessagesPerConversation);
-
-    const { error } = await this.supabase
-      .from('ai_conversations')
-      .upsert({
-        project_id: projectId,
-        workflow_step: workflowStep,
-        user_id: userId,
-        messages: updatedMessages,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'project_id, workflow_step, user_id' });
-
-    if (error) {
-        throw this.handleDatabaseError(error);
-    }
-    // Clear any pending messages for this conversation as we have just overwritten them
-    this.pendingMessages.delete(`${projectId}-${workflowStep}-${userId}`);
+  ): Promise<AIChatMessage[]> {
+    const conversation = await this.loadConversation(projectId, workflowStep, userId);
+    return conversation?.messages ?? [];
   }
 
   async clearConversation(
     projectId: string,
     workflowStep: WorkflowStep,
-    userId: string
-    ): Promise<void> {
+    userId: string,
+  ): Promise<void> {
     try {
-        const { error } = await this.supabase
-            .from('ai_conversations')
-            .delete()
-            .eq('project_id', projectId)
-            .eq('workflow_step', workflowStep)
-            .eq('user_id', userId);
-
-        if (error) throw error;
-    } catch(error) {
-        console.error('Error clearing conversation:', error);
-        throw this.handleDatabaseError(error);
+      const { error } = await this.supabase
+        .from('ai_conversations')
+        .delete()
+        .eq('project_id', projectId)
+        .eq('workflow_step', workflowStep)
+        .eq('user_id', userId);
+      if (error) throw error;
+    } catch (error) {
+      throw this.handleDatabaseError(error);
     }
   }
 
-  private handleDatabaseError(error: any): AIpmError {
-    console.error("Database operation failed:", error);
+  private handleDatabaseError(error: unknown): AIpmError {
+    const details = isRecord(error) && typeof error.message === 'string' ? error.message : undefined;
     return {
       error: AIpmErrorType.DATABASE_ERROR,
-      message: "A database error occurred.",
-      details: error.message,
+      message: 'A database error occurred.',
+      ...(details ? { details } : {}),
     };
   }
 }
 
-
 export function getConversationManager(supabaseClient: SupabaseClient): ConversationManager {
-  const managerInstances = getManagerInstances();
   const existing = managerInstances.get(supabaseClient);
   if (existing) return existing;
-
   const created = new ConversationManager(supabaseClient);
   managerInstances.set(supabaseClient, created);
   return created;

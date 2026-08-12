@@ -20,6 +20,8 @@ describe('CreateProjectModal', () => {
 
     const nameInput = screen.getByLabelText(/프로젝트 이름/);
     expect(nameInput).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '닫기' })).toHaveClass('touch-target-44');
+    expect(screen.getByRole('button', { name: '취소' })).toHaveClass('sm:min-h-[44px]');
 
     await waitFor(() => {
       expect(nameInput).toHaveFocus();
@@ -29,6 +31,15 @@ describe('CreateProjectModal', () => {
   it('does not render when closed', () => {
     render(<CreateProjectModal isOpen={false} onClose={onClose} onSuccess={onSuccess} />);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('keeps hook order stable when toggling visibility', () => {
+    const { rerender } = render(<CreateProjectModal isOpen onClose={onClose} onSuccess={onSuccess} />);
+
+    rerender(<CreateProjectModal isOpen={false} onClose={onClose} onSuccess={onSuccess} />);
+    rerender(<CreateProjectModal isOpen onClose={onClose} onSuccess={onSuccess} />);
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
   it('closes via overlay, cancel, and escape', async () => {
@@ -79,7 +90,7 @@ describe('CreateProjectModal', () => {
       });
     });
 
-    expect(onSuccess).toHaveBeenCalledTimes(1);
+    expect(onSuccess).toHaveBeenCalledWith('p1');
   });
 
   it('shows API error message', async () => {
@@ -99,4 +110,3 @@ describe('CreateProjectModal', () => {
     });
   });
 });
-

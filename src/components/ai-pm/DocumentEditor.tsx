@@ -29,6 +29,7 @@ import {
 
 import { Input } from 'antd';
 import { MobileSelect, SelectOption } from '@/components/ui/MobileSelect';
+import { sanitizeMarkdownPreview } from '@/lib/security/validation';
 
 interface DocumentEditorProps {
   projectId: string;
@@ -69,6 +70,31 @@ const STATUS_CONFIG = {
   }
 };
 
+function getStatusOptions(status: DocumentStatus, isAdmin: boolean): SelectOption[] {
+  if (status === 'private') {
+    return [
+      { value: 'private', label: '개인 문서' },
+      { value: 'pending_approval', label: '승인 요청' },
+    ];
+  }
+
+  if (status === 'pending_approval') {
+    return [
+      { value: 'pending_approval', label: '승인 대기' },
+      { value: 'private', label: '개인 문서로 되돌리기' },
+    ];
+  }
+
+  if (status === 'official' && isAdmin) {
+    return [
+      { value: 'official', label: '공식 문서' },
+      { value: 'private', label: '개인 문서로 되돌리기' },
+    ];
+  }
+
+  return [{ value: status, label: STATUS_CONFIG[status].label }];
+}
+
 export default function DocumentEditor({
   projectId,
   workflowStep,
@@ -100,10 +126,11 @@ export default function DocumentEditor({
   const isAdmin = profile?.role === 'admin';
   const isOwner = document.created_by === user?.id;
   const canEdit = !isReadOnly && (isOwner || isAdmin);
-  const canChangeStatus = isAdmin || isOwner;
+  const canChangeStatus = isAdmin || (isOwner && document.status !== 'official');
   const canDelete = isOwner || isAdmin;
 
   const statusConfig = STATUS_CONFIG[document.status];
+  const statusOptions = getStatusOptions(document.status, isAdmin);
 
   // Track unsaved changes
   useEffect(() => {
@@ -143,16 +170,13 @@ export default function DocumentEditor({
   }, [content, title, hasUnsavedChanges, onSave, success, handleApiError, onDocumentUpdated]);
 
   const handleStatusChange = useCallback(async (newStatus: DocumentStatus) => {
-    try {
-      // The parent component is responsible for showing success/error messages.
-      // This component just triggers the action.
-      await onStatusChange(newStatus);
-    } catch (error) {
-      // The parent's error handler will be called, but we catch here
-      // to prevent unhandled promise rejections if the parent doesn't handle it.
-      console.error("Error during status change, handled by parent:", error);
-    }
-  }, [onStatusChange]);
+    const canRequestApproval = document.status === 'private' && newStatus === 'pending_approval';
+    const canWithdrawApproval = document.status === 'pending_approval' && newStatus === 'private';
+    const canDemoteOfficial = isAdmin && document.status === 'official' && newStatus === 'private';
+    if (!canRequestApproval && !canWithdrawApproval && !canDemoteOfficial) return;
+
+    await onStatusChange(newStatus);
+  }, [document.status, isAdmin, onStatusChange]);
 
   const handleDelete = useCallback(async () => {
     setIsDeleting(true);
@@ -230,6 +254,7 @@ export default function DocumentEditor({
   return (
     <div 
       ref={editorRef}
+      data-testid="document-editor"
       className={`bg-white dark:bg-neutral-900 rounded-lg shadow-sm border border-gray-200 dark:border-neutral-800 ${
         isFullscreen ? 'fixed inset-0 z-50 rounded-none' : ''
       }`}
@@ -250,10 +275,13 @@ export default function DocumentEditor({
               }`}>
                 {isEditing ? (isPreviewMode ? '문서 미리보기' : '문서 편집') : '문서 보기'}
               </h2>
-              <span className={`inline-flex items-center px-2 sm:px-2.5 py-0.5 rounded-full text-xs font-medium ${statusConfig.color}`}>
+              <span data-testid="document-status" className={`inline-flex items-center px-2 sm:px-2.5 py-0.5 rounded-full text-xs font-medium ${statusConfig.color}`}>
                 <statusConfig.icon className="h-3 w-3 mr-1" />
                 {statusConfig.label}
               </span>
+              {document.status === 'pending_approval' && (
+                <span data-testid="document-pending-approval" className="sr-only">승인 대기</span>
+              )}
             </div>
             
             {isEditing && !isPreviewMode ? (
@@ -333,6 +361,7 @@ export default function DocumentEditor({
                 <button
                   onClick={handleEditModeToggle}
                   disabled={isSaving}
+                  aria-label={isEditing ? undefined : '문서 편집'}
                   className={`inline-flex items-center px-4 py-2 border border-transparent font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] ${
                     isMobile ? 'text-sm flex-1' : 'text-sm'
                   }`}
@@ -363,13 +392,10 @@ export default function DocumentEditor({
                 {canChangeStatus && !isReadOnly && (
                   <div className="flex-1">
                     <MobileSelect
+                      label="문서 상태"
                       value={document.status}
                       onChange={(value) => handleStatusChange(value as DocumentStatus)}
-                      options={[
-                        { value: 'private', label: '개인 문서' },
-                        { value: 'pending_approval', label: '승인 요청' },
-                        ...(isAdmin ? [{ value: 'official', label: '공식 문서' }] : [])
-                      ] as SelectOption[]}
+                      options={statusOptions}
                       className="w-full"
                     />
                   </div>
@@ -401,13 +427,10 @@ export default function DocumentEditor({
               <>
                 {canChangeStatus && !isReadOnly && (
                   <MobileSelect
+                    label="문서 상태"
                     value={document.status}
                     onChange={(value) => handleStatusChange(value as DocumentStatus)}
-                    options={[
-                      { value: 'private', label: '개인 문서' },
-                      { value: 'pending_approval', label: '승인 요청' },
-                      ...(isAdmin ? [{ value: 'official', label: '공식 문서' }] : [])
-                    ] as SelectOption[]}
+                    options={statusOptions}
                     className="min-w-[140px]"
                   />
                 )}
@@ -460,6 +483,8 @@ export default function DocumentEditor({
           <div className="space-y-4">
             <Input.TextArea
               value={content}
+              aria-label="문서 내용"
+              data-testid="document-content"
               onChange={(e) => setContent(e.target.value)}
               placeholder="문서 내용을 입력하세요."
               autoSize={{ 
@@ -495,14 +520,7 @@ export default function DocumentEditor({
               className={`markdown-content ${
                 isMobile ? 'text-base leading-relaxed' : ''
               }`}
-              dangerouslySetInnerHTML={{ 
-                __html: content 
-                  .replace(/\n/g, '<br>')
-                  .replace(/#{1,6}\s+(.+)/g, '<h1>$1</h1>')
-                  .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-                  .replace(/\*(.+?)\*/g, '<em>$1</em>')
-                  .replace(/`(.+?)`/g, '<code>$1</code>')
-              }}
+              dangerouslySetInnerHTML={{ __html: sanitizeMarkdownPreview(content) }}
             />
             
             {isEditing && isMobile && (

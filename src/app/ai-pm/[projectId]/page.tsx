@@ -80,7 +80,7 @@ export default function ProjectDetailPage() {
   if (!user) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-center">
+        <div data-testid="access-denied" className="text-center">
           <h2 className="text-2xl font-bold text-gray-900 mb-4">로그인이 필요합니다</h2>
           <p className="text-gray-600">이 페이지에 접근하려면 로그인해주세요.</p>
         </div>
@@ -177,7 +177,7 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div data-testid="project-dashboard" className="flex-1 flex flex-col overflow-hidden">
         <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
@@ -194,7 +194,7 @@ export default function ProjectDetailPage() {
                 <ArrowLeftIcon className="h-5 w-5" />
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
+                <h1 data-testid="project-title" className="text-2xl font-bold text-gray-900">{project.name}</h1>
                 <p className="mt-1 text-sm text-gray-500">
                   생성일: {formatDate(project.created_at)} | 
                   생성자: {project.creator_name || project.creator_email}

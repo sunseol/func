@@ -17,7 +17,7 @@ export const GET = withApi(async (_request: NextRequest, { params }: Context) =>
   await requireDocumentAccess(supabase, auth, safeDocumentId);
 
   const { data: history, error: historyError } = await supabase
-    .from('approval_history')
+    .from('document_approval_history_with_users')
     .select('*')
     .eq('document_id', safeDocumentId)
     .order('created_at', { ascending: true });

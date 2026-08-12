@@ -1,10 +1,29 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { buildLoginRedirect, getRequestedPath, isProtectedPath } from "@/lib/auth/navigation";
+
+const PUBLIC_PATHS = ['/landing', '/login', '/auth', '/signup', '/reset-password'] as const;
+function matchesPathPrefix(pathname: string, path: string): boolean {
+  return pathname === path || (path !== '/' && pathname.startsWith(`${path}/`));
+}
+
+function isPublicPath(pathname: string): boolean {
+  return PUBLIC_PATHS.some((path) => matchesPathPrefix(pathname, path));
+}
+
+function isApiPath(pathname: string): boolean {
+  return pathname === '/api' || pathname.startsWith('/api/');
+}
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
   });
+
+  const { pathname } = request.nextUrl;
+  if (isApiPath(pathname) || (!isPublicPath(pathname) && !isProtectedPath(pathname))) {
+    return supabaseResponse;
+  }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -41,18 +60,14 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (
-    !user &&
-    !request.nextUrl.pathname.startsWith('/login') &&
-    !request.nextUrl.pathname.startsWith('/auth') &&
-    !request.nextUrl.pathname.startsWith('/signup') &&
-    !request.nextUrl.pathname.startsWith('/reset-password') &&
-    !request.nextUrl.pathname.startsWith('/landing')
-  ) {
-    // no user, potentially respond by redirecting the user to the landing page
-    const url = request.nextUrl.clone();
-    url.pathname = '/landing';
-    return NextResponse.redirect(url);
+  if (!user && isProtectedPath(pathname)) {
+    const redirectUrl = new URL(
+      buildLoginRedirect(getRequestedPath(pathname, request.nextUrl.search)),
+      request.url,
+    );
+    const redirectResponse = NextResponse.redirect(redirectUrl);
+    supabaseResponse.cookies.getAll().forEach((cookie) => redirectResponse.cookies.set(cookie));
+    return redirectResponse;
   }
 
   // IMPORTANT: You *must* return the supabaseResponse object as it is. If you're

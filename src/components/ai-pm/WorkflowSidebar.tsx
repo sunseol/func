@@ -12,9 +12,6 @@ import {
   ChevronLeftIcon,
   DocumentTextIcon,
   UsersIcon,
-  ChatBubbleLeftRightIcon,
-  CogIcon,
-  ChartBarIcon,
   ClockIcon,
   CheckCircleIcon,
   XMarkIcon
@@ -205,6 +202,7 @@ export default function WorkflowSidebar({
                 <Link
                   key={step}
                   href={href}
+                  data-testid={`workflow-step-${step}`}
                   className={`flex items-center px-3 py-2 rounded-lg text-sm transition-colors ${
                     isActive 
                       ? 'bg-blue-100 text-blue-700 border border-blue-200' 
@@ -223,94 +221,15 @@ export default function WorkflowSidebar({
                     {getStepIcon(status)}
                   </div>
                   <span className="font-medium">{step}. {STEP_LABELS[step]}</span>
+                  {status === 'completed' && (
+                    <span data-testid={`step-${step}-completed`} className="sr-only">완료</span>
+                  )}
                 </Link>
               );
             })}
           </div>
         </div>
 
-        {/* 추가 메뉴 */}
-        <div className="p-4 border-t border-gray-200">
-          <h3 className="text-sm font-medium text-gray-900 mb-3">도구</h3>
-          
-          <div className="space-y-1">
-            <Link
-              href={`/ai-pm/${projectId}/chat`}
-              className={`flex items-center px-3 py-2 rounded-lg text-sm transition-colors ${
-                isActiveLink(`/ai-pm/${projectId}/chat`)
-                  ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                  : 'hover:bg-gray-50 text-gray-700'
-              } ${
-                currentDisplayMode.startsWith('mobile') ? 'min-h-[44px]' : ''
-              }`}
-              onClick={() => {
-                if (currentDisplayMode !== 'desktop') {
-                  onClose?.();
-                }
-              }}
-            >
-              <ChatBubbleLeftRightIcon className="w-4 h-4 mr-3" />
-              <span>AI 어시스턴트</span>
-            </Link>
-            
-            <Link
-              href={`/ai-pm/${projectId}/documents`}
-              className={`flex items-center px-3 py-2 rounded-lg text-sm transition-colors ${
-                isActiveLink(`/ai-pm/${projectId}/documents`)
-                  ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                  : 'hover:bg-gray-50 text-gray-700'
-              } ${
-                currentDisplayMode.startsWith('mobile') ? 'min-h-[44px]' : ''
-              }`}
-              onClick={() => {
-                if (currentDisplayMode !== 'desktop') {
-                  onClose?.();
-                }
-              }}
-            >
-              <DocumentTextIcon className="w-4 h-4 mr-3" />
-              <span>문서 관리</span>
-            </Link>
-            
-            <Link
-              href={`/ai-pm/${projectId}/members`}
-              className={`flex items-center px-3 py-2 rounded-lg text-sm transition-colors ${
-                isActiveLink(`/ai-pm/${projectId}/members`)
-                  ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                  : 'hover:bg-gray-50 text-gray-700'
-              } ${
-                currentDisplayMode.startsWith('mobile') ? 'min-h-[44px]' : ''
-              }`}
-              onClick={() => {
-                if (currentDisplayMode !== 'desktop') {
-                  onClose?.();
-                }
-              }}
-            >
-              <UsersIcon className="w-4 h-4 mr-3" />
-              <span>멤버 관리</span>
-            </Link>
-            
-            <Link
-              href={`/ai-pm/${projectId}/settings`}
-              className={`flex items-center px-3 py-2 rounded-lg text-sm transition-colors ${
-                isActiveLink(`/ai-pm/${projectId}/settings`)
-                  ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                  : 'hover:bg-gray-50 text-gray-700'
-              } ${
-                currentDisplayMode.startsWith('mobile') ? 'min-h-[44px]' : ''
-              }`}
-              onClick={() => {
-                if (currentDisplayMode !== 'desktop') {
-                  onClose?.();
-                }
-              }}
-            >
-              <CogIcon className="w-4 h-4 mr-3" />
-              <span>프로젝트 설정</span>
-            </Link>
-          </div>
-        </div>
       </div>
 
       {/* 진행률 요약 */}

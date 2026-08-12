@@ -7,13 +7,17 @@ import { Layout } from 'antd';
 import { useTheme } from './components/ThemeProvider';
 import { useComponentPreloader } from '@/hooks/useComponentPreloader';
 import AppSidebar from '@/components/layout/AppSidebar';
+import { OfflineBanner } from '@/components/ui/OfflineIndicator';
 import { usePathname } from 'next/navigation';
 
 export default function ClientLayoutContent({ children }: { children: React.ReactNode }) {
   useComponentPreloader();
   const { isDarkMode } = useTheme();
   const pathname = usePathname();
-  const isLanding = pathname === '/landing' || pathname?.startsWith('/landing/');
+  const publicPaths = ['/landing', '/login', '/signup', '/reset-password', '/auth'];
+  const isPublicAuthPath = publicPaths.some(
+    (path) => pathname === path || pathname?.startsWith(`${path}/`),
+  );
 
   // body 배경/텍스트를 테마에 맞춰 직접 동기화 (충돌 방지)
   useEffect(() => {
@@ -36,13 +40,13 @@ export default function ClientLayoutContent({ children }: { children: React.Reac
 
   return (
     <Layout className="min-h-screen bg-transparent dark:bg-transparent">
-      {!isLanding && <AppSidebar />}
+      {!isPublicAuthPath && <AppSidebar />}
       <Layout style={{ background: 'transparent' }}>
         <main className="flex-1" style={{ padding: '0' }}>
           {children}
         </main>
       </Layout>
+      <OfflineBanner />
     </Layout>
   );
 }
-

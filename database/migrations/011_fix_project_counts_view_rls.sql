@@ -7,7 +7,7 @@ SELECT
     creator.full_name as creator_name
 FROM
     projects p
-JOIN
+LEFT JOIN
     user_profiles creator ON p.created_by = creator.id;
 
 ALTER VIEW projects_with_counts SET (security_invoker = true);

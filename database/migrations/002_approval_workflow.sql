@@ -201,11 +201,11 @@ SELECT
     p.name as project_name,
     creator.email as creator_email,
     creator.full_name as creator_name,
-    CASE pd.workflow_step
-        WHEN 1, 2, 3, 6, 7, 8 THEN '서비스기획'
-        WHEN 4 THEN 'UIUX기획'
-        WHEN 5 THEN '개발자'
-        WHEN 9 THEN '콘텐츠기획,서비스기획'
+    CASE
+        WHEN pd.workflow_step IN (1, 2, 3, 6, 7, 8) THEN '서비스기획'
+        WHEN pd.workflow_step = 4 THEN 'UIUX기획'
+        WHEN pd.workflow_step = 5 THEN '개발자'
+        WHEN pd.workflow_step = 9 THEN '콘텐츠기획,서비스기획'
     END as required_approver_role
 FROM planning_documents pd
 JOIN projects p ON pd.project_id = p.id

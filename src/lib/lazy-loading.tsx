@@ -24,22 +24,10 @@ export function withLazyLoading<P extends object>(
   const LazyComponent = lazy(importFn);
   
   return function LazyWrapper(props: P) {
-    const { isMobile } = useViewport();
     const { 
       fallback: FallbackComponent, 
-      mobileOnly = false,
       loadingComponent: LoadingComponent = LoadingSkeletons.Card
     } = options;
-
-    // mobileOnly가 true이고 모바일이 아닌 경우 즉시 로드
-    if (mobileOnly && !isMobile) {
-      const Component = React.useMemo(() => lazy(importFn), []);
-      return (
-        <Suspense fallback={<LoadingComponent />}>
-          <Component {...props} />
-        </Suspense>
-      );
-    }
 
     // 폴백 컴포넌트가 있는 경우 사용
     if (FallbackComponent) {

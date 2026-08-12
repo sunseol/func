@@ -25,12 +25,18 @@ interface AddMemberModalProps {
   onSuccess: () => void;
 }
 
+interface SearchUser {
+  readonly id: string;
+  readonly email: string;
+  readonly full_name: string | null;
+}
+
 function AddMemberModal({ projectId, currentMembers, onClose, onSuccess }: AddMemberModalProps) {
   const [form] = Form.useForm();
   const { message } = App.useApp();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [allUsers, setAllUsers] = useState<SearchUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
 
   useEffect(() => {
@@ -40,9 +46,9 @@ function AddMemberModal({ projectId, currentMembers, onClose, onSuccess }: AddMe
         const response = await fetch('/api/ai-pm/users/search', { cache: 'no-store' });
         if (!response.ok) throw new Error('사용자 목록을 불러오지 못했습니다.');
 
-        const data = await response.json();
+        const data = await response.json() as { readonly users?: SearchUser[] };
         const availableUsers = (data.users || []).filter(
-          (user: any) => !currentMembers.some((member) => member.user_id === user.id),
+          (user: SearchUser) => !currentMembers.some((member) => member.user_id === user.id),
         );
         setAllUsers(availableUsers);
       } catch (err) {
@@ -176,7 +182,7 @@ export default function MemberManagement({ projectId, members, onMembersUpdate }
         </Button>
       </div>
 
-      <Card>
+      <Card data-testid="member-list">
         {members.length === 0 ? (
           <div className="p-6 text-center text-gray-500">
             <UsergroupAddOutlined style={{ fontSize: 48, color: '#d1d5db' }} />
@@ -186,7 +192,7 @@ export default function MemberManagement({ projectId, members, onMembersUpdate }
         ) : (
           <div className="divide-y divide-gray-200">
             {members.map((member) => (
-              <div key={member.id} className="p-4 flex items-center justify-between">
+              <div key={member.id} data-testid={`member-${member.email}`} className="p-4 flex items-center justify-between">
                 <Space>
                   <Avatar style={{ backgroundColor: '#87d068' }} icon={<UserOutlined />} />
                   <div>
@@ -198,6 +204,8 @@ export default function MemberManagement({ projectId, members, onMembersUpdate }
 
                 <Space>
                   <div
+                    data-testid={`member-role-${member.email}`}
+                    data-role={member.role}
                     style={{
                       padding: '2px 8px',
                       borderRadius: '12px',
@@ -208,13 +216,14 @@ export default function MemberManagement({ projectId, members, onMembersUpdate }
                   >
                     {ROLE_LABELS[member.role]}
                   </div>
+                  <span data-testid="user-role" className="sr-only">{ROLE_LABELS[member.role]}</span>
                   <Popconfirm
                     title="정말로 멤버를 삭제하시겠습니까?"
                     onConfirm={() => handleRemoveMember(member.id)}
                     okText="삭제"
                     cancelText="취소"
                   >
-                    <Button type="text" danger size="small" icon={<DeleteOutlined />} loading={loadingState[member.id]} />
+                    <Button type="text" danger size="small" aria-label={`멤버 삭제 ${member.email}`} icon={<DeleteOutlined />} loading={loadingState[member.id]} />
                   </Popconfirm>
                 </Space>
               </div>

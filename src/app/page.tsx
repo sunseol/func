@@ -23,7 +23,6 @@ import { useTheme } from './components/ThemeProvider';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotification } from '@/contexts/NotificationContext';
 import { createClient } from '@/lib/supabase/client';
-import { useRouter } from 'next/navigation';
 
 const { Content } = Layout;
 const { Paragraph } = Typography;
@@ -34,6 +33,11 @@ interface InputFormData {
   projects: Project[];
   miscTasks: TaskItem[];
 }
+
+type Feedback = Readonly<{
+  kind: 'success' | 'error';
+  message: string;
+}>;
 
 const createEmptyReportData = (): ReportDraft => ({
   userName: '',
@@ -47,29 +51,17 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState('daily');
   const [formData, setFormData] = useState<ReportDraft>(createEmptyReportData());
   const { isDarkMode } = useTheme();
-  const { user, loading: authLoading, initialized } = useAuth();
+  const { user } = useAuth();
   const { sendBrowserNotification } = useNotification();
   const { message: messageApi } = App.useApp();
   const supabase = createClient();
-  const router = useRouter();
 
   const [isLoadingAI, setIsLoadingAI] = useState(false);
   const [generatedText, setGeneratedText] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [defaultPreviewText, setDefaultPreviewText] = useState<string | null>(null);
   const [isSavingReport, setIsSavingReport] = useState(false);
-
-
-
-  useEffect(() => {
-    if (!authLoading && initialized && !user) {
-      router.replace('/landing');
-      setFormData(createEmptyReportData());
-      setActiveTab('daily');
-      setGeneratedText(null);
-      setAiError(null);
-    }
-  }, [authLoading, initialized, user, router]);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
 
   useEffect(() => {
     if (user && !formData.userName) {
@@ -82,6 +74,7 @@ export default function Home() {
   useEffect(() => {
     if (aiError) {
       messageApi.error(aiError);
+      setFeedback({ kind: 'error', message: aiError });
     }
   }, [aiError, messageApi]);
 
@@ -126,6 +119,7 @@ export default function Home() {
     }
     setGeneratedText(null);
     setAiError(null);
+    setFeedback(null);
   };
 
   const handleReportTypeChange = (e: RadioChangeEvent) => {
@@ -158,6 +152,7 @@ export default function Home() {
       const result = await generateWeeklyReportFromDaily(weeklyData, formData.userName || user?.user_metadata?.full_name || user?.email?.split('@')[0] || '');
       setGeneratedText(result);
       messageApi.success('AI 주간 보고서 생성 완료!');
+      setFeedback({ kind: 'success', message: 'AI 주간 보고서 생성 완료!' });
     } catch (err) {
       console.error('AI 주간 보고서 생성 오류:', err);
       setAiError(err instanceof Error ? err.message : 'AI 주간 보고서 생성 중 오류가 발생했습니다.');
@@ -183,8 +178,9 @@ export default function Home() {
 
       try {
           const result = await generateReport(formData);
-          setGeneratedText(result);
-          messageApi.success('AI 보고서 생성 완료!');
+      setGeneratedText(result);
+      messageApi.success('AI 보고서 생성 완료!');
+      setFeedback({ kind: 'success', message: 'AI 보고서 생성 완료!' });
       } catch (err) {
           console.error('AI 보고서 생성 오류:', err);
           setAiError(err instanceof Error ? err.message : 'AI 보고서 생성 중 오류가 발생했습니다.');
@@ -206,19 +202,25 @@ export default function Home() {
 
   const handleSaveReport = async (editedContent?: string) => {
     if (!user) {
-      messageApi.error('로그인이 필요합니다. 보고서를 저장할 수 없습니다.');
+      const message = '로그인이 필요합니다. 보고서를 저장할 수 없습니다.';
+      messageApi.error(message);
+      setFeedback({ kind: 'error', message });
       return;
     }
 
     // 편집된 내용이 있으면 사용, 없으면 기본 내용 사용
     const reportContentToSave = editedContent || getTextForDailyDisplay();
     if (!reportContentToSave) {
-      messageApi.error('저장할 보고서 내용이 없습니다.');
+      const message = '저장할 보고서 내용이 없습니다.';
+      messageApi.error(message);
+      setFeedback({ kind: 'error', message });
       return;
     }
 
     if (!formData.date) {
-      messageApi.error('보고서 날짜를 입력해주세요.');
+      const message = '보고서 날짜를 입력해주세요.';
+      messageApi.error(message);
+      setFeedback({ kind: 'error', message });
       return;
     }
 
@@ -229,7 +231,9 @@ export default function Home() {
 
 
       if (!formattedDate || formattedDate.length !== 10 || !/^\d{4}-\d{2}-\d{2}$/.test(formattedDate)) {
-        messageApi.error('유효한 날짜 형식(YYYY-MM-DD)이 아닙니다. 날짜를 다시 확인해주세요.');
+        const message = '유효한 날짜 형식(YYYY-MM-DD)이 아닙니다. 날짜를 다시 확인해주세요.';
+        messageApi.error(message);
+        setFeedback({ kind: 'error', message });
         setIsSavingReport(false);
         return;
       }
@@ -255,6 +259,7 @@ export default function Home() {
       }
 
       messageApi.success('보고서가 성공적으로 저장되었습니다!');
+      setFeedback({ kind: 'success', message: '보고서가 성공적으로 저장되었습니다!' });
       
       // 보고서 저장 완료 알림
       const reportTypeText = formData.reportType === 'morning' ? '출근' : '퇴근';
@@ -272,6 +277,7 @@ export default function Home() {
         displayErrorMessage = caughtError.message;
       }
       messageApi.error(displayErrorMessage);
+      setFeedback({ kind: 'error', message: displayErrorMessage });
     } finally {
       setIsSavingReport(false);
     }
@@ -306,6 +312,7 @@ export default function Home() {
                   onClick={handleGenerateAIReport}
                   block
                   size="large"
+                  style={{ minHeight: 44 }}
                 >
                   {isLoadingAI ? 'AI 생성 중...' : '✨ AI야 도와줘'}
                 </Button>
@@ -323,7 +330,7 @@ export default function Home() {
                   disabled={!user || !getTextForDailyDisplay()}
                   block
                   size="large"
-                  style={{ marginTop: 16 }}
+                  style={{ minHeight: 44, marginTop: 16 }}
                 >
                   보고서 저장
                 </Button>
@@ -358,6 +365,22 @@ export default function Home() {
     <Layout className="min-h-screen bg-white dark:bg-neutral-950" style={{ minHeight: '100vh' }}>
       <Content className="px-3 sm:px-6 md:px-12 py-6">
         <div className="rounded-lg shadow" style={{ background: isDarkMode ? '#141414' : '#fff', padding: 12 }}>
+          {feedback && (
+            <div
+              role="alert"
+              aria-live="polite"
+              style={{
+                marginBottom: 16,
+                color: feedback.kind === 'success' ? '#237804' : '#a8071a',
+                background: feedback.kind === 'success' ? '#f6ffed' : '#fff1f0',
+                border: `1px solid ${feedback.kind === 'success' ? '#b7eb8f' : '#ffa39e'}`,
+                borderRadius: 6,
+                padding: '8px 12px',
+              }}
+            >
+              {feedback.message}
+            </div>
+          )}
           <Tabs defaultActiveKey="daily" activeKey={activeTab} onChange={handleTabChange} items={tabItems} centered />
         </div>
       </Content>

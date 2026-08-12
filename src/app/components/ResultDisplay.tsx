@@ -56,13 +56,26 @@ export default function ResultDisplay({
   }
 
   return (
-    <div className="border rounded-md p-3 sm:p-4 bg-gray-50 dark:bg-neutral-900 dark:border-neutral-800 h-[400px] overflow-y-auto">
+    <section
+      role="region"
+      aria-label="보고서 미리보기"
+      className="border rounded-md p-3 sm:p-4 bg-gray-50 dark:bg-neutral-900 dark:border-neutral-800 h-[400px] overflow-y-auto"
+    >
       <div className="flex justify-end mb-2">
-        <Button onClick={handleCopy} size="small">복사</Button>
+        <Button
+          onClick={handleCopy}
+          size="small"
+          style={{ minWidth: 44, minHeight: 44 }}
+        >
+          복사
+        </Button>
       </div>
-      <pre className="whitespace-pre-wrap break-words font-sans text-sm text-gray-900 dark:text-gray-100">
+      <pre
+        data-testid="report-preview-text"
+        className="whitespace-pre-wrap break-words font-sans text-sm text-gray-900 dark:text-gray-100"
+      >
         {textToDisplay}
       </pre>
-    </div>
+    </section>
   );
 }

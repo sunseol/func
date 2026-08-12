@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -34,12 +34,18 @@ interface NotificationContextType {
   notifications: NotificationHistory[];
   unreadCount: number;
   loading: boolean;
+  loadError: string | null;
   updateSettings: (settings: Partial<NotificationSettings>) => Promise<void>;
   markAsRead: (notificationId: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
   requestNotificationPermission: () => Promise<boolean>;
   sendBrowserNotification: (title: string, message: string, type?: string) => void;
   checkTodayReports: () => Promise<{ morning: boolean; evening: boolean }>;
+}
+
+interface BrowserNotificationEligibility {
+  userId: string;
+  enabled: boolean;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -54,6 +60,19 @@ const DEFAULT_SETTINGS = {
   browser_notifications: true,
 } as const;
 
+const NOTIFICATION_PERMISSION_TIMEOUT_MS = 3000;
+
+function createLocalSettings(userId: string): NotificationSettings {
+  const now = new Date().toISOString();
+  return {
+    id: '',
+    user_id: userId,
+    ...DEFAULT_SETTINGS,
+    created_at: now,
+    updated_at: now,
+  };
+}
+
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const supabase = useMemo(() => createClient(), []);
@@ -61,71 +80,124 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const [settings, setSettings] = useState<NotificationSettings | null>(null);
   const [notifications, setNotifications] = useState<NotificationHistory[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [browserNotificationEligibility, setBrowserNotificationEligibility] =
+    useState<BrowserNotificationEligibility | null>(null);
+  const settingsRequestIdRef = useRef(0);
+  const activeUserIdRef = useRef<string | null>(null);
 
   const unreadCount = notifications.reduce((count, item) => count + (item.is_read ? 0 : 1), 0);
 
-  const loadSettings = useCallback(async () => {
+  const loadSettings = useCallback(async (requestId: number) => {
     if (!user) return;
+    const isCurrentRequest = () =>
+      requestId === settingsRequestIdRef.current && activeUserIdRef.current === user.id;
 
-    const { data, error } = await supabase
-      .from('notification_settings')
-      .select('*')
-      .eq('user_id', user.id)
-      .maybeSingle();
-    if (error) throw error;
+    try {
+      const { data, error } = await supabase
+        .from('notification_settings')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
 
-    if (data) {
-      setSettings(data);
-      return;
+      if (!error && data) {
+        if (!isCurrentRequest()) return;
+        setSettings(data);
+        setBrowserNotificationEligibility({ userId: user.id, enabled: data.browser_notifications });
+        return;
+      }
+
+      if (error) {
+        console.error('Notification settings query error:', error);
+        if (isCurrentRequest()) {
+          setSettings(createLocalSettings(user.id));
+          setBrowserNotificationEligibility(null);
+          setLoadError('알림 설정을 불러오지 못해 기본 설정을 표시합니다.');
+        }
+        return;
+      }
+
+      const { data: created, error: createError } = await supabase
+        .from('notification_settings')
+        .upsert({ user_id: user.id, ...DEFAULT_SETTINGS }, { onConflict: 'user_id' })
+        .select()
+        .single();
+
+      if (!createError && created) {
+        if (!isCurrentRequest()) return;
+        setSettings(created);
+        setBrowserNotificationEligibility({ userId: user.id, enabled: created.browser_notifications });
+        return;
+      }
+
+      if (createError) {
+        console.error('Notification settings upsert error:', createError);
+      }
+      if (isCurrentRequest()) setLoadError('알림 설정을 불러오지 못해 기본 설정을 표시합니다.');
+    } catch (error) {
+      console.error('Notification settings load error:', error);
+      if (isCurrentRequest()) setLoadError('알림 설정을 불러오지 못해 기본 설정을 표시합니다.');
     }
 
-    const { data: created, error: createError } = await supabase
-      .from('notification_settings')
-      .upsert({ user_id: user.id, ...DEFAULT_SETTINGS }, { onConflict: 'user_id' })
-      .select()
-      .single();
-    if (createError) throw createError;
-
-    setSettings(created);
+    if (isCurrentRequest()) {
+      setSettings(createLocalSettings(user.id));
+      setBrowserNotificationEligibility(null);
+    }
   }, [supabase, user]);
 
-  const loadNotifications = useCallback(async () => {
+  const loadNotifications = useCallback(async (requestId: number) => {
     if (!user) return;
+    const isCurrentRequest = () =>
+      requestId === settingsRequestIdRef.current && activeUserIdRef.current === user.id;
 
-    const { data, error } = await supabase
-      .from('notification_history')
-      .select('id, user_id, notification_type, title, message, is_read, sent_at, read_at')
-      .eq('user_id', user.id)
-      .order('sent_at', { ascending: false })
-      .limit(50);
-    if (error) throw error;
+    try {
+      const { data, error } = await supabase
+        .from('notification_history')
+        .select('id, user_id, notification_type, title, message, is_read, sent_at, read_at')
+        .eq('user_id', user.id)
+        .order('sent_at', { ascending: false })
+        .limit(50);
+      if (error) {
+        console.error('Notification history query error:', error);
+        if (isCurrentRequest()) {
+          setNotifications([]);
+          setLoadError('알림 이력을 불러오지 못했습니다.');
+        }
+        return;
+      }
 
-    const rows = (data ?? []) as NotificationHistory[];
-    setNotifications(rows.filter((item) => item.id));
+      const rows = (data ?? []) as NotificationHistory[];
+      if (isCurrentRequest()) setNotifications(rows.filter((item) => item.id));
+    } catch (error) {
+      console.error('Notification history load error:', error);
+      if (isCurrentRequest()) {
+        setNotifications([]);
+        setLoadError('알림 이력을 불러오지 못했습니다.');
+      }
+    }
   }, [supabase, user]);
 
   useEffect(() => {
+    const requestId = ++settingsRequestIdRef.current;
+    activeUserIdRef.current = user?.id ?? null;
     let cancelled = false;
 
     (async () => {
       if (!user) {
         setSettings(null);
         setNotifications([]);
+        setLoadError(null);
+        setBrowserNotificationEligibility(null);
         setLoading(false);
         return;
       }
 
       setLoading(true);
-      try {
-        await Promise.all([loadSettings(), loadNotifications()]);
-      } catch (err) {
-        console.error('Notification load error:', err);
-        if (!cancelled) {
-          setSettings(null);
-          setNotifications([]);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
+      setLoadError(null);
+      setBrowserNotificationEligibility(null);
+      await Promise.all([loadSettings(requestId), loadNotifications(requestId)]);
+      if (!cancelled && requestId === settingsRequestIdRef.current && activeUserIdRef.current === user.id) {
+        setLoading(false);
       }
     })();
 
@@ -138,16 +210,33 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     async (patch: Partial<NotificationSettings>) => {
       if (!user) return;
 
-      const { data, error } = await supabase
-        .from('notification_settings')
-        .upsert({ user_id: user.id, ...patch }, { onConflict: 'user_id' })
-        .select()
-        .single();
-      if (error) throw error;
+      const requestId = ++settingsRequestIdRef.current;
+      activeUserIdRef.current = user.id;
+      setBrowserNotificationEligibility(null);
+      const previousSettings = settings;
+      setSettings((current) => (current ? { ...current, ...patch } : current));
 
-      setSettings(data);
+      try {
+        const { data, error } = await supabase
+          .from('notification_settings')
+          .upsert({ ...patch, user_id: user.id }, { onConflict: 'user_id' })
+          .select()
+          .single();
+        if (error) throw error;
+
+        if (requestId !== settingsRequestIdRef.current || activeUserIdRef.current !== user.id) return;
+
+        setSettings(data);
+        setBrowserNotificationEligibility({ userId: user.id, enabled: data.browser_notifications });
+      } catch (error) {
+        if (requestId === settingsRequestIdRef.current && activeUserIdRef.current === user.id) {
+          setSettings(previousSettings);
+          setBrowserNotificationEligibility(null);
+        }
+        throw error;
+      }
     },
-    [supabase, user],
+    [settings, supabase, user],
   );
 
   const markAsRead = useCallback(
@@ -183,25 +272,40 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   }, [supabase, user]);
 
   const requestNotificationPermission = useCallback(async () => {
-    if (typeof window === 'undefined' || !('Notification' in window)) return false;
-    if (Notification.permission === 'granted') return true;
-    const permission = await Notification.requestPermission();
-    return permission === 'granted';
+    if (typeof window === 'undefined' || typeof window.Notification === 'undefined') return false;
+    if (window.Notification.permission === 'granted') return true;
+
+    let timeoutId: number | undefined;
+    try {
+      const permission = await Promise.race([
+        window.Notification.requestPermission(),
+        new Promise<NotificationPermission>((resolve) => {
+          timeoutId = window.setTimeout(() => resolve('denied'), NOTIFICATION_PERMISSION_TIMEOUT_MS);
+        }),
+      ]);
+      return permission === 'granted';
+    } catch (error) {
+      console.error('Browser notification permission error:', error);
+      return false;
+    } finally {
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    }
   }, []);
 
   const sendBrowserNotification = useCallback(
     (title: string, message: string) => {
-      if (!settings?.browser_notifications) return;
-      if (typeof window === 'undefined' || !('Notification' in window)) return;
-      if (Notification.permission !== 'granted') return;
+      if (!user) return;
+      if (browserNotificationEligibility?.userId !== user.id || !browserNotificationEligibility.enabled) return;
+      if (typeof window === 'undefined' || typeof window.Notification === 'undefined') return;
+      if (window.Notification.permission !== 'granted') return;
 
       try {
-        new Notification(title, { body: message });
+        new window.Notification(title, { body: message });
       } catch (err) {
         console.error('Browser notification error:', err);
       }
     },
-    [settings?.browser_notifications],
+    [browserNotificationEligibility, user],
   );
 
   const checkTodayReports = useCallback(async () => {
@@ -226,6 +330,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const value = useMemo<NotificationContextType>(
     () => ({
       settings,
+      loadError,
       notifications,
       unreadCount,
       loading,
@@ -245,6 +350,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       requestNotificationPermission,
       sendBrowserNotification,
       settings,
+      loadError,
       unreadCount,
       updateSettings,
     ],
@@ -258,4 +364,3 @@ export function useNotification() {
   if (!context) throw new Error('useNotification must be used within a NotificationProvider');
   return context;
 }
-

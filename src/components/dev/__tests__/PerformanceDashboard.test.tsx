@@ -116,6 +116,7 @@ describe('PerformanceDashboard', () => {
 
   afterEach(() => {
     process.env.NODE_ENV = originalEnv;
+    jest.restoreAllMocks();
   });
 
   it('renders in development on mobile', () => {
@@ -163,19 +164,15 @@ describe('PerformanceDashboard', () => {
 
     const mockAppendChild = jest.fn();
     const mockRemoveChild = jest.fn();
-    const mockClick = jest.fn();
-
-    const mockAnchor = {
-      href: '',
-      download: '',
-      click: mockClick,
-    };
-
-    jest.spyOn(document, 'createElement').mockReturnValue(mockAnchor as any);
-    jest.spyOn(document.body, 'appendChild').mockImplementation(mockAppendChild);
-    jest.spyOn(document.body, 'removeChild').mockImplementation(mockRemoveChild);
+    const mockClick = jest.fn(() => undefined);
+    const mockAnchor = document.createElement('a');
+    jest.spyOn(mockAnchor, 'click').mockImplementation(mockClick);
 
     render(<PerformanceDashboard />);
+
+    jest.spyOn(document.body, 'appendChild').mockImplementation(mockAppendChild);
+    jest.spyOn(document.body, 'removeChild').mockImplementation(mockRemoveChild);
+    jest.spyOn(document, 'createElement').mockReturnValue(mockAnchor);
 
     fireEvent.click(screen.getByTitle('리포트 다운로드'));
 
@@ -192,4 +189,3 @@ describe('PerformanceDashboard', () => {
     expect(container.firstChild).toBeNull();
   });
 });
-

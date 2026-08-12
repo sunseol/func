@@ -31,6 +31,8 @@ export const NotificationManager: React.FC<NotificationManagerProps> = ({
 
   // Initialize notification queue
   const {
+    queue,
+    processing,
     enqueue,
     dequeue,
     processNext,
@@ -46,6 +48,23 @@ export const NotificationManager: React.FC<NotificationManagerProps> = ({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!enableQueue) return;
+
+    const activeIds = new Set(toasts.map((toast) => toast.id));
+    const trackedIds = [
+      ...displayedToasts.map((toast) => toast.id),
+      ...queue.map((notification) => notification.id),
+      ...processing,
+    ];
+    const vanishedIds = [...new Set(trackedIds)].filter((id) => !activeIds.has(id));
+
+    if (vanishedIds.length === 0) return;
+
+    setDisplayedToasts((previous) => previous.filter((toast) => activeIds.has(toast.id)));
+    vanishedIds.forEach(dequeue);
+  }, [toasts, displayedToasts, queue, processing, dequeue, enableQueue]);
 
   // Handle new toasts from context
   useEffect(() => {

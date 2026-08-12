@@ -348,7 +348,7 @@ export function useProject(projectId: string | null) {
 // Hook for caching documents
 export function useDocuments(projectId: string | null, workflowStep: number | null) {
   const url = projectId && workflowStep 
-    ? `/api/ai-pm/documents?project_id=${projectId}&workflow_step=${workflowStep}`
+    ? `/api/ai-pm/documents?projectId=${encodeURIComponent(projectId)}&workflowStep=${encodeURIComponent(String(workflowStep))}`
     : null;
     
   return useFetch<{ documents: Array<unknown> }>(url, {
@@ -358,4 +358,4 @@ export function useDocuments(projectId: string | null, workflowStep: number | nu
 }
 
 // Export cache utilities
-export { ApiCache }; 
+export { ApiCache };

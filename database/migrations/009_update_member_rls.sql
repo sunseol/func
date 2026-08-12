@@ -24,4 +24,7 @@ CREATE POLICY "Project members and admins can add new members" ON project_member
     )
   );
 
-RAISE NOTICE 'project_members 테이블의 INSERT 정책이 업데이트되었습니다.';
+DO $$
+BEGIN
+  RAISE NOTICE 'project_members 테이블의 INSERT 정책이 업데이트되었습니다.';
+END $$;

@@ -415,7 +415,7 @@ export const PriorityNotification: React.FC<PriorityNotificationProps> = ({
         </div>
       )}
 
-      <style jsx>{`
+      <style>{`
         @keyframes priority-progress {
           from { width: 100%; }
           to { width: 0%; }

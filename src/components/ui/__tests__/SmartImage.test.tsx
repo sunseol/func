@@ -1,11 +1,32 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { ViewportProvider } from '@/contexts/ViewportContext';
+import type { ImageProps } from 'next/image';
+import type { OptimizedImageConfig } from '@/lib/image-formats';
+
+const mockViewportState = {
+  isMobile: false,
+  isTablet: false,
+  isDesktop: true,
+  width: 1200,
+  height: 800,
+  orientation: 'portrait' as const,
+  isTouch: false,
+  hasHover: true,
+  isOnline: true,
+};
+
+type MockImageProps = Omit<ImageProps, 'src'> & { src: string };
+
+jest.mock('@/contexts/ViewportContext', () => ({
+  useViewport: () => mockViewportState,
+  ViewportProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
 import SmartImage, { SmartAvatar, SmartHeroImage } from '../SmartImage';
 
 // Mock Next.js Image component
 jest.mock('next/image', () => {
-  return function MockImage({ src, alt, onLoad, onError, onLoadStart, ...props }: any) {
+  return function MockImage({ src, alt, onLoad, onError, onLoadStart, ...props }: MockImageProps) {
     return (
       <img
         src={src}
@@ -30,7 +51,7 @@ jest.mock('@/hooks/useImageOptimization', () => ({
 
 // Mock image format utilities
 jest.mock('@/lib/image-formats', () => ({
-  createOptimizedImageUrl: (config: any) => config.src,
+  createOptimizedImageUrl: (config: OptimizedImageConfig) => config.src,
   calculateMobileOptimizedSizes: (width: number, height: number) => ({ width, height }),
   getNetworkAwareQuality: (quality: number) => quality,
   recommendImageQuality: () => 75,
@@ -39,23 +60,14 @@ jest.mock('@/lib/image-formats', () => ({
   },
 }));
 
-const MockViewportProvider = ({ children, isMobile = false }: any) => {
-  const mockValue = {
-    isMobile,
-    isTablet: false,
-    isDesktop: !isMobile,
-    width: isMobile ? 375 : 1200,
-    height: isMobile ? 667 : 800,
-    orientation: 'portrait' as const,
-    isTouch: isMobile,
-    hasHover: !isMobile,
-  };
-
-  return (
-    <ViewportProvider value={mockValue}>
-      {children}
-    </ViewportProvider>
-  );
+const MockViewportProvider = ({ children, isMobile = false }: { children: React.ReactNode; isMobile?: boolean }) => {
+  mockViewportState.isMobile = isMobile;
+  mockViewportState.isDesktop = !isMobile;
+  mockViewportState.width = isMobile ? 375 : 1200;
+  mockViewportState.height = isMobile ? 667 : 800;
+  mockViewportState.isTouch = isMobile;
+  mockViewportState.hasHover = !isMobile;
+  return <ViewportProvider>{children}</ViewportProvider>;
 };
 
 describe('SmartImage', () => {

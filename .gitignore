@@ -11,6 +11,8 @@
 
 # next.js
 /.next/
+/.next.*/
+/.swc/
 /out/
 
 # production
@@ -19,6 +21,7 @@
 # misc
 .DS_Store
 *.pem
+**/._*
 
 # debug
 npm-debug.log*
@@ -31,6 +34,18 @@ yarn-error.log*
 
 # vercel
 .vercel
+
+# generated browser reports
+/playwright-report/
+/test-results/
+
+# local Codex/OMO runtime evidence
+/.omo/
+
+# generated local Supabase migrations and runtime state
+/supabase/migrations/
+/supabase/.temp/
+/supabase/.branches/
 
 # typescript
 *.tsbuildinfo

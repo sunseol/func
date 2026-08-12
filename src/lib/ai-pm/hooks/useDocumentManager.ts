@@ -33,7 +33,7 @@ interface DocumentManagerState {
 interface DocumentManagerActions {
   loadDocument: () => Promise<void>;
   createDocument: (title: string, content: string) => Promise<PlanningDocumentWithUsers>;
-  updateDocument: (updates: UpdateDocumentRequest) => Promise<PlanningDocumentWithUsers>;
+  updateDocument: (updates: Omit<UpdateDocumentRequest, 'version'>) => Promise<PlanningDocumentWithUsers>;
   generateDocument: () => Promise<PlanningDocumentWithUsers>;
   changeStatus: (status: DocumentStatus) => Promise<PlanningDocumentWithUsers>;
   deleteDocument: () => Promise<void>;
@@ -208,7 +208,7 @@ export function useDocumentManager(options: UseDocumentManagerOptions): [Documen
   }, [projectId, workflowStep]);
 
   // Update document
-  const updateDocument = useCallback(async (updates: UpdateDocumentRequest): Promise<PlanningDocumentWithUsers> => {
+  const updateDocument = useCallback(async (updates: Omit<UpdateDocumentRequest, 'version'>): Promise<PlanningDocumentWithUsers> => {
     if (!state.document) {
       throw new Error('업데이트할 문서가 없습니다.');
     }
@@ -221,7 +221,7 @@ export function useDocumentManager(options: UseDocumentManagerOptions): [Documen
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(updates),
+        body: JSON.stringify({ ...updates, version: state.document.version }),
       });
 
       if (!response.ok) {

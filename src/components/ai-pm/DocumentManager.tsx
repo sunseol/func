@@ -7,6 +7,7 @@ import {
   PlanningDocumentWithUsers,
   DocumentStatus,
   WorkflowStep,
+  canProjectRoleApprove,
 } from '@/types/ai-pm';
 import { 
   PlusOutlined,
@@ -126,6 +127,7 @@ export default function DocumentManager({
   const getMenuItems = (doc: PlanningDocumentWithUsers): MenuProps['items'] => {
     const items: MenuProps['items'] = [];
     const userRole = projectMemberships.find(m => m.project_id === doc.project_id)?.role;
+    const canApprovePendingDocument = isAdmin || (userRole !== undefined && canProjectRoleApprove(userRole, workflowStep));
     
     if (doc.created_by === user?.id && doc.status === 'private') {
       items.push({ 
@@ -136,7 +138,7 @@ export default function DocumentManager({
       });
     }
 
-    if (doc.status === 'pending_approval' && doc.created_by !== user?.id && isAdmin) {
+    if (doc.status === 'pending_approval' && canApprovePendingDocument) {
         items.push({ 
             key: 'approve', 
             label: '승인', 
@@ -190,7 +192,7 @@ export default function DocumentManager({
                     </p>
                   </div>
                   <Dropdown menu={{ items: getMenuItems(doc) }} trigger={['click']}>
-                    <Button type="text" icon={<EllipsisOutlined />} />
+                    <Button type="text" aria-label={`문서 작업 ${doc.title}`} icon={<EllipsisOutlined />} />
                   </Dropdown>
                 </div>
               </div>

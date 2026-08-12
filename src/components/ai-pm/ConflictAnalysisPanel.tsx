@@ -115,7 +115,7 @@ export default function ConflictAnalysisPanel({
   const conflictLevelInfo = analysisResult ? getConflictLevelInfo(analysisResult.conflictLevel) : null;
 
   return (
-    <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 ${className}`}>
+    <div data-testid="conflict-analysis-panel" className={`fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 ${className}`}>
       <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl h-full max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
@@ -123,7 +123,7 @@ export default function ConflictAnalysisPanel({
             <DocumentTextIcon className="w-6 h-6 text-blue-500" />
             <h2 className="text-xl font-semibold text-gray-900">AI 문서 충돌 분석</h2>
             {analysisResult && (
-              <span className={`px-3 py-1 text-sm rounded-full border ${conflictLevelInfo?.color}`}>
+              <span data-testid="conflict-severity" className={`px-3 py-1 text-sm rounded-full border ${conflictLevelInfo?.color}`}>
                 {conflictLevelInfo?.text}
               </span>
             )}
@@ -247,7 +247,7 @@ export default function ConflictAnalysisPanel({
 
               {/* Recommendations Section */}
               {analysisResult.recommendations.length > 0 && (
-                <div className="bg-white border border-gray-200 rounded-lg">
+                <div data-testid="conflict-suggestions" className="bg-white border border-gray-200 rounded-lg">
                   <div className="p-4 border-b border-gray-200">
                     <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                       <LightBulbIcon className="w-5 h-5 text-yellow-500" />
@@ -313,4 +313,4 @@ export default function ConflictAnalysisPanel({
       </div>
     </div>
   );
-} 
+}

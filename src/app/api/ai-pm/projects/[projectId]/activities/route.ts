@@ -1,10 +1,22 @@
 ﻿import { NextRequest } from 'next/server';
-import { ApiError, json, parseJson, withApi } from '@/lib/http';
+import { ApiError, json, withApi } from '@/lib/http';
 import { getSupabase, requireAuth, requireProjectAccess } from '@/lib/ai-pm/auth';
-import { requireString, requireUuid, sanitizeText } from '@/lib/ai-pm/validators';
+import { requireUuid } from '@/lib/ai-pm/validators';
 import { AIpmErrorType } from '@/types/ai-pm';
 
 type Context = { params: Promise<{ projectId: string }> };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function parseIntegerParameter(value: string | null, field: string, fallback: number): number {
+  if (value === null || value === '') return fallback;
+  if (!/^[0-9]+$/.test(value)) {
+    throw new ApiError(400, AIpmErrorType.VALIDATION_ERROR, `${field} must be a non-negative integer`);
+  }
+  return Number(value);
+}
 
 export const GET = withApi(async (request: NextRequest, { params }: Context) => {
   const supabase = await getSupabase();
@@ -15,8 +27,8 @@ export const GET = withApi(async (request: NextRequest, { params }: Context) => 
   await requireProjectAccess(supabase, auth, safeProjectId);
 
   const url = new URL(request.url);
-  const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '20', 10), 1), 100);
-  const offset = Math.max(parseInt(url.searchParams.get('offset') || '0', 10), 0);
+  const limit = Math.min(Math.max(parseIntegerParameter(url.searchParams.get('limit'), 'limit', 20), 1), 100);
+  const offset = parseIntegerParameter(url.searchParams.get('offset'), 'offset', 0);
   const includeStats = url.searchParams.get('includeStats') === 'true';
   const includeMemberSummary = url.searchParams.get('includeMemberSummary') === 'true';
 
@@ -32,15 +44,24 @@ export const GET = withApi(async (request: NextRequest, { params }: Context) => 
   }
 
   const userIds = Array.from(new Set((activities || []).map((activity) => activity.user_id).filter(Boolean)));
-  const { data: profiles } = await supabase
+  const { data: profiles, error: profilesError } = await supabase
     .from('user_profiles')
     .select('id, full_name, email')
     .in('id', userIds);
+  if (profilesError) {
+    throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to fetch activity profiles', profilesError);
+  }
 
-  const profilesById = new Map((profiles || []).map((profile: any) => [profile.id, profile]));
+  const profilesById = new Map(
+    (profiles || []).filter(isRecord).flatMap((profile) => {
+      const id = profile.id;
+      return typeof id === 'string' ? [[id, profile] as const] : [];
+    }),
+  );
 
-  const normalizedActivities = (activities || []).map((activity: any) => {
-    const profile = activity.user_id ? profilesById.get(activity.user_id) : null;
+  const normalizedActivities = (activities || []).filter(isRecord).map((activity) => {
+    const userId = activity.user_id;
+    const profile = typeof userId === 'string' ? profilesById.get(userId) : undefined;
     return {
       ...activity,
       user_name: profile?.full_name ?? null,
@@ -58,11 +79,14 @@ export const GET = withApi(async (request: NextRequest, { params }: Context) => 
   };
 
   if (includeStats) {
-    const { data: stats } = await supabase
+    const { data: stats, error: statsError } = await supabase
     .from('project_collaboration_stats')
     .select('*')
     .eq('project_id', safeProjectId)
       .maybeSingle();
+    if (statsError) {
+      throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to fetch collaboration stats', statsError);
+    }
 
     response.collaborationStats =
       stats ||
@@ -88,25 +112,42 @@ export const GET = withApi(async (request: NextRequest, { params }: Context) => 
     }
 
     const summaryUserIds = Array.from(new Set((summaries || []).map((summary) => summary.user_id)));
-    const { data: summaryProfiles } = await supabase
+    const { data: summaryProfiles, error: summaryProfilesError } = await supabase
       .from('user_profiles')
       .select('id, full_name, email')
       .in('id', summaryUserIds);
-    const { data: roles } = await supabase
+    if (summaryProfilesError) {
+      throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to fetch member profiles', summaryProfilesError);
+    }
+    const { data: roles, error: rolesError } = await supabase
       .from('project_members')
       .select('user_id, role')
       .eq('project_id', safeProjectId);
+    if (rolesError) {
+      throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to fetch member roles', rolesError);
+    }
 
-    const profileMap = new Map((summaryProfiles || []).map((profile: any) => [profile.id, profile]));
-    const roleMap = new Map((roles || []).map((member: any) => [member.user_id, member.role]));
+    const profileMap = new Map(
+      (summaryProfiles || []).filter(isRecord).flatMap((profile) => {
+        const id = profile.id;
+        return typeof id === 'string' ? [[id, profile] as const] : [];
+      }),
+    );
+    const roleMap = new Map(
+      (roles || []).filter(isRecord).flatMap((member) => {
+        const userId = member.user_id;
+        return typeof userId === 'string' ? [[userId, member.role] as const] : [];
+      }),
+    );
 
-    response.memberSummary = (summaries || []).map((summary: any) => {
-      const profile = profileMap.get(summary.user_id);
+    response.memberSummary = (summaries || []).filter(isRecord).map((summary) => {
+      const userId = summary.user_id;
+      const profile = typeof userId === 'string' ? profileMap.get(userId) : undefined;
       return {
         ...summary,
         user_name: profile?.full_name ?? null,
         user_email: profile?.email ?? null,
-        role: roleMap.get(summary.user_id) ?? null,
+        role: typeof userId === 'string' ? roleMap.get(userId) ?? null : null,
       };
     });
   }
@@ -115,37 +156,7 @@ export const GET = withApi(async (request: NextRequest, { params }: Context) => 
 });
 
 export const POST = withApi(async (request: NextRequest, { params }: Context) => {
-  const supabase = await getSupabase();
-  const auth = await requireAuth(supabase);
-  const { projectId } = await params;
-  const safeProjectId = requireUuid(projectId, 'projectId');
-
-  await requireProjectAccess(supabase, auth, safeProjectId);
-
-  const body = await parseJson<{
-    activity_type?: string;
-    target_type?: string | null;
-    target_id?: string | null;
-    metadata?: Record<string, unknown>;
-    description?: string;
-  }>(request);
-
-  const activityType = requireString(body.activity_type, 'activity_type');
-  const description = requireString(body.description, 'description');
-
-  const { data: result, error } = await supabase.rpc('log_project_activity', {
-    p_project_id: safeProjectId,
-    p_user_id: auth.user.id,
-    p_activity_type: activityType,
-    p_target_type: body.target_type ?? null,
-    p_target_id: body.target_id ?? null,
-    p_metadata: body.metadata ?? {},
-    p_description: sanitizeText(description),
-  });
-
-  if (error) {
-    throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Failed to log activity', error);
-  }
-
-  return json({ success: true, activity_id: result });
+  void request;
+  void params;
+  throw new ApiError(405, AIpmErrorType.VALIDATION_ERROR, 'Activity records are generated by server workflows');
 });

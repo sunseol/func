@@ -247,7 +247,7 @@ describe('useDocumentManager', () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ title: 'Updated Title' }),
+        body: JSON.stringify({ title: 'Updated Title', version: 1 }),
       });
     });
 
@@ -528,7 +528,7 @@ describe('useDocumentManager', () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ content: 'New content', title: 'New title' }),
+        body: JSON.stringify({ content: 'New content', title: 'New title', version: 1 }),
       });
     });
   });

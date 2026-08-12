@@ -1,13 +1,23 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Card, Switch, TimePicker, Button, Space, Typography, Divider, List, Badge, App } from 'antd';
+import { Alert, Card, Switch, TimePicker, Button, Space, Typography, Divider, List, Badge, App } from 'antd';
 import { BellOutlined, SettingOutlined, CheckOutlined } from '@ant-design/icons';
-import { useNotification } from '@/contexts/NotificationContext';
+import { useNotification, type NotificationHistory, type NotificationSettings as NotificationSettingsRecord } from '@/contexts/NotificationContext';
 import { useTheme } from '@/app/components/ThemeProvider';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
+
+type EditableSettingKey =
+  | 'browser_notifications'
+  | 'morning_reminder_enabled'
+  | 'morning_reminder_time'
+  | 'evening_reminder_enabled'
+  | 'evening_reminder_time'
+  | 'weekend_reminders'
+  | 'email_notifications';
+type EditableSettingValue = NotificationSettingsRecord[EditableSettingKey];
 
 export default function NotificationSettings() {
   const {
@@ -15,6 +25,7 @@ export default function NotificationSettings() {
     notifications,
     unreadCount,
     loading,
+    loadError,
     updateSettings,
     markAsRead,
     markAllAsRead,
@@ -24,23 +35,29 @@ export default function NotificationSettings() {
 
   const { isDarkMode } = useTheme();
   const [isSaving, setIsSaving] = useState(false);
+  const [permissionResult, setPermissionResult] = useState<'granted' | 'denied' | null>(null);
   const { message: messageApi } = App.useApp();
 
-  const handleSettingChange = async (key: string, value: any) => {
+  const handleSettingChange = async (key: EditableSettingKey, value: EditableSettingValue) => {
     if (!settings) return;
 
     setIsSaving(true);
     try {
-      await updateSettings({ [key]: value });
+      const patch: Partial<NotificationSettingsRecord> = { [key]: value };
+      await updateSettings(patch);
       messageApi.success('알림 설정이 저장되었습니다.');
-    } catch (err) {
+    } catch (error) {
+      console.error('Notification settings save error:', error);
       messageApi.error('알림 설정 저장에 실패했습니다.');
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleTimeChange = async (key: string, time: dayjs.Dayjs | null) => {
+  const handleTimeChange = async (
+    key: 'morning_reminder_time' | 'evening_reminder_time',
+    time: dayjs.Dayjs | null,
+  ) => {
     if (!time || !settings) return;
 
     const timeString = time.format('HH:mm:ss');
@@ -48,12 +65,16 @@ export default function NotificationSettings() {
   };
 
   const handleRequestPermission = async () => {
-    const granted = await requestNotificationPermission();
-    if (granted) {
-      messageApi.success('브라우저 알림 권한이 허용되었습니다.');
-      sendBrowserNotification('알림 테스트', '알림이 정상적으로 작동합니다! 🎉');
-    } else {
-      messageApi.error('브라우저 알림 권한이 거부되었습니다.');
+    setPermissionResult(null);
+    try {
+      const granted = await requestNotificationPermission();
+      setPermissionResult(granted ? 'granted' : 'denied');
+      if (granted) {
+        sendBrowserNotification('알림 테스트', '알림이 정상적으로 작동합니다! 🎉');
+      }
+    } catch (error) {
+      console.error('Browser notification permission request failed:', error);
+      setPermissionResult('denied');
     }
   };
 
@@ -75,11 +96,21 @@ export default function NotificationSettings() {
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      {loadError && <Alert type="warning" showIcon message={loadError} />}
       <Card
         title={
           <Space>
             <SettingOutlined />
-            <span style={{ color: isDarkMode ? '#fff' : '#000' }}>알림 설정</span>
+            <h2
+              style={{
+                color: isDarkMode ? '#fff' : '#000',
+                fontSize: 'inherit',
+                fontWeight: 'inherit',
+                margin: 0,
+              }}
+            >
+              알림 설정
+            </h2>
           </Space>
         }
         style={{
@@ -99,21 +130,30 @@ export default function NotificationSettings() {
                   </Text>
                 </div>
                 <Switch
+                  className="notification-switch-touch-target"
+                  aria-label="브라우저 알림"
                   checked={settings.browser_notifications}
                   onChange={(checked) => handleSettingChange('browser_notifications', checked)}
                   loading={isSaving}
+                  style={{ width: 44, minWidth: 44, height: 44, minHeight: 44 }}
                 />
               </div>
               
-              {settings.browser_notifications && (
-                <Space>
-                  <Button size="small" onClick={handleRequestPermission}>
-                    권한 요청
-                  </Button>
-                  <Button size="small" onClick={handleTestNotification}>
-                    테스트 알림
-                  </Button>
-                </Space>
+              <Space>
+                <Button size="small" onClick={handleRequestPermission} style={{ minHeight: 44 }}>
+                  권한 요청
+                </Button>
+                <Button size="small" onClick={handleTestNotification} style={{ minHeight: 44 }}>
+                  테스트 알림
+                </Button>
+              </Space>
+              {permissionResult && (
+                <Alert
+                  role="alert"
+                  type={permissionResult === 'granted' ? 'success' : 'error'}
+                  showIcon
+                  message={`브라우저 알림 권한이 ${permissionResult === 'granted' ? '허용' : '거부'}되었습니다.`}
+                />
               )}
             </Space>
           </div>
@@ -130,6 +170,8 @@ export default function NotificationSettings() {
                 </Text>
               </div>
               <Switch
+                className="notification-switch-touch-target"
+                aria-label="출근 보고서 알림"
                 checked={settings.morning_reminder_enabled}
                 onChange={(checked) => handleSettingChange('morning_reminder_enabled', checked)}
                 loading={isSaving}
@@ -140,10 +182,12 @@ export default function NotificationSettings() {
               <div style={{ marginLeft: 16 }}>
                 <Text style={{ color: isDarkMode ? '#fff' : '#000' }}>알림 시간: </Text>
                 <TimePicker
+                  className="notification-time-picker"
                   value={dayjs(settings.morning_reminder_time, 'HH:mm:ss')}
                   format="HH:mm"
                   onChange={(time) => handleTimeChange('morning_reminder_time', time)}
-                  size="small"
+                  size="large"
+                  style={{ minWidth: 91, minHeight: 44 }}
                 />
               </div>
             )}
@@ -161,9 +205,12 @@ export default function NotificationSettings() {
                 </Text>
               </div>
               <Switch
+                className="notification-switch-touch-target"
+                aria-label="퇴근 보고서 알림"
                 checked={settings.evening_reminder_enabled}
                 onChange={(checked) => handleSettingChange('evening_reminder_enabled', checked)}
                 loading={isSaving}
+                style={{ width: 44, minWidth: 44, height: 44, minHeight: 44 }}
               />
             </div>
             
@@ -171,10 +218,12 @@ export default function NotificationSettings() {
               <div style={{ marginLeft: 16 }}>
                 <Text style={{ color: isDarkMode ? '#fff' : '#000' }}>알림 시간: </Text>
                 <TimePicker
+                  className="notification-time-picker"
                   value={dayjs(settings.evening_reminder_time, 'HH:mm:ss')}
                   format="HH:mm"
                   onChange={(time) => handleTimeChange('evening_reminder_time', time)}
-                  size="small"
+                  size="large"
+                  style={{ minWidth: 91, minHeight: 44 }}
                 />
               </div>
             )}
@@ -191,9 +240,12 @@ export default function NotificationSettings() {
               </Text>
             </div>
             <Switch
+              className="notification-switch-touch-target"
+              aria-label="주말 알림"
               checked={settings.weekend_reminders}
               onChange={(checked) => handleSettingChange('weekend_reminders', checked)}
               loading={isSaving}
+              style={{ width: 44, minWidth: 44, height: 44, minHeight: 44 }}
             />
           </div>
 
@@ -208,10 +260,13 @@ export default function NotificationSettings() {
               </Text>
             </div>
             <Switch
+              className="notification-switch-touch-target"
+              aria-label="이메일 알림"
               checked={settings.email_notifications}
               onChange={(checked) => handleSettingChange('email_notifications', checked)}
               loading={isSaving}
               disabled
+              style={{ width: 44, minWidth: 44, height: 44, minHeight: 44 }}
             />
           </div>
         </Space>
@@ -231,7 +286,7 @@ export default function NotificationSettings() {
         }}
         extra={
           unreadCount > 0 && (
-            <Button size="small" icon={<CheckOutlined />} onClick={markAllAsRead}>
+            <Button size="small" aria-label="모두 읽음" icon={<CheckOutlined />} onClick={markAllAsRead} style={{ minHeight: 44 }}>
               모두 읽음
             </Button>
           )
@@ -242,9 +297,10 @@ export default function NotificationSettings() {
         ) : (
           <List
             dataSource={notifications.slice(0, 10).filter(item => item && item.id)}
-            renderItem={(item: any) => (
+            renderItem={(item: NotificationHistory) => (
               <List.Item
                 key={item.id}
+                aria-label={`알림: ${item.title}`}
                 style={{
                   backgroundColor: item.is_read 
                     ? 'transparent' 
@@ -262,8 +318,10 @@ export default function NotificationSettings() {
                       key="read"
                       type="link"
                       size="small"
+                      aria-label="읽음"
                       icon={<CheckOutlined />}
                       onClick={() => markAsRead(item.id)}
+                      style={{ minHeight: 44, paddingInline: 12 }}
                     >
                       읽음
                     </Button>

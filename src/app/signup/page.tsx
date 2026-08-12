@@ -8,28 +8,8 @@ import { Card, Form, Input, Button, Typography, Alert, Space, Switch } from 'ant
 import { UserOutlined, LockOutlined, MailOutlined, SunOutlined, MoonOutlined } from '@ant-design/icons';
 
 const { Title, Text } = Typography;
-
-function isDuplicateEmailError(error: unknown): boolean {
-  if (!error || typeof error !== 'object' || !('message' in error)) return false;
-  const message = String((error as { message?: string }).message || '').toLowerCase();
-  return (
-    message.includes('already registered') ||
-    message.includes('already exists') ||
-    message.includes('email already') ||
-    message.includes('user already')
-  );
-}
-
-async function checkEmailExists(email: string): Promise<boolean | null> {
-  try {
-    const response = await fetch(`/api/auth/check-email?email=${encodeURIComponent(email)}`);
-    if (!response.ok) return null;
-    const data = (await response.json()) as { exists?: boolean };
-    return !!data.exists;
-  } catch {
-    return null;
-  }
-}
+const GENERIC_SIGNUP_MESSAGE = '가입 요청을 처리했습니다. 입력하신 이메일의 안내를 확인해주세요.';
+const GENERIC_RESEND_MESSAGE = '요청을 처리했습니다. 입력하신 이메일을 확인해주세요.';
 
 export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
@@ -52,13 +32,7 @@ export default function SignupPage() {
     }
 
     try {
-      const emailExists = await checkEmailExists(values.email);
-      if (emailExists) {
-        setError('이미 가입된 이메일입니다. 로그인해주세요.');
-        return;
-      }
-
-      const { data, error: signUpError } = await supabase.auth.signUp({
+      const { error: signUpError } = await supabase.auth.signUp({
         email: values.email,
         password: values.password,
         options: {
@@ -70,54 +44,15 @@ export default function SignupPage() {
       });
 
       if (signUpError) {
-        if (isDuplicateEmailError(signUpError)) {
-          setError('이미 가입된 이메일입니다. 로그인해주세요.');
-          return;
-        }
-        throw signUpError;
-      }
-
-      if (data.user && data.user.identities && data.user.identities.length === 0) {
-        setError('이미 가입된 이메일입니다. 로그인해주세요.');
-        return;
-      }
-      if (!data.user) {
-        setError('Unable to create account. If you already have an account, please log in.');
+        setMessage(GENERIC_SIGNUP_MESSAGE);
         return;
       }
 
-      // signUp 함수의 반환값에서 user 객체를 확인합니다.
-      // Supabase 설정에서 이메일 확인이 활성화된 경우, user 객체가 바로 반환되지 않거나,
-      // user 객체 내의 `identities` 배열이 비어있을 수 있습니다.
-      // 이메일 확인이 필요한 경우 사용자에게 안내 메시지를 표시합니다.
-
-      if (data.user && data.user.identities && data.user.identities.length === 0) {
-        setMessage(
-          '가입 확인 메일이 발송되었습니다. 이메일을 확인하여 계정을 활성화해주세요. 메일이 보이지 않으면 스팸함도 확인해주세요.'
-        );
-      } else if (data.user) {
-         setMessage(
-          '회원가입이 완료되었습니다. 확인 메일이 발송되었을 수 있으니 확인해주세요. 바로 로그인할 수 있습니다.'
-        );       
-        // 이메일 확인이 필수가 아닌 경우 또는 자동 로그인되는 경우 바로 홈으로 보낼 수 있습니다.
-        // router.push('/'); 
-      } else {
-        // data.user가 null이지만 에러도 없는 경우 (예: 이메일 확인이 강제되는 경우)
-        setMessage(
-          '가입 확인 메일이 발송되었습니다. 이메일을 확인하여 계정을 활성화해주세요. 메일이 보이지 않으면 스팸함도 확인해주세요.'
-        );
-      }
-      // 폼 초기화
+      setMessage(GENERIC_SIGNUP_MESSAGE);
       form.resetFields();
 
     } catch (err: unknown) {
-      if (isDuplicateEmailError(err)) {
-        setError('이미 가입된 이메일입니다. 로그인해주세요.');
-      } else if (err instanceof Error) {
-        setError(err.message || '회원가입 중 오류가 발생했습니다.');
-      } else {
-        setError('알 수 없는 오류로 회원가입에 실패했습니다.');
-      }
+      setMessage(GENERIC_SIGNUP_MESSAGE);
       console.error('Signup error:', err);
     } finally {
       setLoading(false);
@@ -136,22 +71,14 @@ export default function SignupPage() {
     setError(null);
 
     try {
-      const { error } = await supabase.auth.resend({
+      await supabase.auth.resend({
         type: 'signup',
         email: email,
       });
 
-      if (error) {
-        throw error;
-      }
-
-      setMessage('이메일 확인 링크가 재전송되었습니다. 이메일을 확인해주세요.');
-    } catch (err: unknown) {
-      if (err instanceof Error) {
-        setError(`이메일 재전송 실패: ${err.message}`);
-      } else {
-        setError('이메일 재전송 중 오류가 발생했습니다.');
-      }
+      setMessage(GENERIC_RESEND_MESSAGE);
+    } catch {
+      setMessage(GENERIC_RESEND_MESSAGE);
     } finally {
       setResendLoading(false);
     }
