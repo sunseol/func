@@ -108,17 +108,6 @@ export default function AdminPage() {
 
   const { message: messageApi } = AntApp.useApp();
 
-  // 디버깅용 - 사용자 정보 출력
-  useEffect(() => {
-    if (user) {
-      console.log('현재 사용자 정보:', {
-        email: user.email,
-        user_metadata: user.user_metadata,
-        isAdmin: isAdmin
-      });
-    }
-  }, [user, isAdmin]);
-
   const fetchData = useCallback(async () => {
     if (!user || !isAdmin) {
       console.log('fetchData 중단: user 또는 isAdmin 조건 불만족', { user: !!user, isAdmin });
