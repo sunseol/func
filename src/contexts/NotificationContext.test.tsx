@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NotificationProvider, useNotification } from './NotificationContext';
 
 type QueryResult = { data: unknown; error: Error | null };
@@ -17,8 +17,9 @@ type QueryBuilder = {
 type MockClient = { from: jest.Mock<QueryBuilder, [string]> };
 
 const mockUser = { id: 'notification-owner', email: 'owner@example.com' };
+const switchedUser = { id: 'notification-owner-2', email: 'second-owner@example.com' };
 let mockClient: MockClient;
-let authUser: typeof mockUser | null = mockUser;
+let authUser: typeof mockUser | typeof switchedUser | null = mockUser;
 
 jest.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ user: authUser }),
@@ -55,14 +56,21 @@ function configureClient(settings: QueryResult, history: QueryResult, settingsWr
 }
 
 function Probe() {
-  const { settings, notifications, loadError, updateSettings, markAsRead } = useNotification();
+  const { settings, notifications, loadError, updateSettings, markAsRead, sendBrowserNotification } = useNotification();
   return (
     <div>
       <output data-testid="settings-state">{settings ? settings.morning_reminder_enabled.toString() : 'none'}</output>
       <output data-testid="notification-state">{notifications.length}</output>
       <output data-testid="load-error">{loadError ?? ''}</output>
-      <button onClick={() => updateSettings({ morning_reminder_enabled: false, user_id: 'other-user' })}>update</button>
+      <button
+        onClick={() => {
+          void updateSettings({ morning_reminder_enabled: false, user_id: 'other-user' }).catch(() => undefined);
+        }}
+      >
+        update
+      </button>
       <button onClick={() => markAsRead('owned-notification')}>mark</button>
+      <button onClick={() => sendBrowserNotification('Test title', 'Test message')}>send</button>
     </div>
   );
 }
@@ -92,13 +100,22 @@ const existingNotification = {
 };
 
 describe('NotificationProvider recovery and ownership', () => {
+  const notificationConstructor = jest.fn();
+
   beforeEach(() => {
     authUser = mockUser;
+    notificationConstructor.mockClear();
+    Object.defineProperty(window, 'Notification', {
+      configurable: true,
+      value: Object.assign(notificationConstructor, { permission: 'granted' }),
+    });
     configureClient(
       { data: existingSettings, error: null },
       { data: [existingNotification], error: null },
     );
   });
+
+  afterEach(cleanup);
 
   it('loads an existing settings row and history for the signed-in owner', async () => {
     render(
@@ -169,6 +186,179 @@ describe('NotificationProvider recovery and ownership', () => {
 
     await waitFor(() => expect(screen.getByTestId('settings-state').textContent).toBe('true'));
     expect(screen.getByTestId('load-error').textContent).toContain('기본 설정을 표시합니다');
+  });
+
+  it('does not send after a previously opted-out user settings load fails', async () => {
+    const optedOutSettings = { ...existingSettings, browser_notifications: false };
+    let settingsLoadCount = 0;
+    const settingsBuilder = makeBuilder({ data: optedOutSettings, error: null });
+    settingsBuilder.maybeSingle = jest.fn(async () => {
+      settingsLoadCount += 1;
+      return settingsLoadCount === 1
+        ? { data: optedOutSettings, error: null }
+        : { data: null, error: new Error('RLS select denied') };
+    });
+    settingsBuilder.single = jest.fn(async () => ({ data: null, error: new Error('RLS upsert denied') }));
+    const historyBuilder = makeBuilder({ data: [], error: null });
+    mockClient = {
+      from: jest.fn((table: string) => (table === 'notification_settings' ? settingsBuilder : historyBuilder)),
+    };
+
+    const rendered = render(
+      <NotificationProvider>
+        <Probe />
+      </NotificationProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId('settings-state').textContent).toBe('false'));
+
+    rendered.rerender(
+      <NotificationProvider key="reload">
+        <Probe />
+      </NotificationProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId('settings-state').textContent).toBe('true'));
+    fireEvent.click(screen.getByRole('button', { name: 'send' }));
+
+    expect(notificationConstructor).not.toHaveBeenCalled();
+  });
+
+  it('does not send after the first settings load fails', async () => {
+    configureClient(
+      { data: null, error: new Error('network unavailable') },
+      { data: [], error: null },
+      { data: null, error: new Error('network unavailable') },
+    );
+
+    render(
+      <NotificationProvider>
+        <Probe />
+      </NotificationProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('settings-state').textContent).toBe('true'));
+    fireEvent.click(screen.getByRole('button', { name: 'send' }));
+
+    expect(notificationConstructor).not.toHaveBeenCalled();
+  });
+
+  it('does not send after a settings recovery write fails', async () => {
+    configureClient(
+      { data: existingSettings, error: null },
+      { data: [], error: null },
+      { data: null, error: new Error('RLS upsert denied') },
+    );
+
+    render(
+      <NotificationProvider>
+        <Probe />
+      </NotificationProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('settings-state').textContent).toBe('false'));
+    fireEvent.click(screen.getByRole('button', { name: 'update' }));
+    await waitFor(() => expect(screen.getByTestId('settings-state').textContent).toBe('false'));
+    fireEvent.click(screen.getByRole('button', { name: 'send' }));
+
+    expect(notificationConstructor).not.toHaveBeenCalled();
+  });
+
+  it('sends only after persisted opt-in is loaded and permission is granted', async () => {
+    render(
+      <NotificationProvider>
+        <Probe />
+      </NotificationProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('settings-state').textContent).toBe('false'));
+    fireEvent.click(screen.getByRole('button', { name: 'send' }));
+
+    expect(notificationConstructor).toHaveBeenCalledWith('Test title', { body: 'Test message' });
+  });
+
+  it('does not send when persisted browser notifications are disabled', async () => {
+    const optedOutSettings = { ...existingSettings, browser_notifications: false };
+    configureClient({ data: optedOutSettings, error: null }, { data: [], error: null });
+
+    render(
+      <NotificationProvider>
+        <Probe />
+      </NotificationProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('settings-state').textContent).toBe('false'));
+    fireEvent.click(screen.getByRole('button', { name: 'send' }));
+
+    expect(notificationConstructor).not.toHaveBeenCalled();
+  });
+
+  it('clears browser delivery eligibility on logout', async () => {
+    const rendered = render(
+      <NotificationProvider>
+        <Probe />
+      </NotificationProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('settings-state').textContent).toBe('false'));
+    fireEvent.click(screen.getByRole('button', { name: 'send' }));
+    expect(notificationConstructor).toHaveBeenCalledTimes(1);
+
+    authUser = null;
+    rendered.rerender(
+      <NotificationProvider>
+        <Probe />
+      </NotificationProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'send' }));
+
+    expect(notificationConstructor).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not let a stale account load re-enable browser delivery after a switch', async () => {
+    let resolveFirstLoad: ((value: QueryResult) => void) | undefined;
+    let resolveSecondLoad: ((value: QueryResult) => void) | undefined;
+    const settingsBuilder = makeBuilder({ data: null, error: null });
+    settingsBuilder.maybeSingle = jest.fn(
+      () =>
+        new Promise<QueryResult>((resolve) => {
+          if (!resolveFirstLoad) {
+            resolveFirstLoad = resolve;
+          } else {
+            resolveSecondLoad = resolve;
+          }
+        }),
+    );
+    const historyBuilder = makeBuilder({ data: [], error: null });
+    mockClient = {
+      from: jest.fn((table: string) => (table === 'notification_settings' ? settingsBuilder : historyBuilder)),
+    };
+
+    const rendered = render(
+      <NotificationProvider>
+        <Probe />
+      </NotificationProvider>,
+    );
+    await waitFor(() => expect(settingsBuilder.maybeSingle).toHaveBeenCalledTimes(1));
+
+    authUser = switchedUser;
+    rendered.rerender(
+      <NotificationProvider>
+        <Probe />
+      </NotificationProvider>,
+    );
+    await waitFor(() => expect(settingsBuilder.maybeSingle).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      resolveFirstLoad?.({ data: existingSettings, error: null });
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'send' }));
+    expect(notificationConstructor).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveSecondLoad?.({ data: { ...existingSettings, user_id: switchedUser.id }, error: null });
+    });
+    await waitFor(() => expect(screen.getByTestId('settings-state').textContent).toBe('false'));
+    fireEvent.click(screen.getByRole('button', { name: 'send' }));
+    expect(notificationConstructor).toHaveBeenCalledTimes(1);
   });
 
   it('keeps settings visible when history query fails', async () => {

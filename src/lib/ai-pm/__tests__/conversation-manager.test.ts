@@ -209,4 +209,43 @@ describe('ConversationManager atomic appends', () => {
     });
     expect(rpc).not.toHaveBeenCalled();
   });
+
+  it('returns the persisted assistant for an exact idempotency replay', async () => {
+    const supabase = createSupabaseClient();
+    const conversationQuery = supabase.from('ai_conversations');
+    const selectedConversationQuery = conversationQuery.select('*');
+    const maybeSingleQuery = selectedConversationQuery.maybeSingle();
+    jest.spyOn(maybeSingleQuery, 'then').mockImplementation((onfulfilled) => {
+      const response = {
+        data: {
+          id: 'conversation-1',
+          project_id: 'project-1',
+          workflow_step: 1,
+          user_id: 'user-1',
+          messages: [
+            { id: 'user-1', role: 'user', content: 'Hello', timestamp: '2026-08-04T00:00:00.000Z', idempotency_key: '33333333-3333-4333-8333-333333333333' },
+            { id: 'assistant-1', role: 'assistant', content: 'Persisted response A', timestamp: '2026-08-04T00:00:01.000Z', idempotency_key: '33333333-3333-4333-8333-333333333333' },
+          ],
+          created_at: '2026-08-04T00:00:00.000Z',
+          updated_at: '2026-08-04T00:00:01.000Z',
+        },
+        error: null,
+        count: null,
+        status: 200,
+        statusText: 'OK',
+      };
+      onfulfilled?.(response);
+      return Promise.resolve(response);
+    });
+    jest.spyOn(conversationQuery, 'select').mockReturnValue(selectedConversationQuery);
+    jest.spyOn(selectedConversationQuery, 'maybeSingle').mockReturnValue(maybeSingleQuery);
+    jest.spyOn(supabase, 'from').mockReturnValue(conversationQuery);
+    const manager = new ConversationManager(supabase);
+
+    await expect(manager.getIdempotentAssistantMessage('project-1', 1, 'user-1', {
+      idempotencyKey: '33333333-3333-4333-8333-333333333333',
+      userMessageId: 'user-1',
+      assistantMessageId: 'assistant-1',
+    })).resolves.toMatchObject({ content: 'Persisted response A' });
+  });
 });

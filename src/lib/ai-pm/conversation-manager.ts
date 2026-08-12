@@ -20,6 +20,12 @@ export interface ConversationAppendOptions {
   readonly idempotencyKey?: string;
 }
 
+export interface ConversationReplayOptions {
+  readonly idempotencyKey: string;
+  readonly userMessageId: string;
+  readonly assistantMessageId: string;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -30,16 +36,23 @@ function isWorkflowStep(value: unknown): value is WorkflowStep {
 
 function parseMessage(value: unknown): AIChatMessage | null {
   if (!isRecord(value)) return null;
-  const { id, role, content, timestamp } = value;
+  const { id, role, content, timestamp, idempotency_key: idempotencyKey } = value;
   if (
     typeof id !== 'string' ||
     (role !== 'user' && role !== 'assistant') ||
     typeof content !== 'string' ||
-    (typeof timestamp !== 'string' && !(timestamp instanceof Date))
+    (typeof timestamp !== 'string' && !(timestamp instanceof Date)) ||
+    (idempotencyKey !== undefined && typeof idempotencyKey !== 'string')
   ) {
     return null;
   }
-  return { id, role, content, timestamp: new Date(timestamp) };
+  return {
+    id,
+    role,
+    content,
+    timestamp: new Date(timestamp),
+    ...(idempotencyKey !== undefined ? { idempotency_key: idempotencyKey } : {}),
+  };
 }
 
 function parseConversation(value: unknown): AIConversation | null {
@@ -154,6 +167,44 @@ export class ConversationManager {
     } catch (error) {
       throw this.handleDatabaseError(error);
     }
+  }
+
+  async getIdempotentAssistantMessage(
+    projectId: string,
+    workflowStep: WorkflowStep,
+    userId: string,
+    options: ConversationReplayOptions,
+  ): Promise<AIChatMessage | null> {
+    const conversation = await this.loadConversation(projectId, workflowStep, userId);
+    if (!conversation) return null;
+
+    const keyedMessages = conversation.messages.filter(
+      (message) => message.idempotency_key === options.idempotencyKey,
+    );
+    const userMessage = conversation.messages.find(
+      (message) => message.id === options.userMessageId && message.role === 'user',
+    );
+    const assistantMessage = conversation.messages.find(
+      (message) => message.id === options.assistantMessageId && message.role === 'assistant',
+    );
+
+    if (keyedMessages.length === 0) {
+      if (userMessage || assistantMessage) {
+        throw this.handleDatabaseError(new Error('conversation message identity was already used with another request'));
+      }
+      return null;
+    }
+
+    if (
+      keyedMessages.some((message) => message.id === options.userMessageId) &&
+      keyedMessages.some((message) => message.id === options.assistantMessageId) &&
+      userMessage &&
+      assistantMessage
+    ) {
+      return assistantMessage;
+    }
+
+    throw this.handleDatabaseError(new Error('idempotency key was already used with another message pair'));
   }
 
   async getCurrentMessages(

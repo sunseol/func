@@ -103,6 +103,7 @@ export interface AIChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: string | Date;
+  readonly idempotency_key?: string;
 }
 
 export interface AIConversation {

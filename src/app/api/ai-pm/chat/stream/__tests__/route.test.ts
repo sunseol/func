@@ -9,16 +9,19 @@ import { getSupabase, requireAuth, requireProjectAccess, type AuthContext } from
 import { getConversationManager } from '@/lib/ai-pm/conversation-manager';
 import { AIpmErrorType } from '@/types/ai-pm';
 
+type PersistedConversation = { readonly messages: readonly { readonly id: string; readonly role: 'user' | 'assistant'; readonly content: string; readonly timestamp: string }[] };
 type AppendMessages = (
   projectId: string,
   workflowStep: number,
   messages: readonly unknown[],
   options?: { readonly idempotencyKey?: string },
-) => Promise<void>;
+) => Promise<PersistedConversation>;
 const mockAppendMessages = jest.fn<ReturnType<AppendMessages>, Parameters<AppendMessages>>(
-  async (_projectId, _workflowStep, _messages) => {},
+  async (_projectId, _workflowStep, messages) => ({ messages: messages as PersistedConversation['messages'] }),
 );
 const mockGetCurrentMessages = jest.fn(async () => []);
+type ReplayMessage = { readonly id: string; readonly role: 'assistant'; readonly content: string; readonly timestamp: string };
+const mockGetIdempotentAssistantMessage = jest.fn<Promise<ReplayMessage | null>, []>(async () => null);
 const mockGenerateStreamingResponse = jest.fn(async function* () {
   yield { content: 'Reply', error: undefined };
 });
@@ -33,6 +36,7 @@ jest.mock('@/lib/ai-pm/conversation-manager', () => ({
   getConversationManager: jest.fn(() => ({
     appendMessages: mockAppendMessages,
     getCurrentMessages: mockGetCurrentMessages,
+    getIdempotentAssistantMessage: mockGetIdempotentAssistantMessage,
   })),
 }));
 
@@ -71,6 +75,7 @@ describe('/api/ai-pm/chat/stream', () => {
     jest.clearAllMocks();
     mockAppendMessages.mockClear();
     mockGetCurrentMessages.mockClear();
+    mockGetIdempotentAssistantMessage.mockClear();
     mockGenerateStreamingResponse.mockReset();
     mockGenerateStreamingResponse.mockImplementation(async function* () {
       yield { content: 'Reply', error: undefined };
@@ -114,12 +119,73 @@ describe('/api/ai-pm/chat/stream', () => {
       body: JSON.stringify(body),
     });
 
+    mockGetIdempotentAssistantMessage
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: body.assistant_message_id,
+        role: 'assistant',
+        content: 'Reply',
+        timestamp: '2026-08-04T00:00:00.000Z',
+      });
     await (await POST(request(), undefined)).text();
     await (await POST(request(), undefined)).text();
 
-    expect(mockAppendMessages).toHaveBeenCalledTimes(2);
-    expect(mockAppendMessages.mock.calls[0]?.[2]).toEqual(mockAppendMessages.mock.calls[1]?.[2]);
-    expect(mockAppendMessages.mock.calls[0]?.[3]).toEqual(mockAppendMessages.mock.calls[1]?.[3]);
+    expect(mockAppendMessages).toHaveBeenCalledTimes(1);
+    expect(mockGenerateStreamingResponse).toHaveBeenCalledTimes(1);
+  });
+
+  it('streams the persisted response on response-loss replay without regenerating', async () => {
+    const body = {
+      message: 'Replay me',
+      workflow_step: 1,
+      idempotency_key: '99999999-9999-4999-8999-999999999999',
+      user_message_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      assistant_message_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    };
+    mockGetIdempotentAssistantMessage.mockResolvedValueOnce({
+      id: body.assistant_message_id,
+      role: 'assistant',
+      content: 'Persisted response A',
+      timestamp: '2026-08-04T00:00:00.000Z',
+    });
+
+    const response = await POST(new NextRequest('http://localhost:3000/api/ai-pm/chat/stream?projectId=11111111-1111-4111-8111-111111111111', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }), undefined);
+    const output = await response.text();
+
+    expect(output).toContain('Persisted response A');
+    expect(output).not.toContain('Reply');
+    expect(mockGenerateStreamingResponse).not.toHaveBeenCalled();
+    expect(mockAppendMessages).not.toHaveBeenCalled();
+  });
+
+  it('emits the content returned by the atomic append when a concurrent request generated another reply', async () => {
+    mockAppendMessages.mockResolvedValueOnce({
+      messages: [
+        { id: 'user-1', role: 'user', content: 'Hello', timestamp: '2026-08-04T00:00:00.000Z' },
+        { id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', role: 'assistant', content: 'Persisted response A', timestamp: '2026-08-04T00:00:01.000Z' },
+      ],
+    });
+    mockGenerateStreamingResponse.mockImplementationOnce(async function* () {
+      yield { content: 'Generated response B', error: undefined };
+    });
+
+    const response = await POST(new NextRequest('http://localhost:3000/api/ai-pm/chat/stream?projectId=11111111-1111-4111-8111-111111111111', {
+      method: 'POST',
+      body: JSON.stringify({
+        message: 'Hello',
+        workflow_step: 1,
+        idempotency_key: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        user_message_id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+        assistant_message_id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      }),
+    }), undefined);
+    const output = await response.text();
+
+    expect(output).toContain('Persisted response A');
+    expect(output).not.toContain('Generated response B');
   });
 
   it('does not expose internal stream errors in SSE output', async () => {

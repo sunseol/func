@@ -19,7 +19,15 @@ test.describe('authentication navigation contract', () => {
     await page.getByRole('button', { name: '로그인' }).click();
 
     await expect(page).toHaveURL(/\/login(?:\?|$)/);
-    await expect(page.getByRole('alert')).toBeVisible();
+    const loginError = page.locator('form').getByRole('alert').filter({
+      hasText: /(?:아이디 혹은 비밀번호가 틀렸습니다\. 다시 확인해주세요\.|로그인 중 오류가 발생했습니다\.|Supabase is not configured\. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY\.)/i,
+    });
+    await expect(loginError).toHaveCount(1);
+    await expect(loginError).toBeVisible();
+    await expect(loginError).toHaveText(
+      /^(?:아이디 혹은 비밀번호가 틀렸습니다\. 다시 확인해주세요\.|로그인 중 오류가 발생했습니다\.|Supabase is not configured\. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY\.)$/i,
+    );
+    await expect(loginError).not.toContainText(/(?:stack trace|SUPABASE_SERVICE_ROLE_KEY|service_role|eyJ[A-Za-z0-9_-]{20,})/i);
   });
 
   test('QA-RESET-002 reset callback remains public without a session', async ({ page }) => {

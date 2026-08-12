@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -43,6 +43,11 @@ interface NotificationContextType {
   checkTodayReports: () => Promise<{ morning: boolean; evening: boolean }>;
 }
 
+interface BrowserNotificationEligibility {
+  userId: string;
+  enabled: boolean;
+}
+
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
 const DEFAULT_SETTINGS = {
@@ -76,11 +81,17 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const [notifications, setNotifications] = useState<NotificationHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [browserNotificationEligibility, setBrowserNotificationEligibility] =
+    useState<BrowserNotificationEligibility | null>(null);
+  const settingsRequestIdRef = useRef(0);
+  const activeUserIdRef = useRef<string | null>(null);
 
   const unreadCount = notifications.reduce((count, item) => count + (item.is_read ? 0 : 1), 0);
 
-  const loadSettings = useCallback(async () => {
+  const loadSettings = useCallback(async (requestId: number) => {
     if (!user) return;
+    const isCurrentRequest = () =>
+      requestId === settingsRequestIdRef.current && activeUserIdRef.current === user.id;
 
     try {
       const { data, error } = await supabase
@@ -90,7 +101,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         .maybeSingle();
 
       if (!error && data) {
+        if (!isCurrentRequest()) return;
         setSettings(data);
+        setBrowserNotificationEligibility({ userId: user.id, enabled: data.browser_notifications });
         return;
       }
 
@@ -106,20 +119,25 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         .single();
 
       if (!createError && created) {
+        if (!isCurrentRequest()) return;
         setSettings(created);
+        setBrowserNotificationEligibility({ userId: user.id, enabled: created.browser_notifications });
         return;
       }
 
       if (createError) {
         console.error('Notification settings upsert error:', createError);
       }
-      setLoadError('알림 설정을 불러오지 못해 기본 설정을 표시합니다.');
+      if (isCurrentRequest()) setLoadError('알림 설정을 불러오지 못해 기본 설정을 표시합니다.');
     } catch (error) {
       console.error('Notification settings load error:', error);
-      setLoadError('알림 설정을 불러오지 못해 기본 설정을 표시합니다.');
+      if (isCurrentRequest()) setLoadError('알림 설정을 불러오지 못해 기본 설정을 표시합니다.');
     }
 
-    setSettings(createLocalSettings(user.id));
+    if (isCurrentRequest()) {
+      setSettings(createLocalSettings(user.id));
+      setBrowserNotificationEligibility(null);
+    }
   }, [supabase, user]);
 
   const loadNotifications = useCallback(async () => {
@@ -149,6 +167,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   }, [supabase, user]);
 
   useEffect(() => {
+    const requestId = ++settingsRequestIdRef.current;
+    activeUserIdRef.current = user?.id ?? null;
     let cancelled = false;
 
     (async () => {
@@ -156,14 +176,16 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         setSettings(null);
         setNotifications([]);
         setLoadError(null);
+        setBrowserNotificationEligibility(null);
         setLoading(false);
         return;
       }
 
       setLoading(true);
       setLoadError(null);
-      await Promise.all([loadSettings(), loadNotifications()]);
-      if (!cancelled) setLoading(false);
+      setBrowserNotificationEligibility(null);
+      await Promise.all([loadSettings(requestId), loadNotifications()]);
+      if (!cancelled && requestId === settingsRequestIdRef.current) setLoading(false);
     })();
 
     return () => {
@@ -175,6 +197,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     async (patch: Partial<NotificationSettings>) => {
       if (!user) return;
 
+      const requestId = ++settingsRequestIdRef.current;
+      activeUserIdRef.current = user.id;
+      setBrowserNotificationEligibility(null);
       const previousSettings = settings;
       setSettings((current) => (current ? { ...current, ...patch } : current));
 
@@ -186,9 +211,15 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           .single();
         if (error) throw error;
 
+        if (requestId !== settingsRequestIdRef.current || activeUserIdRef.current !== user.id) return;
+
         setSettings(data);
+        setBrowserNotificationEligibility({ userId: user.id, enabled: data.browser_notifications });
       } catch (error) {
-        setSettings(previousSettings);
+        if (requestId === settingsRequestIdRef.current && activeUserIdRef.current === user.id) {
+          setSettings(previousSettings);
+          setBrowserNotificationEligibility(null);
+        }
         throw error;
       }
     },
@@ -250,7 +281,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   const sendBrowserNotification = useCallback(
     (title: string, message: string) => {
-      if (!settings?.browser_notifications) return;
+      if (!user) return;
+      if (browserNotificationEligibility?.userId !== user.id || !browserNotificationEligibility.enabled) return;
       if (typeof window === 'undefined' || typeof window.Notification === 'undefined') return;
       if (window.Notification.permission !== 'granted') return;
 
@@ -260,7 +292,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         console.error('Browser notification error:', err);
       }
     },
-    [settings?.browser_notifications],
+    [browserNotificationEligibility, user],
   );
 
   const checkTodayReports = useCallback(async () => {

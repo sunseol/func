@@ -9,6 +9,7 @@ import { UserOutlined, LockOutlined, MailOutlined, SunOutlined, MoonOutlined } f
 
 const { Title, Text } = Typography;
 const GENERIC_SIGNUP_MESSAGE = '가입 요청을 처리했습니다. 입력하신 이메일의 안내를 확인해주세요.';
+const GENERIC_RESEND_MESSAGE = '요청을 처리했습니다. 입력하신 이메일을 확인해주세요.';
 
 export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
@@ -70,22 +71,14 @@ export default function SignupPage() {
     setError(null);
 
     try {
-      const { error } = await supabase.auth.resend({
+      await supabase.auth.resend({
         type: 'signup',
         email: email,
       });
 
-      if (error) {
-        throw error;
-      }
-
-      setMessage('이메일 확인 링크가 재전송되었습니다. 이메일을 확인해주세요.');
-    } catch (err: unknown) {
-      if (err instanceof Error) {
-        setError(`이메일 재전송 실패: ${err.message}`);
-      } else {
-        setError('이메일 재전송 중 오류가 발생했습니다.');
-      }
+      setMessage(GENERIC_RESEND_MESSAGE);
+    } catch {
+      setMessage(GENERIC_RESEND_MESSAGE);
     } finally {
       setResendLoading(false);
     }

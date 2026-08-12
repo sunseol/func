@@ -360,13 +360,31 @@ test('core product migration defines the daily reports, drafts, notifications, a
   assert.match(migration, /notification_history[\s\S]*is_read[\s\S]*read_at/);
   assert.match(migration, /auth\.uid\(\)/);
   assert.match(migration, /public\.is_admin\(\)/);
-  assert.match(migration, /CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_settings_user_id/);
+  assert.match(migration, /CREATE INDEX IF NOT EXISTS idx_notification_settings_user_id/);
   assert.match(migration, /CREATE INDEX IF NOT EXISTS idx_daily_reports_user_date/);
   assert.match(migration, /CREATE INDEX IF NOT EXISTS idx_notification_history_user_sent/);
   assert.match(migration, /CREATE TRIGGER on_auth_user_created_notification_settings/);
   assert.match(migration, /CREATE TRIGGER daily_reports_set_updated_at/);
   assert.match(migration, /SET search_path = public, pg_temp/);
   assert.match(migration, /GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public\.daily_reports TO authenticated/);
+});
+
+test('core product upgrade repairs legacy ownership, settings duplicates, constraints, and privilege boundaries', () => {
+  const repair = migrationText('026_core_product_upgrade_safety.sql');
+  assert.match(repair, /core_product_migration_quarantine/);
+  assert.match(repair, /missing or orphaned user_id/);
+  assert.match(repair, /duplicate user_id; latest meaningful values merged into retained row/);
+  assert.match(repair, /ARRAY_AGG\(id ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC\)/);
+  assert.match(repair, /morning_reminder_enabled = COALESCE\(m\.morning_reminder_enabled, TRUE\)/);
+  assert.match(repair, /WHERE t\.user_id IS NULL OR u\.id IS NULL/);
+  assert.match(repair, /ALTER COLUMN user_id SET NOT NULL/);
+  assert.match(repair, /VALIDATE CONSTRAINT daily_reports_report_type_core_check/);
+  assert.match(repair, /CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_settings_user_id/);
+  assert.match(repair, /INSERT INTO public\.notification_settings\(user_id\)[\s\S]*ON CONFLICT \(user_id\) DO NOTHING/);
+  assert.match(repair, /ALTER TABLE public\.notification_settings ENABLE ROW LEVEL SECURITY/);
+  assert.match(repair, /REVOKE ALL ON TABLE public\.core_product_migration_quarantine FROM anon, PUBLIC, authenticated/);
+  assert.match(repair, /GRANT ALL ON TABLE public\.core_product_migration_quarantine TO service_role/);
+  assert.doesNotMatch(repair, /GRANT[^;]*\b(?:anon|PUBLIC)\b/);
 });
 
 test('service-role grants cover every public application table with full DML', () => {

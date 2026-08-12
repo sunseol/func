@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS public.daily_reports (
 );
 
 ALTER TABLE public.daily_reports
+  ADD COLUMN IF NOT EXISTS id UUID DEFAULT gen_random_uuid(),
   ADD COLUMN IF NOT EXISTS user_id UUID,
   ADD COLUMN IF NOT EXISTS report_date DATE,
   ADD COLUMN IF NOT EXISTS report_type VARCHAR(20),
@@ -43,6 +44,7 @@ CREATE TABLE IF NOT EXISTS public.draft_reports (
 );
 
 ALTER TABLE public.draft_reports
+  ADD COLUMN IF NOT EXISTS id UUID DEFAULT gen_random_uuid(),
   ADD COLUMN IF NOT EXISTS user_id UUID,
   ADD COLUMN IF NOT EXISTS report_date DATE,
   ADD COLUMN IF NOT EXISTS report_type VARCHAR(20),
@@ -68,6 +70,7 @@ CREATE TABLE IF NOT EXISTS public.notification_settings (
 );
 
 ALTER TABLE public.notification_settings
+  ADD COLUMN IF NOT EXISTS id UUID DEFAULT gen_random_uuid(),
   ADD COLUMN IF NOT EXISTS user_id UUID,
   ADD COLUMN IF NOT EXISTS morning_reminder_enabled BOOLEAN DEFAULT TRUE,
   ADD COLUMN IF NOT EXISTS morning_reminder_time TIME DEFAULT '09:00:00',
@@ -91,6 +94,7 @@ CREATE TABLE IF NOT EXISTS public.notification_history (
 );
 
 ALTER TABLE public.notification_history
+  ADD COLUMN IF NOT EXISTS id UUID DEFAULT gen_random_uuid(),
   ADD COLUMN IF NOT EXISTS user_id UUID,
   ADD COLUMN IF NOT EXISTS notification_type VARCHAR(50),
   ADD COLUMN IF NOT EXISTS title VARCHAR(255),
@@ -107,7 +111,7 @@ CREATE INDEX IF NOT EXISTS idx_draft_reports_user_date
   ON public.draft_reports(user_id, report_date DESC);
 CREATE INDEX IF NOT EXISTS idx_draft_reports_created_at
   ON public.draft_reports(created_at DESC);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_settings_user_id
+CREATE INDEX IF NOT EXISTS idx_notification_settings_user_id
   ON public.notification_settings(user_id);
 CREATE INDEX IF NOT EXISTS idx_notification_history_user_sent
   ON public.notification_history(user_id, sent_at DESC);
@@ -208,8 +212,10 @@ SET search_path = public, pg_temp
 AS $$
 BEGIN
   INSERT INTO public.notification_settings(user_id)
-  VALUES (NEW.id)
-  ON CONFLICT (user_id) DO NOTHING;
+  SELECT NEW.id
+  WHERE NOT EXISTS (
+    SELECT 1 FROM public.notification_settings WHERE user_id = NEW.id
+  );
   RETURN NEW;
 END
 $$;
@@ -220,8 +226,11 @@ CREATE TRIGGER on_auth_user_created_notification_settings
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user_notification_settings();
 
 INSERT INTO public.notification_settings(user_id)
-SELECT id FROM auth.users
-ON CONFLICT (user_id) DO NOTHING;
+SELECT u.id
+FROM auth.users u
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.notification_settings s WHERE s.user_id = u.id
+);
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.daily_reports TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.draft_reports TO authenticated;

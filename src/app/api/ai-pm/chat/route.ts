@@ -34,6 +34,18 @@ export const POST = withApi(async (request: NextRequest) => {
     timestamp: new Date().toISOString(),
   } as const;
 
+  const replay = await conversationManager.getIdempotentAssistantMessage(
+    projectId,
+    workflowStep,
+    auth.user.id,
+    {
+      idempotencyKey,
+      userMessageId,
+      assistantMessageId,
+    },
+  );
+  if (replay) return json({ response: replay.content });
+
   const messages = await conversationManager.getCurrentMessages(projectId, workflowStep, auth.user.id);
   const contextMessages = [...messages, userMessage];
 
@@ -62,12 +74,18 @@ export const POST = withApi(async (request: NextRequest) => {
     throw new ApiError(500, AIpmErrorType.AI_SERVICE_ERROR, 'Unable to generate AI response');
   }
 
-  await conversationManager.appendMessages(projectId, workflowStep, [userMessage, {
+  const persistedConversation = await conversationManager.appendMessages(projectId, workflowStep, [userMessage, {
     id: assistantMessageId,
     role: 'assistant',
     content: aiResponse,
   }], { idempotencyKey });
-  return json({ response: aiResponse });
+  const persistedAssistant = persistedConversation.messages.find(
+    (item) => item.id === assistantMessageId && item.role === 'assistant',
+  );
+  if (!persistedAssistant) {
+    throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Persisted conversation is missing the assistant response');
+  }
+  return json({ response: persistedAssistant.content });
 });
 
 export const GET = withApi(async (request: NextRequest) => {

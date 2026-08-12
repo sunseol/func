@@ -7,6 +7,24 @@ import { requireString, requireUuid } from '@/lib/ai-pm/validators';
 import { parseSendMessageRequest } from '../input';
 import { AIpmErrorType } from '@/types/ai-pm';
 
+function createSseResponse(content: string): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content, timestamp: new Date().toISOString() })}\n\n`));
+      controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+      controller.close();
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    },
+  });
+}
+
 export const POST = withApi(async (request: NextRequest) => {
   const supabase = await getSupabase();
   const auth = await requireAuth(supabase);
@@ -29,6 +47,18 @@ export const POST = withApi(async (request: NextRequest) => {
     content: message,
     timestamp: new Date().toISOString(),
   } as const;
+
+  const replay = await conversationManager.getIdempotentAssistantMessage(
+    projectId,
+    workflowStep,
+    auth.user.id,
+    {
+      idempotencyKey,
+      userMessageId,
+      assistantMessageId,
+    },
+  );
+  if (replay) return createSseResponse(replay.content);
 
   const messages = await conversationManager.getCurrentMessages(projectId, workflowStep, auth.user.id);
   const contextMessages = [...messages, userMessage];
@@ -69,16 +99,22 @@ export const POST = withApi(async (request: NextRequest) => {
           if (!delta) continue;
 
           accumulatedResponse += delta;
-          const data = { content: delta, timestamp: new Date().toISOString() };
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
         }
 
         if (!streamFailed && accumulatedResponse.trim()) {
-          await conversationManager.appendMessages(projectId, workflowStep, [userMessage, {
+          const persistedConversation = await conversationManager.appendMessages(projectId, workflowStep, [userMessage, {
             id: assistantMessageId,
             role: 'assistant',
             content: accumulatedResponse.trim(),
           }], { idempotencyKey });
+          const persistedAssistant = persistedConversation.messages.find(
+            (item) => item.id === assistantMessageId && item.role === 'assistant',
+          );
+          if (!persistedAssistant) {
+            throw new Error('Persisted conversation is missing the assistant response');
+          }
+          const data = { content: persistedAssistant.content, timestamp: new Date().toISOString() };
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
         }
       } catch (error) {
         console.error('Streaming error', {
