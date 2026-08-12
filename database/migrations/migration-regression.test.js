@@ -298,6 +298,18 @@ test('conversation request claims are authenticated, replay-safe, and least-priv
   assert.match(migration, /claim_row\.user_message_id IS DISTINCT FROM p_user_message_id/);
   assert.match(migration, /claim_row\.assistant_message_id IS DISTINCT FROM p_assistant_message_id/);
   assert.match(migration, /status = 'failed', owner_token = NULL/);
+  const pollFunction = migration.match(
+    /CREATE OR REPLACE FUNCTION public\.poll_ai_conversation_request[\s\S]*?\nCREATE OR REPLACE FUNCTION public\.complete_ai_conversation_request/,
+  );
+  assert.ok(pollFunction);
+  assert.match(
+    pollFunction[0],
+    /FROM public\.ai_conversation_request_claims AS claims[\s\S]*?claims\.idempotency_key = p_idempotency_key\s+FOR UPDATE;/,
+  );
+  assert.match(
+    pollFunction[0],
+    /UPDATE public\.ai_conversation_request_claims AS claims[\s\S]*?WHERE claims\.user_id = auth\.uid\(\)[\s\S]*?claims\.status = 'pending' AND claims\.lease_until <= NOW\(\);/,
+  );
   assert.match(
     migration,
     /REVOKE ALL ON TABLE public\.ai_conversation_request_claims FROM PUBLIC, anon, authenticated;/,

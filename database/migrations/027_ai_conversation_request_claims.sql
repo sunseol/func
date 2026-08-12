@@ -152,9 +152,10 @@ BEGIN
     RAISE EXCEPTION 'project membership required';
   END IF;
   SELECT * INTO claim_row
-  FROM public.ai_conversation_request_claims
-  WHERE user_id = auth.uid() AND project_id = p_project_id
-    AND workflow_step = p_workflow_step AND idempotency_key = p_idempotency_key;
+  FROM public.ai_conversation_request_claims AS claims
+  WHERE claims.user_id = auth.uid() AND claims.project_id = p_project_id
+    AND claims.workflow_step = p_workflow_step AND claims.idempotency_key = p_idempotency_key
+  FOR UPDATE;
   IF claim_row.user_id IS NULL THEN
     RETURN QUERY SELECT 'failed'::TEXT, NULL::UUID, NULL::TEXT;
   ELSIF claim_row.user_message_id IS DISTINCT FROM p_user_message_id
@@ -163,10 +164,11 @@ BEGIN
   ELSIF claim_row.status = 'completed' THEN
     RETURN QUERY SELECT 'completed'::TEXT, NULL::UUID, claim_row.response_content;
   ELSIF claim_row.status = 'pending' AND claim_row.lease_until <= NOW() THEN
-    UPDATE public.ai_conversation_request_claims
+    UPDATE public.ai_conversation_request_claims AS claims
     SET status = 'failed', owner_token = NULL, updated_at = NOW()
-    WHERE user_id = auth.uid() AND project_id = p_project_id
-      AND workflow_step = p_workflow_step AND idempotency_key = p_idempotency_key;
+    WHERE claims.user_id = auth.uid() AND claims.project_id = p_project_id
+      AND claims.workflow_step = p_workflow_step AND claims.idempotency_key = p_idempotency_key
+      AND claims.status = 'pending' AND claims.lease_until <= NOW();
     RETURN QUERY SELECT 'failed'::TEXT, NULL::UUID, NULL::TEXT;
   ELSE
     RETURN QUERY SELECT 'pending'::TEXT, NULL::UUID, NULL::TEXT;
