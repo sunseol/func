@@ -84,6 +84,21 @@ export async function getSeededDocumentState(documentId: string): Promise<Readon
   return { workflowStep: data.workflow_step, status: data.status };
 }
 
+export async function getSeededApprovalHistory(documentId: string): Promise<ReadonlyArray<{ action: string; previousStatus: string; newStatus: string }>> {
+  requireLocalSupabaseMutation();
+  const { data, error } = await supabaseAdmin
+    .from('document_approval_history')
+    .select('action, previous_status, new_status')
+    .eq('document_id', documentId)
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(`Failed to verify approval history for ${documentId}: ${error.message}`);
+  return (data ?? []).map((entry) => ({
+    action: entry.action,
+    previousStatus: entry.previous_status,
+    newStatus: entry.new_status,
+  }));
+}
+
 export async function openWorkflow(page: Page, projectId: string, step: number): Promise<void> {
   await page.goto(`/ai-pm/${projectId}/workflow/${step}`);
   await page.waitForURL(new RegExp(`/ai-pm/${projectId}/workflow/${step}$`));

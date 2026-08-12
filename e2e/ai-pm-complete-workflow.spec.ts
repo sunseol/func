@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { login, openWorkflow, requireAIPMBackend, seedDocument, seedProject } from './ai-pm/fixtures';
+import { getSeededApprovalHistory, getSeededDocumentState, login, openWorkflow, requireAIPMBackend, seedDocument, seedProject } from './ai-pm/fixtures';
 import { TEST_USERS, cleanupTestData, setupTestData } from './utils/test-helpers';
 
 test.describe('AI-PM workflow contract', () => {
@@ -137,16 +137,23 @@ test.describe('AI-PM workflow contract', () => {
     await expect(page.getByText('문서 저장 완료', { exact: true })).toHaveCount(1);
   });
 
-  test('QA-DOC-004 private documents expose the approval request transition', async ({ page }) => {
+  test('QA-DOC-004 private documents request approval through the endpoint and record the transition', async ({ page }) => {
     const project = await seedProject('QA-DOC-004');
-    await seedDocument(project.id, 1, 'E2E_AUDIT approval content');
+    const documentId = await seedDocument(project.id, 1, 'E2E_AUDIT approval content');
     await login(page, TEST_USERS.admin);
-    await openWorkflow(page, project.id, 1);
-    await page.getByText('E2E_AUDIT document 1', { exact: true }).click();
-    await expect(page.getByTestId('document-status')).toContainText('개인 문서');
+    const response = await page.request.post(`/api/ai-pm/documents/${documentId}/request-approval`);
+    expect(response.status()).toBe(200);
+    const payload: { readonly document?: { readonly id?: unknown; readonly status?: unknown } } = await response.json();
+    expect(payload.document?.id).toBe(documentId);
+    expect(payload.document?.status).toBe('pending_approval');
+
+    const documentState = await getSeededDocumentState(documentId);
+    expect(documentState.status).toBe('pending_approval');
+    const approvalHistory = await getSeededApprovalHistory(documentId);
+    expect(approvalHistory).toContainEqual({ action: 'requested', previousStatus: 'private', newStatus: 'pending_approval' });
   });
 
-  test('QA-AIPM-006 settings advertises the current unimplemented mutation surface', async ({ page }) => {
+  test('QA-AIPM-006 settings reports that project mutation controls are not implemented', async ({ page }) => {
     const project = await seedProject('QA-AIPM-006');
     await login(page, TEST_USERS.admin);
     await page.goto(`/ai-pm/${project.id}`);
