@@ -38,7 +38,55 @@ const mockRpcResponse = (supabase: SupabaseClient, response: PostgrestSingleResp
   return rpc;
 };
 
+const requestClaimOptions = {
+  idempotencyKey: '33333333-3333-4333-8333-333333333333',
+  userMessageId: '44444444-4444-4444-8444-444444444444',
+  assistantMessageId: '55555555-5555-4555-8555-555555555555',
+} as const;
+
+const mockClaimRpcResponse = (supabase: SupabaseClient, data: unknown) => {
+  const rpcBuilder = supabase.rpc('claim_ai_conversation_request', {});
+  jest.spyOn(rpcBuilder, 'then').mockImplementation((onfulfilled) => {
+    const response = { data, error: null, count: null, status: 200, statusText: 'OK' };
+    onfulfilled?.(response);
+    return Promise.resolve(response);
+  });
+  jest.spyOn(supabase, 'rpc').mockReturnValue(rpcBuilder);
+  const rpc = jest.spyOn(supabase, 'rpc');
+  rpc.mockClear();
+  return rpc;
+};
+
 describe('ConversationManager atomic appends', () => {
+  it('returns the persisted response for a completed request claim', async () => {
+    const supabase = createSupabaseClient();
+    const rpc = mockClaimRpcResponse(supabase, {
+      status: 'completed',
+      response_content: 'Persisted response',
+    });
+    const manager = new ConversationManager(supabase);
+
+    await expect(manager.claimRequest('project-1', 1, requestClaimOptions)).resolves.toEqual({
+      status: 'completed',
+      responseContent: 'Persisted response',
+    });
+    expect(rpc).toHaveBeenCalledWith('claim_ai_conversation_request', expect.objectContaining({
+      p_idempotency_key: requestClaimOptions.idempotencyKey,
+      p_user_message_id: requestClaimOptions.userMessageId,
+      p_assistant_message_id: requestClaimOptions.assistantMessageId,
+    }));
+  });
+
+  it('rejects a completed claim without a persisted response', async () => {
+    const supabase = createSupabaseClient();
+    mockClaimRpcResponse(supabase, { status: 'completed' });
+    const manager = new ConversationManager(supabase);
+
+    await expect(manager.claimRequest('project-1', 1, requestClaimOptions)).rejects.toMatchObject({
+      error: 'DATABASE_ERROR',
+    });
+  });
+
   it('appends each message through the authenticated RPC and returns the persisted row', async () => {
     const supabase = createSupabaseClient();
     const rpc = mockRpcResponse(supabase, {

@@ -16,6 +16,20 @@ type UserMessageInput = MessageInput & { readonly role: 'user' };
 type AssistantMessageInput = MessageInput & { readonly role: 'assistant' };
 type ConversationPair = readonly [UserMessageInput, AssistantMessageInput];
 
+type ConversationRequestState = 'owner' | 'pending' | 'completed' | 'failed';
+
+export interface ConversationRequestClaimOptions {
+  readonly idempotencyKey: string;
+  readonly userMessageId: string;
+  readonly assistantMessageId: string;
+}
+
+export interface ConversationRequestClaim {
+  readonly status: ConversationRequestState;
+  readonly ownerToken?: string;
+  readonly responseContent?: string;
+}
+
 export interface ConversationAppendOptions {
   readonly idempotencyKey?: string;
 }
@@ -94,11 +108,41 @@ function parseRpcConversation(value: unknown): AIConversation {
   return conversation;
 }
 
+function parseRequestClaim(value: unknown): ConversationRequestClaim {
+  const row = Array.isArray(value) ? value[0] : value;
+  if (!isRecord(row) || typeof row.status !== 'string') {
+    throw new Error('Conversation request claim RPC returned an invalid row');
+  }
+  const status = row.status;
+  if (status !== 'owner' && status !== 'pending' && status !== 'completed' && status !== 'failed') {
+    throw new Error('Conversation request claim RPC returned an unknown status');
+  }
+  if (status === 'owner' && typeof row.owner_token !== 'string') {
+    throw new Error('Conversation request claim RPC returned no owner token');
+  }
+  if (status === 'completed' && typeof row.response_content !== 'string') {
+    throw new Error('Conversation request claim RPC returned no persisted response');
+  }
+  return {
+    status,
+    ...(typeof row.owner_token === 'string' ? { ownerToken: row.owner_token } : {}),
+    ...(typeof row.response_content === 'string' ? { responseContent: row.response_content } : {}),
+  };
+}
+
 function createMessageId(): string {
   const randomUuid = globalThis.crypto?.randomUUID;
   return typeof randomUuid === 'function'
     ? randomUuid.call(globalThis.crypto)
     : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function createOwnerToken(): string {
+  const randomUuid = globalThis.crypto?.randomUUID;
+  if (typeof randomUuid !== 'function') {
+    throw new Error('Secure randomness is unavailable for a conversation request claim');
+  }
+  return randomUuid.call(globalThis.crypto);
 }
 
 function normalizeMessage(message: MessageInput): AIChatMessage {
@@ -164,6 +208,109 @@ export class ConversationManager {
       });
       if (error) throw error;
       return parseRpcConversation(data);
+    } catch (error) {
+      throw this.handleDatabaseError(error);
+    }
+  }
+
+  async claimRequest(
+    projectId: string,
+    workflowStep: WorkflowStep,
+    options: ConversationRequestClaimOptions,
+  ): Promise<ConversationRequestClaim> {
+    try {
+      for (let claimAttempt = 0; claimAttempt < 3; claimAttempt += 1) {
+        const ownerToken = createOwnerToken();
+        const { data, error } = await this.supabase.rpc('claim_ai_conversation_request', {
+          p_project_id: projectId,
+          p_workflow_step: workflowStep,
+          p_idempotency_key: options.idempotencyKey,
+          p_user_message_id: options.userMessageId,
+          p_assistant_message_id: options.assistantMessageId,
+          p_owner_token: ownerToken,
+        });
+        if (error) throw error;
+        const claim = parseRequestClaim(data);
+        if (claim.status === 'owner') return claim;
+        if (claim.status === 'completed') return claim;
+
+        for (let pollAttempt = 0; pollAttempt < 20; pollAttempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          const polled = await this.pollRequest(projectId, workflowStep, options);
+          if (polled.status === 'completed') return polled;
+          if (polled.status === 'failed') break;
+        }
+      }
+      throw new Error('Conversation request claim remained pending');
+    } catch (error) {
+      throw this.handleDatabaseError(error);
+    }
+  }
+
+  async pollRequest(
+    projectId: string,
+    workflowStep: WorkflowStep,
+    options: ConversationRequestClaimOptions,
+  ): Promise<ConversationRequestClaim> {
+    try {
+      const { data, error } = await this.supabase.rpc('poll_ai_conversation_request', {
+        p_project_id: projectId,
+        p_workflow_step: workflowStep,
+        p_idempotency_key: options.idempotencyKey,
+        p_user_message_id: options.userMessageId,
+        p_assistant_message_id: options.assistantMessageId,
+      });
+      if (error) throw error;
+      return parseRequestClaim(data);
+    } catch (error) {
+      throw this.handleDatabaseError(error);
+    }
+  }
+
+  async completeRequest(
+    projectId: string,
+    workflowStep: WorkflowStep,
+    options: ConversationRequestClaimOptions,
+    ownerToken: string,
+    messages: ConversationPair,
+  ): Promise<AIConversation> {
+    if (messages.length !== 2 || messages[0].role !== 'user' || messages[1].role !== 'assistant') {
+      throw this.handleDatabaseError(new Error('Conversation append requires a user/assistant pair'));
+    }
+    const normalizedMessages = messages.map(normalizeMessage);
+    try {
+      const { data, error } = await this.supabase.rpc('complete_ai_conversation_request', {
+        p_project_id: projectId,
+        p_workflow_step: workflowStep,
+        p_idempotency_key: options.idempotencyKey,
+        p_user_message_id: options.userMessageId,
+        p_assistant_message_id: options.assistantMessageId,
+        p_owner_token: ownerToken,
+        p_messages: normalizedMessages,
+      });
+      if (error) throw error;
+      return parseRpcConversation(data);
+    } catch (error) {
+      throw this.handleDatabaseError(error);
+    }
+  }
+
+  async failRequest(
+    projectId: string,
+    workflowStep: WorkflowStep,
+    options: ConversationRequestClaimOptions,
+    ownerToken: string,
+  ): Promise<void> {
+    try {
+      const { error } = await this.supabase.rpc('fail_ai_conversation_request', {
+        p_project_id: projectId,
+        p_workflow_step: workflowStep,
+        p_idempotency_key: options.idempotencyKey,
+        p_user_message_id: options.userMessageId,
+        p_assistant_message_id: options.assistantMessageId,
+        p_owner_token: ownerToken,
+      });
+      if (error) throw error;
     } catch (error) {
       throw this.handleDatabaseError(error);
     }

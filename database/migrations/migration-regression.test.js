@@ -274,12 +274,35 @@ test('chat append RPC is replay-safe and scopes client identities to one convers
     /^\s*REVOKE ALL ON FUNCTION public\.append_ai_conversation_messages\(UUID, INTEGER, JSONB\) FROM PUBLIC, authenticated, anon;\s*$/m,
   );
   assert.match(migration, /pg_advisory_xact_lock/);
+  assert.match(migration, /unnest\(ARRAY\[[\s\S]*hashtextextended[\s\S]*ORDER BY value/);
   assert.match(migration, /idempotency_key/);
   assert.match(migration, /RETURN NEXT current_row;\s*RETURN;/);
   assert.match(migration, /identity already belongs to another conversation/);
   assert.match(migration, /message identities must be distinct/);
   assert.match(migration, /REVOKE ALL ON FUNCTION public\.append_ai_conversation_messages\(UUID, INTEGER, JSONB\) FROM PUBLIC, authenticated, anon/);
   assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.append_ai_conversation_messages\(UUID, INTEGER, JSONB, UUID\) TO authenticated/);
+});
+
+test('conversation request claims are authenticated, replay-safe, and least-privilege', () => {
+  const migration = migrationText('027_ai_conversation_request_claims.sql');
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS public\.ai_conversation_request_claims/);
+  assert.match(migration, /PRIMARY KEY \(user_id, project_id, workflow_step, idempotency_key\)/);
+  assert.match(migration, /UNIQUE \(user_id, project_id, workflow_step, user_message_id\)/);
+  assert.match(migration, /UNIQUE \(user_id, project_id, workflow_step, assistant_message_id\)/);
+  assert.match(migration, /SET search_path = public, pg_temp/);
+  assert.match(migration, /auth\.uid\(\)/);
+  assert.match(migration, /public\.is_project_member\(p_project_id\)/);
+  assert.match(migration, /lease_until/);
+  assert.match(migration, /status = 'completed'/);
+  assert.match(migration, /owner_token = p_owner_token/);
+  assert.match(migration, /claim_row\.user_message_id IS DISTINCT FROM p_user_message_id/);
+  assert.match(migration, /claim_row\.assistant_message_id IS DISTINCT FROM p_assistant_message_id/);
+  assert.match(migration, /status = 'failed', owner_token = NULL/);
+  assert.match(migration, /REVOKE ALL ON FUNCTION public\.claim_ai_conversation_request/);
+  assert.match(migration, /REVOKE ALL ON FUNCTION public\.poll_ai_conversation_request/);
+  assert.match(migration, /REVOKE ALL ON FUNCTION public\.complete_ai_conversation_request/);
+  assert.match(migration, /REVOKE ALL ON FUNCTION public\.fail_ai_conversation_request/);
+  assert.doesNotMatch(migration, /GRANT EXECUTE ON FUNCTION[^;]+TO (?:anon|PUBLIC)/i);
 });
 
 test('forward repair migration keeps sensitive reads and mutations least-privilege', () => {
@@ -378,6 +401,8 @@ test('core product upgrade repairs legacy ownership, settings duplicates, constr
   assert.match(repair, /morning_reminder_enabled = COALESCE\(m\.morning_reminder_enabled, TRUE\)/);
   assert.match(repair, /WHERE t\.user_id IS NULL OR u\.id IS NULL/);
   assert.match(repair, /ALTER COLUMN user_id SET NOT NULL/);
+  assert.match(repair, /UPDATE public\.notification_history\s+SET is_read = FALSE\s+WHERE is_read IS NULL/);
+  assert.match(repair, /notification_history[\s\S]*ALTER COLUMN is_read SET DEFAULT FALSE[\s\S]*ALTER COLUMN is_read SET NOT NULL/);
   assert.match(repair, /VALIDATE CONSTRAINT daily_reports_report_type_core_check/);
   assert.match(repair, /CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_settings_user_id/);
   assert.match(repair, /INSERT INTO public\.notification_settings\(user_id\)[\s\S]*ON CONFLICT \(user_id\) DO NOTHING/);

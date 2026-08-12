@@ -48,17 +48,18 @@ export const POST = withApi(async (request: NextRequest) => {
     timestamp: new Date().toISOString(),
   } as const;
 
-  const replay = await conversationManager.getIdempotentAssistantMessage(
-    projectId,
-    workflowStep,
-    auth.user.id,
-    {
-      idempotencyKey,
-      userMessageId,
-      assistantMessageId,
-    },
-  );
-  if (replay) return createSseResponse(replay.content);
+  const requestClaim = await conversationManager.claimRequest(projectId, workflowStep, {
+    idempotencyKey,
+    userMessageId,
+    assistantMessageId,
+  });
+  if (requestClaim.status === 'completed' && requestClaim.responseContent !== undefined) {
+    return createSseResponse(requestClaim.responseContent);
+  }
+  if (requestClaim.status !== 'owner' || requestClaim.ownerToken === undefined) {
+    throw new Error('Unable to claim conversation request');
+  }
+  const ownerToken = requestClaim.ownerToken;
 
   const messages = await conversationManager.getCurrentMessages(projectId, workflowStep, auth.user.id);
   const contextMessages = [...messages, userMessage];
@@ -86,12 +87,7 @@ export const POST = withApi(async (request: NextRequest) => {
         for await (const chunk of aiService.generateStreamingResponse(contextMessages, workflowStep, projectContext)) {
           if (chunk.error) {
             streamFailed = true;
-            const errorData = {
-              error: AIpmErrorType.AI_SERVICE_ERROR,
-              message: 'Unable to generate AI response',
-            };
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorData)}\n\n`));
-            break;
+            throw new Error('AI service streaming response failed');
           }
 
           const delta = chunk.content.slice(previous.length);
@@ -102,11 +98,15 @@ export const POST = withApi(async (request: NextRequest) => {
         }
 
         if (!streamFailed && accumulatedResponse.trim()) {
-          const persistedConversation = await conversationManager.appendMessages(projectId, workflowStep, [userMessage, {
+          const persistedConversation = await conversationManager.completeRequest(projectId, workflowStep, {
+            idempotencyKey,
+            userMessageId,
+            assistantMessageId,
+          }, ownerToken, [userMessage, {
             id: assistantMessageId,
             role: 'assistant',
             content: accumulatedResponse.trim(),
-          }], { idempotencyKey });
+          }]);
           const persistedAssistant = persistedConversation.messages.find(
             (item) => item.id === assistantMessageId && item.role === 'assistant',
           );
@@ -117,6 +117,15 @@ export const POST = withApi(async (request: NextRequest) => {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
         }
       } catch (error) {
+        try {
+          await conversationManager.failRequest(projectId, workflowStep, {
+            idempotencyKey,
+            userMessageId,
+            assistantMessageId,
+          }, ownerToken);
+        } catch (cleanupError) {
+          console.error('Conversation request release failed', cleanupError instanceof Error ? cleanupError.message : 'unknown error');
+        }
         console.error('Streaming error', {
           errorType: error instanceof Error ? 'Error' : 'UNKNOWN',
         });

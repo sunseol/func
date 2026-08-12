@@ -30,6 +30,7 @@ DECLARE
   user_message_id UUID;
   assistant_message_id UUID;
   normalized_messages JSONB;
+  lock_key BIGINT;
 BEGIN
   IF auth.uid() IS NULL OR NOT (public.is_project_member(p_project_id) OR public.is_admin()) THEN
     RAISE EXCEPTION 'project membership required';
@@ -88,9 +89,17 @@ BEGIN
     RAISE EXCEPTION 'conversation message identities must be distinct';
   END IF;
 
-  PERFORM pg_advisory_xact_lock(hashtextextended(user_message_id::TEXT, 0));
-  PERFORM pg_advisory_xact_lock(hashtextextended(assistant_message_id::TEXT, 0));
-  PERFORM pg_advisory_xact_lock(hashtextextended(p_idempotency_key::TEXT, 0));
+  FOR lock_key IN
+    SELECT value::BIGINT
+    FROM unnest(ARRAY[
+      hashtextextended(user_message_id::TEXT, 0),
+      hashtextextended(assistant_message_id::TEXT, 0),
+      hashtextextended(p_idempotency_key::TEXT, 0)
+    ]) AS keys(value)
+    ORDER BY value
+  LOOP
+    PERFORM pg_advisory_xact_lock(lock_key);
+  END LOOP;
 
   IF EXISTS (
     SELECT 1

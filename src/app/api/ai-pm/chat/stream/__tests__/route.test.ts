@@ -19,9 +19,14 @@ type AppendMessages = (
 const mockAppendMessages = jest.fn<ReturnType<AppendMessages>, Parameters<AppendMessages>>(
   async (_projectId, _workflowStep, messages) => ({ messages: messages as PersistedConversation['messages'] }),
 );
+type RequestClaim = { readonly status: 'owner' | 'pending' | 'completed' | 'failed'; readonly ownerToken?: string; readonly responseContent?: string };
+const mockClaimRequest = jest.fn(async (): Promise<RequestClaim> => ({ status: 'owner', ownerToken: 'owner-token' }));
+type CompleteRequest = (projectId: string, workflowStep: number, options: unknown, ownerToken: string, messages: readonly unknown[]) => Promise<PersistedConversation>;
+const mockCompleteRequest = jest.fn<ReturnType<CompleteRequest>, Parameters<CompleteRequest>>(
+  async (_projectId, _workflowStep, _options, _ownerToken, messages) => ({ messages: messages as PersistedConversation['messages'] }),
+);
+const mockFailRequest = jest.fn(async () => undefined);
 const mockGetCurrentMessages = jest.fn(async () => []);
-type ReplayMessage = { readonly id: string; readonly role: 'assistant'; readonly content: string; readonly timestamp: string };
-const mockGetIdempotentAssistantMessage = jest.fn<Promise<ReplayMessage | null>, []>(async () => null);
 const mockGenerateStreamingResponse = jest.fn(async function* () {
   yield { content: 'Reply', error: undefined };
 });
@@ -34,9 +39,10 @@ jest.mock('@/lib/ai-pm/auth', () => ({
 
 jest.mock('@/lib/ai-pm/conversation-manager', () => ({
   getConversationManager: jest.fn(() => ({
-    appendMessages: mockAppendMessages,
+    claimRequest: mockClaimRequest,
+    completeRequest: mockCompleteRequest,
+    failRequest: mockFailRequest,
     getCurrentMessages: mockGetCurrentMessages,
-    getIdempotentAssistantMessage: mockGetIdempotentAssistantMessage,
   })),
 }));
 
@@ -74,8 +80,11 @@ describe('/api/ai-pm/chat/stream', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockAppendMessages.mockClear();
+    mockClaimRequest.mockReset();
+    mockClaimRequest.mockResolvedValue({ status: 'owner', ownerToken: 'owner-token' });
+    mockCompleteRequest.mockClear();
+    mockFailRequest.mockClear();
     mockGetCurrentMessages.mockClear();
-    mockGetIdempotentAssistantMessage.mockClear();
     mockGenerateStreamingResponse.mockReset();
     mockGenerateStreamingResponse.mockImplementation(async function* () {
       yield { content: 'Reply', error: undefined };
@@ -99,14 +108,14 @@ describe('/api/ai-pm/chat/stream', () => {
     const response = await POST(request, undefined);
     await response.text();
 
-    expect(mockAppendMessages).toHaveBeenCalledTimes(1);
-    expect(mockAppendMessages.mock.calls[0]?.[2]).toHaveLength(2);
-    expect(mockAppendMessages.mock.calls[0]?.[2]?.[0]).toMatchObject({ id: requestIdentity.user_message_id });
-    expect(mockAppendMessages.mock.calls[0]?.[2]?.[1]).toMatchObject({ id: requestIdentity.assistant_message_id });
-    expect(mockAppendMessages.mock.calls[0]?.[3]).toEqual({ idempotencyKey: requestIdentity.idempotency_key });
+    expect(mockClaimRequest).toHaveBeenCalledTimes(1);
+    expect(mockCompleteRequest).toHaveBeenCalledTimes(1);
+    expect(mockCompleteRequest.mock.calls[0]?.[4]).toHaveLength(2);
+    expect(mockCompleteRequest.mock.calls[0]?.[4]?.[0]).toMatchObject({ id: requestIdentity.user_message_id });
+    expect(mockCompleteRequest.mock.calls[0]?.[4]?.[1]).toMatchObject({ id: requestIdentity.assistant_message_id });
   });
 
-  it('reuses the same request and message identities when a response is replayed', async () => {
+  it('returns a completed claim response without regenerating', async () => {
     const body = {
       message: 'Replay me',
       workflow_step: 1,
@@ -119,22 +128,15 @@ describe('/api/ai-pm/chat/stream', () => {
       body: JSON.stringify(body),
     });
 
-    mockGetIdempotentAssistantMessage
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({
-        id: body.assistant_message_id,
-        role: 'assistant',
-        content: 'Reply',
-        timestamp: '2026-08-04T00:00:00.000Z',
-      });
-    await (await POST(request(), undefined)).text();
-    await (await POST(request(), undefined)).text();
+    mockClaimRequest.mockResolvedValueOnce({ status: 'completed', responseContent: 'Persisted response' });
+    const output = await (await POST(request(), undefined)).text();
 
-    expect(mockAppendMessages).toHaveBeenCalledTimes(1);
-    expect(mockGenerateStreamingResponse).toHaveBeenCalledTimes(1);
+    expect(output).toContain('Persisted response');
+    expect(mockCompleteRequest).not.toHaveBeenCalled();
+    expect(mockGenerateStreamingResponse).not.toHaveBeenCalled();
   });
 
-  it('streams the persisted response on response-loss replay without regenerating', async () => {
+  it('streams a completed claim response without regenerating', async () => {
     const body = {
       message: 'Replay me',
       workflow_step: 1,
@@ -142,12 +144,7 @@ describe('/api/ai-pm/chat/stream', () => {
       user_message_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       assistant_message_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
     };
-    mockGetIdempotentAssistantMessage.mockResolvedValueOnce({
-      id: body.assistant_message_id,
-      role: 'assistant',
-      content: 'Persisted response A',
-      timestamp: '2026-08-04T00:00:00.000Z',
-    });
+    mockClaimRequest.mockResolvedValueOnce({ status: 'completed', responseContent: 'Persisted response A' });
 
     const response = await POST(new NextRequest('http://localhost:3000/api/ai-pm/chat/stream?projectId=11111111-1111-4111-8111-111111111111', {
       method: 'POST',
@@ -158,11 +155,11 @@ describe('/api/ai-pm/chat/stream', () => {
     expect(output).toContain('Persisted response A');
     expect(output).not.toContain('Reply');
     expect(mockGenerateStreamingResponse).not.toHaveBeenCalled();
-    expect(mockAppendMessages).not.toHaveBeenCalled();
+    expect(mockCompleteRequest).not.toHaveBeenCalled();
   });
 
   it('emits the content returned by the atomic append when a concurrent request generated another reply', async () => {
-    mockAppendMessages.mockResolvedValueOnce({
+    mockCompleteRequest.mockResolvedValueOnce({
       messages: [
         { id: 'user-1', role: 'user', content: 'Hello', timestamp: '2026-08-04T00:00:00.000Z' },
         { id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', role: 'assistant', content: 'Persisted response A', timestamp: '2026-08-04T00:00:01.000Z' },

@@ -118,6 +118,9 @@ WHERE created_at IS NULL OR updated_at IS NULL;
 UPDATE public.notification_history
 SET sent_at = COALESCE(sent_at, NOW())
 WHERE sent_at IS NULL;
+UPDATE public.notification_history
+SET is_read = FALSE
+WHERE is_read IS NULL;
 
 DROP TABLE IF EXISTS pg_temp.core_product_settings_merge;
 CREATE TEMP TABLE core_product_settings_merge ON COMMIT DROP AS

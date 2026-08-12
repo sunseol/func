@@ -171,6 +171,94 @@ describe('NotificationProvider recovery and ownership', () => {
     expect(mockClient.from).toHaveBeenCalledWith('notification_settings');
   });
 
+  it('does not apply stale history results after switching accounts', async () => {
+    let resolveFirstHistory: ((value: QueryResult) => void) | undefined;
+    let resolveSecondHistory: ((value: QueryResult) => void) | undefined;
+    let historyLoadCount = 0;
+    const settingsBuilder = makeBuilder({ data: existingSettings, error: null });
+    const historyBuilder = makeBuilder({ data: [], error: null });
+    historyBuilder.then = (resolve, reject) => {
+      historyLoadCount += 1;
+      return new Promise<QueryResult>((promiseResolve) => {
+        if (historyLoadCount === 1) resolveFirstHistory = promiseResolve;
+        else resolveSecondHistory = promiseResolve;
+      }).then(resolve, reject);
+    };
+    mockClient = {
+      from: jest.fn((table: string) => (table === 'notification_settings' ? settingsBuilder : historyBuilder)),
+    };
+
+    const rendered = render(
+      <NotificationProvider>
+        <Probe />
+      </NotificationProvider>,
+    );
+    await waitFor(() => expect(historyLoadCount).toBe(1));
+
+    authUser = switchedUser;
+    rendered.rerender(
+      <NotificationProvider>
+        <Probe />
+      </NotificationProvider>,
+    );
+    await waitFor(() => expect(historyLoadCount).toBe(2));
+
+    await act(async () => {
+      resolveFirstHistory?.({ data: [existingNotification], error: null });
+    });
+    expect(screen.getByTestId('notification-state').textContent).toBe('0');
+    expect(screen.getByTestId('load-error').textContent).toBe('');
+
+    await act(async () => {
+      resolveSecondHistory?.({ data: [{ ...existingNotification, user_id: switchedUser.id }], error: null });
+    });
+    await waitFor(() => expect(screen.getByTestId('notification-state').textContent).toBe('1'));
+  });
+
+  it('does not apply stale history errors after switching accounts', async () => {
+    let resolveFirstHistory: ((value: QueryResult) => void) | undefined;
+    let resolveSecondHistory: ((value: QueryResult) => void) | undefined;
+    let historyLoadCount = 0;
+    const settingsBuilder = makeBuilder({ data: existingSettings, error: null });
+    const historyBuilder = makeBuilder({ data: [], error: null });
+    historyBuilder.then = (resolve, reject) => {
+      historyLoadCount += 1;
+      return new Promise<QueryResult>((promiseResolve) => {
+        if (historyLoadCount === 1) resolveFirstHistory = promiseResolve;
+        else resolveSecondHistory = promiseResolve;
+      }).then(resolve, reject);
+    };
+    mockClient = {
+      from: jest.fn((table: string) => (table === 'notification_settings' ? settingsBuilder : historyBuilder)),
+    };
+
+    const rendered = render(
+      <NotificationProvider>
+        <Probe />
+      </NotificationProvider>,
+    );
+    await waitFor(() => expect(historyLoadCount).toBe(1));
+
+    authUser = switchedUser;
+    rendered.rerender(
+      <NotificationProvider>
+        <Probe />
+      </NotificationProvider>,
+    );
+    await waitFor(() => expect(historyLoadCount).toBe(2));
+
+    await act(async () => {
+      resolveFirstHistory?.({ data: null, error: new Error('stale history failure') });
+    });
+    expect(screen.getByTestId('notification-state').textContent).toBe('0');
+    expect(screen.getByTestId('load-error').textContent).toBe('');
+
+    await act(async () => {
+      resolveSecondHistory?.({ data: [], error: null });
+    });
+    await waitFor(() => expect(screen.getByTestId('notification-state').textContent).toBe('0'));
+  });
+
   it('keeps usable defaults and a visible recovery error when settings queries fail', async () => {
     configureClient(
       { data: null, error: new Error('RLS select denied') },
@@ -186,6 +274,8 @@ describe('NotificationProvider recovery and ownership', () => {
 
     await waitFor(() => expect(screen.getByTestId('settings-state').textContent).toBe('true'));
     expect(screen.getByTestId('load-error').textContent).toContain('기본 설정을 표시합니다');
+    const settingsBuilder = mockClient.from.mock.results[0]?.value as QueryBuilder;
+    expect(settingsBuilder.upsert).not.toHaveBeenCalled();
   });
 
   it('does not send after a previously opted-out user settings load fails', async () => {

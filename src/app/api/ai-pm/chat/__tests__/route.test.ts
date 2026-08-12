@@ -14,9 +14,14 @@ type AppendMessages = (projectId: string, workflowStep: number, messages: readon
 const mockAppendMessages = jest.fn<ReturnType<AppendMessages>, Parameters<AppendMessages>>(
   async (_projectId, _workflowStep, messages) => ({ messages: messages as PersistedConversation['messages'] }),
 );
+type RequestClaim = { readonly status: 'owner' | 'pending' | 'completed' | 'failed'; readonly ownerToken?: string; readonly responseContent?: string };
+const mockClaimRequest = jest.fn(async (): Promise<RequestClaim> => ({ status: 'owner', ownerToken: 'owner-token' }));
+type CompleteRequest = (projectId: string, workflowStep: number, options: unknown, ownerToken: string, messages: readonly unknown[]) => Promise<PersistedConversation>;
+const mockCompleteRequest = jest.fn<ReturnType<CompleteRequest>, Parameters<CompleteRequest>>(
+  async (_projectId, _workflowStep, _options, _ownerToken, messages) => ({ messages: messages as PersistedConversation['messages'] }),
+);
+const mockFailRequest = jest.fn(async () => undefined);
 const mockGetCurrentMessages = jest.fn(async () => []);
-type ReplayMessage = { readonly id: string; readonly role: 'assistant'; readonly content: string; readonly timestamp: string };
-const mockGetIdempotentAssistantMessage = jest.fn<Promise<ReplayMessage | null>, []>(async () => null);
 const mockGenerateResponse = jest.fn(async () => 'AI response');
 
 jest.mock('@/lib/ai-pm/auth', () => ({
@@ -27,9 +32,10 @@ jest.mock('@/lib/ai-pm/auth', () => ({
 
 jest.mock('@/lib/ai-pm/conversation-manager', () => ({
   getConversationManager: () => ({
-    appendMessages: mockAppendMessages,
+    claimRequest: mockClaimRequest,
+    completeRequest: mockCompleteRequest,
+    failRequest: mockFailRequest,
     getCurrentMessages: mockGetCurrentMessages,
-    getIdempotentAssistantMessage: mockGetIdempotentAssistantMessage,
     loadConversation: jest.fn(async () => null),
     clearConversation: jest.fn(async () => {}),
   }),
@@ -72,8 +78,11 @@ describe('/api/ai-pm/chat', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockAppendMessages.mockClear();
+    mockClaimRequest.mockReset();
+    mockClaimRequest.mockResolvedValue({ status: 'owner', ownerToken: 'owner-token' });
+    mockCompleteRequest.mockClear();
+    mockFailRequest.mockClear();
     mockGetCurrentMessages.mockClear();
-    mockGetIdempotentAssistantMessage.mockClear();
     mockGenerateResponse.mockReset();
     mockGenerateResponse.mockResolvedValue('AI response');
   });
@@ -107,20 +116,16 @@ describe('/api/ai-pm/chat', () => {
 
     expect(response.status).toBe(200);
     expect(data.response).toBe('AI response');
-    expect(mockAppendMessages).toHaveBeenCalledTimes(1);
-    expect(mockAppendMessages.mock.calls[0]?.[2]).toHaveLength(2);
+    expect(mockClaimRequest).toHaveBeenCalledTimes(1);
+    expect(mockCompleteRequest).toHaveBeenCalledTimes(1);
+    expect(mockCompleteRequest.mock.calls[0]?.[4]).toHaveLength(2);
   });
 
-  it('returns a persisted replay without calling the provider or append', async () => {
+  it('returns a completed claim response without calling the provider', async () => {
     mockGetSupabase.mockResolvedValue(createSupabaseMock());
     mockRequireAuth.mockResolvedValueOnce(createAuth());
     mockRequireProjectAccess.mockResolvedValueOnce();
-    mockGetIdempotentAssistantMessage.mockResolvedValueOnce({
-      id: 'assistant-1',
-      role: 'assistant',
-      content: 'Persisted response',
-      timestamp: '2026-08-04T00:00:00.000Z',
-    });
+    mockClaimRequest.mockResolvedValueOnce({ status: 'completed', responseContent: 'Persisted response' });
 
     const request = new NextRequest('http://localhost:3000/api/ai-pm/chat?projectId=11111111-1111-4111-8111-111111111111', {
       method: 'POST',
@@ -139,14 +144,15 @@ describe('/api/ai-pm/chat', () => {
     expect(response.status).toBe(200);
     expect(data.response).toBe('Persisted response');
     expect(mockGenerateResponse).not.toHaveBeenCalled();
-    expect(mockAppendMessages).not.toHaveBeenCalled();
+    expect(mockCompleteRequest).not.toHaveBeenCalled();
+    expect(mockClaimRequest).toHaveBeenCalledTimes(1);
   });
 
   it('returns the content selected by the atomic append when another request won the race', async () => {
     mockGetSupabase.mockResolvedValue(createSupabaseMock());
     mockRequireAuth.mockResolvedValueOnce(createAuth());
     mockRequireProjectAccess.mockResolvedValueOnce();
-    mockAppendMessages.mockResolvedValueOnce({
+    mockCompleteRequest.mockResolvedValueOnce({
       messages: [
         { id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', role: 'user', content: 'Hello', timestamp: '2026-08-04T00:00:00.000Z' },
         { id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', role: 'assistant', content: 'Persisted response A', timestamp: '2026-08-04T00:00:01.000Z' },

@@ -109,7 +109,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
       if (error) {
         console.error('Notification settings query error:', error);
-        setLoadError('알림 설정 조회에 문제가 있어 복구를 시도했습니다.');
+        if (isCurrentRequest()) {
+          setSettings(createLocalSettings(user.id));
+          setBrowserNotificationEligibility(null);
+          setLoadError('알림 설정을 불러오지 못해 기본 설정을 표시합니다.');
+        }
+        return;
       }
 
       const { data: created, error: createError } = await supabase
@@ -140,8 +145,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
   }, [supabase, user]);
 
-  const loadNotifications = useCallback(async () => {
+  const loadNotifications = useCallback(async (requestId: number) => {
     if (!user) return;
+    const isCurrentRequest = () =>
+      requestId === settingsRequestIdRef.current && activeUserIdRef.current === user.id;
 
     try {
       const { data, error } = await supabase
@@ -152,17 +159,21 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         .limit(50);
       if (error) {
         console.error('Notification history query error:', error);
-        setNotifications([]);
-        setLoadError('알림 이력을 불러오지 못했습니다.');
+        if (isCurrentRequest()) {
+          setNotifications([]);
+          setLoadError('알림 이력을 불러오지 못했습니다.');
+        }
         return;
       }
 
       const rows = (data ?? []) as NotificationHistory[];
-      setNotifications(rows.filter((item) => item.id));
+      if (isCurrentRequest()) setNotifications(rows.filter((item) => item.id));
     } catch (error) {
       console.error('Notification history load error:', error);
-      setNotifications([]);
-      setLoadError('알림 이력을 불러오지 못했습니다.');
+      if (isCurrentRequest()) {
+        setNotifications([]);
+        setLoadError('알림 이력을 불러오지 못했습니다.');
+      }
     }
   }, [supabase, user]);
 
@@ -184,8 +195,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       setLoading(true);
       setLoadError(null);
       setBrowserNotificationEligibility(null);
-      await Promise.all([loadSettings(requestId), loadNotifications()]);
-      if (!cancelled && requestId === settingsRequestIdRef.current) setLoading(false);
+      await Promise.all([loadSettings(requestId), loadNotifications(requestId)]);
+      if (!cancelled && requestId === settingsRequestIdRef.current && activeUserIdRef.current === user.id) {
+        setLoading(false);
+      }
     })();
 
     return () => {

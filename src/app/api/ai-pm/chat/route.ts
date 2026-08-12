@@ -34,17 +34,17 @@ export const POST = withApi(async (request: NextRequest) => {
     timestamp: new Date().toISOString(),
   } as const;
 
-  const replay = await conversationManager.getIdempotentAssistantMessage(
-    projectId,
-    workflowStep,
-    auth.user.id,
-    {
-      idempotencyKey,
-      userMessageId,
-      assistantMessageId,
-    },
-  );
-  if (replay) return json({ response: replay.content });
+  const requestClaim = await conversationManager.claimRequest(projectId, workflowStep, {
+    idempotencyKey,
+    userMessageId,
+    assistantMessageId,
+  });
+  if (requestClaim.status === 'completed' && requestClaim.responseContent !== undefined) {
+    return json({ response: requestClaim.responseContent });
+  }
+  if (requestClaim.status !== 'owner' || requestClaim.ownerToken === undefined) {
+    throw new ApiError(500, AIpmErrorType.DATABASE_ERROR, 'Unable to claim conversation request');
+  }
 
   const messages = await conversationManager.getCurrentMessages(projectId, workflowStep, auth.user.id);
   const contextMessages = [...messages, userMessage];
@@ -63,6 +63,15 @@ export const POST = withApi(async (request: NextRequest) => {
   try {
     aiResponse = await aiService.generateResponse(contextMessages, workflowStep, projectContext);
   } catch (error) {
+    try {
+      await conversationManager.failRequest(projectId, workflowStep, {
+        idempotencyKey,
+        userMessageId,
+        assistantMessageId,
+      }, requestClaim.ownerToken);
+    } catch (cleanupError) {
+      console.error('Conversation request release failed', cleanupError instanceof Error ? cleanupError.message : 'unknown error');
+    }
     const isKnownAiError =
       typeof error === 'object' &&
       error !== null &&
@@ -74,11 +83,15 @@ export const POST = withApi(async (request: NextRequest) => {
     throw new ApiError(500, AIpmErrorType.AI_SERVICE_ERROR, 'Unable to generate AI response');
   }
 
-  const persistedConversation = await conversationManager.appendMessages(projectId, workflowStep, [userMessage, {
+  const persistedConversation = await conversationManager.completeRequest(projectId, workflowStep, {
+    idempotencyKey,
+    userMessageId,
+    assistantMessageId,
+  }, requestClaim.ownerToken, [userMessage, {
     id: assistantMessageId,
     role: 'assistant',
     content: aiResponse,
-  }], { idempotencyKey });
+  }]);
   const persistedAssistant = persistedConversation.messages.find(
     (item) => item.id === assistantMessageId && item.role === 'assistant',
   );
