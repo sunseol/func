@@ -1,46 +1,36 @@
-﻿# 리팩토링 현황 (작업 트리 기준)
+# 리팩토링 현황
 
 ## 스냅샷
-- 브랜치: master (origin/master 대비 작업 트리 변경)
-- 변경 규모: 121 files changed, +2,576 / -9,006
-- 테스트: 미실행
 
-## 변경 범위 요약
-- AI-PM API 라우트 전반 정리 및 테스트 정리 (`src/app/api/ai-pm/**`)
-- AI-PM 프론트/워크플로 UI 수정 (`src/components/ai-pm/**`, `src/app/ai-pm/**`)
-- 보고서 생성 로직 분리 (`src/features/reports/**`, `src/lib/groq/client.ts`)
-- 환경변수 필수화 유틸 추가 (`src/lib/env.ts`) 및 Supabase/Groq 연동 경로 업데이트
-- 컨텍스트 구조 변경 (`src/context/**` → `src/contexts/**`)
-- 성능/모바일 관련 유틸 및 UI 테이블 컴포넌트 업데이트
-- 설정/문서 업데이트 (`jest.config.js`, `jest.setup.js`, `tsconfig.json`, `README.md`, `plan/*.md`, `.env.local.example`)
+- 기준 브랜치: `jacobex/defect-refactor-20260811`
+- 검증 대상 제품 커밋: `278f6db` (`test: align inaccessible document qa contract`)
+- 원격 대상: `origin/jacobex/defect-refactor-20260811`
+- 변경 규모: 123 files changed, +9,474 / -2,062
+- 작업 트리: 제품 소스 변경 없음. `.omo/`는 로컬 검증 증거이므로 Git에서 제외
 
-## 파일 상태
-### 신규(미추적)
-- `src/contexts/NotificationContext.tsx`
-- `src/features/reports/ai.ts`
-- `src/features/reports/types.ts`
-- `src/lib/env.ts`
-- `src/lib/groq/client.ts`
-- `src/types/react-scroll.d.ts`
-- `src/types/styled-components.d.ts`
+## 완료 범위
 
-### 삭제
-- `src/context/NotificationContext.tsx` (컨텍스트 이동)
-- `src/lib/security/secretsManager.ts`
-- `src/app/api/grop.ts`
-- 다수의 `*.bak` 백업 파일 (`src/app/api/ai-pm/**`)
+- 격리된 Supabase/Playwright E2E 하네스와 72개 QA ID 기반 시나리오 구축
+- 인증, 보고서, 관리자, 알림, 반응형 내비게이션 표면 보강
+- AI-PM 프로젝트·문서·승인·채팅의 권한, 원자성, 동시성 계약 보강
+- 신규 및 업그레이드 데이터베이스 마이그레이션의 회귀 검증 추가
+- 민감정보 로그 제거와 HTTP 오류 응답 계약 정리
+- 모바일 터치 영역, 워크플로 탭 맞춤, 보고서 복사 버튼 시각 QA 보완
 
-### 수정(주요 그룹)
-- `src/app/api/ai-pm/**` 및 관련 테스트 (`src/app/api/ai-pm/**/__tests__`)
-- `src/lib/ai-pm/**` 및 통합 테스트 (`src/__tests__/integration/**`)
-- `src/components/ai-pm/**` 및 관련 테스트
-- 랜딩/페이지/UI 컴포넌트 (`src/app/**`, `src/components/ui/**`)
-- 설정/문서 (`jest.config.js`, `jest.setup.js`, `tsconfig.json`, `README.md`, `plan/*.md`, `.env.local.example`)
+## 최종 검증 결과 (2026-08-12)
 
-## 미완/확인 필요
-- `src/contexts/NavigationContext.tsx` 내 TODO: 권한 기반 접근 제어/워크플로 단계 접근 로직
-- 신규 파일들이 아직 Git에 미추적 상태라 커밋 누락 가능
-- `git diff`에서 CRLF 경고 발생: 라인 엔딩 통일 여부 확인 필요
-- 대규모 API/테스트 변경에 대한 테스트 실행 미확인
+- ESLint: 오류 0으로 통과. 기존 경고는 릴리스 차단 오류로 승격되지 않음
+- TypeScript: 앱 및 테스트 타입 검사 통과
+- Jest: 62 suites, 372 tests 통과
+- Next.js production build: 23개 정적 페이지 생성과 전체 route build 통과
+- 격리된 로컬 Chromium E2E: 75/75 통과, flaky retry 없이 121.2초 완료
+- E2E cleanup: 잔여 E2E 프로젝트 없이 완료
+- 최신 QA 원장: 28개 기능 인벤토리와 72개 고유 QA ID가 실행 가능한 Playwright 시나리오에 연결됨
+- 시각 QA: 주요 화면의 overflow·console/page error·44px 터치 영역 보완 완료
 
+## 릴리스 후속 절차
 
+1. PR 검토·병합
+2. 배포 환경 smoke 확인
+
+랜딩의 유료 플랜·전용 지원·고급 분석 문구는 현재 실행 기능이 아닌 `product-copy gap`이며 이번 리팩토링의 릴리스 게이트에는 포함하지 않는다.
