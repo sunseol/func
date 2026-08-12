@@ -11,7 +11,7 @@
 - 인증된 사용자가 `/login`에 접근하면 요청된 안전 경로 또는 `/`로 이동한다.
 - 로그아웃은 `/landing`으로 이동하고 세션 쿠키/토큰을 제거한다.
 - `/landing`, `/signup`, `/login`(로그인 폼), 비밀번호 재설정 공개 화면은 비인증 상태에서도 접근 가능해야 한다.
-- 현재 구현의 `login/page.tsx`는 로그인 성공 시 `/`로 push하고, `AuthContext`/`RouteGuard`는 `/landing`과 `/login?redirect=` 패턴을 사용하므로 위 계약을 E2E에서 고정하고 불일치는 결함으로 기록한다.
+- 현재 구현의 `login/page.tsx`와 `AuthContext`는 안전한 내부 `redirect` 경로로 이동하고, 없거나 유효하지 않으면 `/`로 이동하므로 위 계약을 E2E에서 고정한다.
 
 ### 1.2 테스트 계정/데이터
 
