@@ -298,11 +298,45 @@ test('conversation request claims are authenticated, replay-safe, and least-priv
   assert.match(migration, /claim_row\.user_message_id IS DISTINCT FROM p_user_message_id/);
   assert.match(migration, /claim_row\.assistant_message_id IS DISTINCT FROM p_assistant_message_id/);
   assert.match(migration, /status = 'failed', owner_token = NULL/);
+  assert.match(
+    migration,
+    /REVOKE ALL ON TABLE public\.ai_conversation_request_claims FROM PUBLIC, anon, authenticated;/,
+  );
+  assert.match(
+    migration,
+    /GRANT ALL ON TABLE public\.ai_conversation_request_claims TO service_role;/,
+  );
+  assert.doesNotMatch(
+    migration,
+    /GRANT ALL ON TABLE public\.ai_conversation_request_claims TO authenticated/,
+  );
   assert.match(migration, /REVOKE ALL ON FUNCTION public\.claim_ai_conversation_request/);
   assert.match(migration, /REVOKE ALL ON FUNCTION public\.poll_ai_conversation_request/);
   assert.match(migration, /REVOKE ALL ON FUNCTION public\.complete_ai_conversation_request/);
   assert.match(migration, /REVOKE ALL ON FUNCTION public\.fail_ai_conversation_request/);
   assert.doesNotMatch(migration, /GRANT EXECUTE ON FUNCTION[^;]+TO (?:anon|PUBLIC)/i);
+});
+
+test('conversation request claim creation is an atomic insert-winner flow', () => {
+  const migration = migrationText('027_ai_conversation_request_claims.sql');
+  const claimFunction = migration.match(
+    /CREATE OR REPLACE FUNCTION public\.claim_ai_conversation_request[\s\S]*?\nCREATE OR REPLACE FUNCTION public\.poll_ai_conversation_request/,
+  );
+  assert.ok(claimFunction);
+  const insert = claimFunction[0].indexOf('INSERT INTO public.ai_conversation_request_claims');
+  const firstSelect = claimFunction[0].indexOf('SELECT * INTO claim_row');
+  assert.ok(insert >= 0 && (firstSelect < 0 || insert < firstSelect));
+  assert.match(claimFunction[0], /INSERT INTO public\.ai_conversation_request_claims AS claims[\s\S]*?ON CONFLICT DO NOTHING\s+RETURNING claims\.user_id, claims\.project_id/);
+  assert.match(claimFunction[0], /status := 'owner';\s+owner_token := p_owner_token;\s+response_content := NULL;\s+RETURN NEXT;/);
+  assert.doesNotMatch(claimFunction[0], /RETURN QUERY SELECT/);
+  assert.match(
+    claimFunction[0],
+    /claims\.idempotency_key = p_idempotency_key[\s\S]*?FOR UPDATE[\s\S]*?claims\.user_message_id = p_user_message_id OR claims\.assistant_message_id = p_assistant_message_id/,
+  );
+  assert.match(
+    claimFunction[0],
+    /UPDATE public\.ai_conversation_request_claims AS claims[\s\S]*?WHERE claims\.user_id = auth\.uid\(\)[\s\S]*?claims\.idempotency_key = p_idempotency_key;/,
+  );
 });
 
 test('forward repair migration keeps sensitive reads and mutations least-privilege', () => {

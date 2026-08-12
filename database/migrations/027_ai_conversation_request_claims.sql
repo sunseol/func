@@ -26,6 +26,7 @@ CREATE POLICY ai_conversation_request_claims_owner ON public.ai_conversation_req
   WITH CHECK (user_id = auth.uid() AND public.is_project_member(project_id));
 
 REVOKE ALL ON TABLE public.ai_conversation_request_claims FROM PUBLIC, anon, authenticated;
+GRANT ALL ON TABLE public.ai_conversation_request_claims TO service_role;
 
 CREATE OR REPLACE FUNCTION public.claim_ai_conversation_request(
   p_project_id UUID,
@@ -55,46 +56,80 @@ BEGIN
     RAISE EXCEPTION 'invalid conversation request claim payload';
   END IF;
 
-  SELECT * INTO claim_row
-  FROM public.ai_conversation_request_claims
-  WHERE user_id = auth.uid()
-    AND project_id = p_project_id
-    AND workflow_step = p_workflow_step
-    AND idempotency_key = p_idempotency_key
-  FOR UPDATE;
-
-  IF claim_row.user_id IS NULL THEN
-    INSERT INTO public.ai_conversation_request_claims(
+  INSERT INTO public.ai_conversation_request_claims AS claims(
       user_id, project_id, workflow_step, idempotency_key,
       user_message_id, assistant_message_id, status, owner_token, lease_until
-    ) VALUES (
+  ) VALUES (
       auth.uid(), p_project_id, p_workflow_step, p_idempotency_key,
       p_user_message_id, p_assistant_message_id, 'pending', p_owner_token,
       NOW() + INTERVAL '30 seconds'
-    );
-    RETURN QUERY SELECT 'owner'::TEXT, p_owner_token, NULL::TEXT;
+  )
+  ON CONFLICT DO NOTHING
+  RETURNING claims.user_id, claims.project_id, claims.workflow_step, claims.idempotency_key,
+            claims.user_message_id, claims.assistant_message_id, claims.status, claims.owner_token,
+            claims.response_content, claims.lease_until, claims.created_at, claims.updated_at
+  INTO claim_row;
+
+  IF FOUND THEN
+    status := 'owner';
+    owner_token := p_owner_token;
+    response_content := NULL;
+    RETURN NEXT;
     RETURN;
   END IF;
 
-  IF claim_row.user_message_id IS DISTINCT FROM p_user_message_id
+  SELECT * INTO claim_row
+  FROM public.ai_conversation_request_claims AS claims
+    WHERE claims.user_id = auth.uid()
+      AND claims.project_id = p_project_id
+      AND claims.workflow_step = p_workflow_step
+      AND claims.idempotency_key = p_idempotency_key
+  FOR UPDATE;
+
+  IF claim_row.user_id IS NULL THEN
+    SELECT * INTO claim_row
+    FROM public.ai_conversation_request_claims AS claims
+    WHERE claims.user_id = auth.uid()
+      AND claims.project_id = p_project_id
+      AND claims.workflow_step = p_workflow_step
+      AND (claims.user_message_id = p_user_message_id OR claims.assistant_message_id = p_assistant_message_id)
+    LIMIT 1
+    FOR UPDATE;
+  END IF;
+
+  IF claim_row.user_id IS NULL THEN
+    RAISE EXCEPTION 'conversation request claim conflict could not be resolved';
+  END IF;
+
+  IF claim_row.idempotency_key IS DISTINCT FROM p_idempotency_key
+     OR claim_row.user_message_id IS DISTINCT FROM p_user_message_id
      OR claim_row.assistant_message_id IS DISTINCT FROM p_assistant_message_id THEN
     RAISE EXCEPTION 'idempotency key was already used with another message pair';
   END IF;
   IF claim_row.status = 'completed' THEN
-    RETURN QUERY SELECT 'completed'::TEXT, NULL::UUID, claim_row.response_content;
+    status := 'completed';
+    owner_token := NULL;
+    response_content := claim_row.response_content;
+    RETURN NEXT;
     RETURN;
   END IF;
   IF claim_row.status = 'pending' AND claim_row.lease_until > NOW() THEN
-    RETURN QUERY SELECT 'pending'::TEXT, NULL::UUID, NULL::TEXT;
+    status := 'pending';
+    owner_token := NULL;
+    response_content := NULL;
+    RETURN NEXT;
     RETURN;
   END IF;
 
-  UPDATE public.ai_conversation_request_claims
+  UPDATE public.ai_conversation_request_claims AS claims
   SET status = 'pending', owner_token = p_owner_token,
       lease_until = NOW() + INTERVAL '30 seconds', updated_at = NOW()
-  WHERE user_id = auth.uid() AND project_id = p_project_id
-    AND workflow_step = p_workflow_step AND idempotency_key = p_idempotency_key;
-  RETURN QUERY SELECT 'owner'::TEXT, p_owner_token, NULL::TEXT;
+  WHERE claims.user_id = auth.uid() AND claims.project_id = p_project_id
+    AND claims.workflow_step = p_workflow_step AND claims.idempotency_key = p_idempotency_key;
+  status := 'owner';
+  owner_token := p_owner_token;
+  response_content := NULL;
+  RETURN NEXT;
 END
 $$;
 
