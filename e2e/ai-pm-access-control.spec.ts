@@ -93,7 +93,8 @@ test.describe('AI-PM access and document permissions', () => {
       ]);
 
       const outsider = await outsiderContext.request.get(`/api/ai-pm/documents/${documentId}/versions`);
-      expect(outsider.status()).toBe(403);
+      expect(outsider.status()).toBe(404);
+      expect(await outsider.json()).toMatchObject({ error: 'DOCUMENT_NOT_FOUND' });
     } finally {
       await Promise.all([adminContext.close(), outsiderContext.close()]);
     }
@@ -116,8 +117,8 @@ test.describe('AI-PM access and document permissions', () => {
       await expectSeededPendingDocument(documentId);
 
       const unauthorized = await unauthorizedContext.request.post(`/api/ai-pm/documents/${documentId}/approve`);
-      expect(unauthorized.status()).toBe(403);
-      expect(await unauthorized.json()).toMatchObject({ error: 'FORBIDDEN' });
+      expect(unauthorized.status()).toBe(404);
+      expect(await unauthorized.json()).toMatchObject({ error: 'DOCUMENT_NOT_FOUND' });
 
       const authorized = await authorizedContext.request.post(`/api/ai-pm/documents/${documentId}/approve`);
       expect(authorized.status()).toBe(200);
