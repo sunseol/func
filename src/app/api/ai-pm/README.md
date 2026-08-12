@@ -148,9 +148,32 @@ AI와 대화를 진행합니다.
 ```json
 {
   "message": "전자책 플랫폼을 기획하고 싶습니다.",
-  "workflow_step": 1
+  "workflow_step": 1,
+  "idempotency_key": "00000000-0000-4000-8000-000000000001",
+  "user_message_id": "00000000-0000-4000-8000-000000000002",
+  "assistant_message_id": "00000000-0000-4000-8000-000000000003"
 }
 ```
+
+`idempotency_key`, `user_message_id`, `assistant_message_id`는 선택 필드지만 하나라도
+보내면 세 값을 모두 유효한 UUID로 보내야 합니다. 생략하면 서버가 UUID를 생성합니다.
+같은 프로젝트·워크플로우·사용자에 같은 idempotency key와 메시지 ID를 다시 보내면
+AI provider를 다시 호출하거나 중복 저장하지 않고 기존 assistant 응답을 재생합니다.
+
+**응답**:
+```json
+{
+  "response": "안녕하세요! 전자책 플랫폼 기획을 도와드리겠습니다..."
+}
+```
+
+POST는 생성된 assistant 텍스트만 `{ "response": string }`으로 반환합니다. 대화
+전체가 필요하면 아래 GET으로 조회합니다.
+
+#### GET /api/ai-pm/chat?projectId={id}&workflowStep={step}
+대화 히스토리를 조회합니다.
+
+**권한**: 프로젝트 멤버 또는 관리자
 
 **응답**:
 ```json
@@ -162,30 +185,25 @@ AI와 대화를 진행합니다.
     "user_id": "uuid",
     "messages": [
       {
-        "id": "msg_1",
+        "id": "uuid",
         "role": "user",
         "content": "전자책 플랫폼을 기획하고 싶습니다.",
-        "timestamp": "2025-01-28T00:00:00Z"
+        "timestamp": "2026-08-12T00:00:00Z",
+        "idempotency_key": "uuid"
       },
       {
-        "id": "msg_2",
+        "id": "uuid",
         "role": "assistant",
         "content": "안녕하세요! 전자책 플랫폼 기획을 도와드리겠습니다...",
-        "timestamp": "2025-01-28T00:00:01Z"
+        "timestamp": "2026-08-12T00:00:01Z",
+        "idempotency_key": "uuid"
       }
     ],
-    "created_at": "2025-01-28T00:00:00Z",
-    "updated_at": "2025-01-28T00:00:01Z"
+    "created_at": "2026-08-12T00:00:00Z",
+    "updated_at": "2026-08-12T00:00:01Z"
   }
 }
 ```
-
-#### GET /api/ai-pm/chat?projectId={id}&workflowStep={step}
-대화 히스토리를 조회합니다.
-
-**권한**: 프로젝트 멤버 또는 관리자
-
-**응답**: POST와 동일한 형식
 
 #### DELETE /api/ai-pm/chat?projectId={id}&workflowStep={step}
 대화 히스토리를 삭제합니다.
@@ -195,7 +213,7 @@ AI와 대화를 진행합니다.
 **응답**:
 ```json
 {
-  "message": "대화 기록이 삭제되었습니다."
+  "message": "OK"
 }
 ```
 
@@ -208,12 +226,18 @@ AI와 실시간 스트리밍 대화를 진행합니다.
 
 **응답**: Server-Sent Events (SSE) 스트림
 ```
-data: {"type": "content", "content": "안녕", "isComplete": false}
+data: {"content": "안녕하세요!", "timestamp": "2026-08-12T00:00:00.000Z"}
 
-data: {"type": "content", "content": "안녕하세요!", "isComplete": false}
-
-data: {"type": "complete", "messageId": "msg_123"}
+data: [DONE]
 ```
+
+성공 시 스트림은 하나 이상의 `data: {"content": string, "timestamp": string}`
+이벤트 뒤 `data: [DONE]`으로 끝납니다. 서버는 provider가 누적해 준 최종 텍스트를
+한 번에 보낼 수 있으며, 응답 헤더는 `Content-Type: text/event-stream; charset=utf-8`입니다.
+provider 오류가 발생하면 HTTP 응답은 200으로 유지되고 `data: {"error":"AI_SERVICE_ERROR",
+"message":"Unable to generate AI response"}` 이벤트 후 `[DONE]`을 보냅니다. 스트림
+내부 예외는 `INTERNAL_ERROR`/`Streaming failed` 이벤트 후 `[DONE]`으로 종료합니다.
+재생 요청도 기존 assistant 텍스트 이벤트와 `[DONE]`만 반환합니다.
 
 ### 문서 관리
 
@@ -410,7 +434,7 @@ const response = await fetch(`/api/ai-pm/chat?projectId=${projectId}`, {
 });
 
 const data = await response.json();
-console.log(data.conversation.messages);
+console.log(data.response);
 ```
 
 ### 실시간 스트리밍 대화
@@ -438,10 +462,11 @@ while (true) {
   
   for (const line of lines) {
     if (line.startsWith('data: ')) {
-      const data = JSON.parse(line.slice(6));
-      if (data.type === 'content') {
-        console.log('AI 응답:', data.content);
-      }
+      const payload = line.slice(6);
+      if (payload === '[DONE]') break;
+      const data = JSON.parse(payload);
+      if (data.content) console.log('AI 응답:', data.content);
+      if (data.error) console.error(data.error, data.message);
     }
   }
 }
