@@ -11,7 +11,7 @@ type MockTextAreaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
   onPressEnter?: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
 };
 
-jest.mock('antd/es/Input', () => {
+jest.mock('antd/es/input', () => {
   const ReactRuntime = jest.requireActual<typeof React>('react');
   const TextArea = ({ autoSize: _autoSize, onPressEnter, ...props }: MockTextAreaProps) =>
     ReactRuntime.createElement('textarea', { ...props, onKeyDown: onPressEnter });
@@ -23,13 +23,6 @@ jest.mock('antd/es/button', () => {
     ReactRuntime.createElement('button', props, children);
   return { __esModule: true, default: Button };
 });
-jest.mock('antd/es/Button', () => {
-  const ReactRuntime = jest.requireActual<typeof React>('react');
-  const Button = ({ children, loading: _loading, ...props }: MockButtonProps) =>
-    ReactRuntime.createElement('button', props, children);
-  return { __esModule: true, default: Button };
-});
-
 jest.mock('@ant-design/icons', () => ({
   SendOutlined: () => React.createElement('span'),
   MessageOutlined: () => React.createElement('span'),
